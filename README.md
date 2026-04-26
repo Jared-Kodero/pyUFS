@@ -153,10 +153,31 @@ You do **not** need to manually download starting conditions or run the `chgres_
 2. **Auto-Processing:** During the pre-processing phase of the pipeline, `driver.py` will automatically invoke `chgres_cube`. It reads your configuration, takes the downloaded GFS/HRRR data, and handles all necessary regridding and interpolation to map the data onto your specific global or nested grid setup before the main model executable runs.
 
 ### Advanced: Customizing Initial Conditions (e.g., ERA5 Integration)
-While the workflow is optimized for GFS/HRRR, 
 
-* **[GFS (Global Forecast System)](https://registry.opendata.aws/noaa-gfs-bdp-pds/)**: Global model with 0.25° resolution.
-* **[HRRR (High-Resolution Rapid Refresh)](https://noaa-hrrr-bdp-pds.s3.amazonaws.com/index.html)**: CONUS-specific model with 3km resolution, ideal for high-resolution runs.
+Get initialization data for the specified external model
+
+## Data Sources
+
+### GFS (Global Forecast System) with 0.25° resolution.
+
+- NOAA AWS S3  
+  https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.YYYYMMDD/HH/atmos/gfs.tHHz.pgrb2.0p25.fFFF  
+
+- NCAR GDEX  
+  https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d084001/YYYYMMDD/gfs.0p25.YYYYMMDDHH.f000.grib2  
+
+---
+
+### HRRR (High-Resolution Rapid Refresh)
+
+CONUS-specific model with 3km resolution, ideal for high-resolution runs.
+
+- NOAA AWS S3  
+  https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfnatfFF.grib2  
+
+- Google Cloud Storage  
+  https://storage.googleapis.com/high-resolution-rapid-refresh/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfsfcf00.grib2  
+
 
 **You can modify** the initial condition NetCDF (`.nc`) files to use alternative datasets, such as **ERA5**. 
 
