@@ -1,0 +1,12 @@
+#!/bin/sh
+set -e
+
+export TMPDIR="$TMP_DIR"
+
+cd $WORK_DIR
+/fregrid $UFS_UTILS/py_scripts/regrid.py
+exit_code=$?
+echo $exit_code > $WORK_DIR/exit_code
+wait
+exit $exit_code
+

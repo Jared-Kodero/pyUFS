@@ -1,0 +1,31 @@
+# machine_config.yaml
+sbatch:
+  exclusive: false
+  constraint: false
+  cpus_per_task: 1
+  time: 48
+  mem: 320
+  nnodes: 2
+  ntasks: 64
+  partition: "batch"
+
+directories:
+  jobtmp: /jobtmp/$USER/gfdl_shield
+  scratch: /oscar/scratch/$USER
+  case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
+  shield_root: /oscar/data/deeps/shared/gfdl_shield
+  fix_dir: /oscar/data/deeps/shared/gfdl_shield/fix
+  ufs_utils: /oscar/data/deeps/shared/gfdl_shield/ufs_py
+  archive_root: $HOME/data/$USER/data/models/gfdl_shield/output
+
+containers:
+  containers_dir: /oscar/data/deeps/shared/gfdl_shield/containers
+  shield : /oscar/data/deeps/shared/gfdl_shield/containers/shield.sif
+  fregrid : /oscar/data/deeps/shared/gfdl_shield/containers/fregrid.sif
+  preprocess : /oscar/data/deeps/shared/gfdl_shield/containers/preprocess.sif
+  container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"]
+
+modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"]
+launchers:
+  srun: ["srun", "--mpi=pmix", "--distribution=block:block", "--cpu-bind=cores -n"]
+  mpirun: ["mpirun", "-np"]

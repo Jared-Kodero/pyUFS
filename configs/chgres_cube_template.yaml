@@ -1,0 +1,101 @@
+config:
+  # Name of target mosaic file to generate 
+  mosaic_file_target_grid: null
+
+  # Directory containing fixed surface fields for the target grid
+  fix_dir_target_grid: null
+
+  # Directory containing orography files for the target grid
+  orog_dir_target_grid: null
+
+  # List of orography files for each cube-sphere tile on the target grid
+  orog_files_target_grid:
+  - _oro_data.tile1.nc
+  - _oro_data.tile2.nc
+  - _oro_data.tile3.nc
+  - _oro_data.tile4.nc
+  - _oro_data.tile5.nc
+  - _oro_data.tile6.nc
+
+  # Vertical coordinate definition file for the target grid
+  vcoord_file_target_grid: global_hyblev.l{levels}.txt
+
+  # Directory containing atmospheric, surface, or nested input data
+  data_dir_input_grid: null
+
+  # Directory containing input atmospheric files
+  atm_files_input_grid: null
+
+  # Directory containing input surface files
+  sfc_files_input_grid: null
+
+  # Input GRIB2 file (used if converting GRIB2-based data)
+  grib2_file_input_grid: null
+
+  # WPS geogrid file (used for regional grid definitions)
+  geogrid_file_input_grid: null
+
+  # Variable mapping file defining correspondence between input and output variable names
+  varmap_file: null
+
+  # Parameter file for WAM physics (used in wave–atmosphere coupling)
+  wam_parm_file: null
+
+  # Date/time for the cycle (YYYY/MM/DD/HH)
+  cycle_year: null
+  cycle_mon: null
+  cycle_day: null
+  cycle_hour: null
+
+  # Flags controlling which datasets to convert
+  convert_atm: true      # Convert atmospheric fields
+  convert_sfc: true      # Convert surface fields
+  convert_nst: true      # Convert near-surface temperature (NST) fields
+
+  # Input data type (options: gaussian_nemsio, gaussian_netcdf, grib2, etc.)
+  input_type: null
+
+  # Tracers in the output model (target)
+  tracers:
+  - sphum
+  - liq_wat
+  - o3mr
+  - ice_wat
+  - rainwat
+  - snowwat
+  - graupel
+
+  # Corresponding tracer variable names in the input dataset
+  tracers_input:
+  - spfh
+  - clwmr
+  - o3mr
+  - icmr
+  - rwmr
+  - snmr
+  - grle
+
+  # Regional setup flags (0 for global grid)
+  regional: 0
+  halo_bndy: 0    # Width of halo for boundary processing
+  halo_blend: 0   # Width of halo used for blending boundaries
+
+  # Name of external model providing input data (e.g., GFS, FV3, FV3LAM, HRRR)
+  external_model: null
+
+  # Number of soil layers to output in soil temperature/moisture fields
+  nsoill_out: 4
+
+  # Use climatological data for these fields (true = use climatology)
+  sotyp_from_climo: true       # Soil type
+  vgtyp_from_climo: true       # Vegetation type
+  vgfrc_from_climo: true       # Vegetation fraction
+  lai_from_climo: true         # Leaf area index
+  minmax_vgfrc_from_climo: true # Use min/max vegetation fraction climatology
+  tg3_from_soil: false          # Derive tg3 (deep soil temperature) from soil data
+
+  # Thompson microphysics climatology file (optional)
+  thomp_mp_climo_file: null
+
+  # WAM (Wave Model) cold start flag (false for warm start)
+  wam_cold_start: false

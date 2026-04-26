@@ -1,0 +1,697 @@
+id,level,short_name,long_name,units
+1,mean sea level,PRMSL,Pressure Reduced to MSL,Pa
+2,1 hybrid level,CLWMR,Cloud Mixing Ratio,kg/kg
+3,1 hybrid level,ICMR,Ice Water Mixing Ratio,kg/kg
+4,1 hybrid level,RWMR,Rain Mixing Ratio,kg/kg
+5,1 hybrid level,SNMR,Snow Mixing Ratio,kg/kg
+6,1 hybrid level,GRLE,Graupel,kg/kg
+7,1 hybrid level,REFD,Reflectivity,dB
+8,2 hybrid level,REFD,Reflectivity,dB
+9,entire atmosphere,REFC,Composite reflectivity,dB
+10,surface,VIS,Visibility,m
+11,planetary boundary layer,UGRD,U-Component of Wind,m/s
+12,planetary boundary layer,VGRD,V-Component of Wind,m/s
+13,planetary boundary layer,VRATE,Ventilation Rate,m^2/s
+14,surface,GUST,Wind Speed (Gust),m/s
+15,0.01 mb,HGT,Geopotential Height,gpm
+16,0.01 mb,TMP,Temperature,K
+17,0.01 mb,RH,Relative Humidity,%
+18,0.01 mb,SPFH,Specific Humidity,kg/kg
+19,0.01 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+20,0.01 mb,DZDT,Vertical Velocity (Geometric),m/s
+21,0.01 mb,UGRD,U-Component of Wind,m/s
+22,0.01 mb,VGRD,V-Component of Wind,m/s
+23,0.01 mb,ABSV,Absolute Vorticity,1/s
+24,0.01 mb,O3MR,Ozone Mixing Ratio,kg/kg
+25,0.02 mb,HGT,Geopotential Height,gpm
+26,0.02 mb,TMP,Temperature,K
+27,0.02 mb,RH,Relative Humidity,%
+28,0.02 mb,SPFH,Specific Humidity,kg/kg
+29,0.02 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+30,0.02 mb,DZDT,Vertical Velocity (Geometric),m/s
+31,0.02 mb,UGRD,U-Component of Wind,m/s
+32,0.02 mb,VGRD,V-Component of Wind,m/s
+33,0.02 mb,ABSV,Absolute Vorticity,1/s
+34,0.02 mb,O3MR,Ozone Mixing Ratio,kg/kg
+35,0.04 mb,HGT,Geopotential Height,gpm
+36,0.04 mb,TMP,Temperature,K
+37,0.04 mb,RH,Relative Humidity,%
+38,0.04 mb,SPFH,Specific Humidity,kg/kg
+39,0.04 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+40,0.04 mb,DZDT,Vertical Velocity (Geometric),m/s
+41,0.04 mb,UGRD,U-Component of Wind,m/s
+42,0.04 mb,VGRD,V-Component of Wind,m/s
+43,0.04 mb,ABSV,Absolute Vorticity,1/s
+44,0.04 mb,O3MR,Ozone Mixing Ratio,kg/kg
+45,0.07 mb,HGT,Geopotential Height,gpm
+46,0.07 mb,TMP,Temperature,K
+47,0.07 mb,RH,Relative Humidity,%
+48,0.07 mb,SPFH,Specific Humidity,kg/kg
+49,0.07 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+50,0.07 mb,DZDT,Vertical Velocity (Geometric),m/s
+51,0.07 mb,UGRD,U-Component of Wind,m/s
+52,0.07 mb,VGRD,V-Component of Wind,m/s
+53,0.07 mb,ABSV,Absolute Vorticity,1/s
+54,0.07 mb,O3MR,Ozone Mixing Ratio,kg/kg
+55,0.1 mb,HGT,Geopotential Height,gpm
+56,0.1 mb,TMP,Temperature,K
+57,0.1 mb,RH,Relative Humidity,%
+58,0.1 mb,SPFH,Specific Humidity,kg/kg
+59,0.1 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+60,0.1 mb,DZDT,Vertical Velocity (Geometric),m/s
+61,0.1 mb,UGRD,U-Component of Wind,m/s
+62,0.1 mb,VGRD,V-Component of Wind,m/s
+63,0.1 mb,ABSV,Absolute Vorticity,1/s
+64,0.1 mb,O3MR,Ozone Mixing Ratio,kg/kg
+65,0.2 mb,HGT,Geopotential Height,gpm
+66,0.2 mb,TMP,Temperature,K
+67,0.2 mb,RH,Relative Humidity,%
+68,0.2 mb,SPFH,Specific Humidity,kg/kg
+69,0.2 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+70,0.2 mb,DZDT,Vertical Velocity (Geometric),m/s
+71,0.2 mb,UGRD,U-Component of Wind,m/s
+72,0.2 mb,VGRD,V-Component of Wind,m/s
+73,0.2 mb,ABSV,Absolute Vorticity,1/s
+74,0.2 mb,O3MR,Ozone Mixing Ratio,kg/kg
+75,0.4 mb,HGT,Geopotential Height,gpm
+76,0.4 mb,TMP,Temperature,K
+77,0.4 mb,RH,Relative Humidity,%
+78,0.4 mb,SPFH,Specific Humidity,kg/kg
+79,0.4 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+80,0.4 mb,DZDT,Vertical Velocity (Geometric),m/s
+81,0.4 mb,UGRD,U-Component of Wind,m/s
+82,0.4 mb,VGRD,V-Component of Wind,m/s
+83,0.4 mb,ABSV,Absolute Vorticity,1/s
+84,0.4 mb,O3MR,Ozone Mixing Ratio,kg/kg
+85,0.7 mb,HGT,Geopotential Height,gpm
+86,0.7 mb,TMP,Temperature,K
+87,0.7 mb,RH,Relative Humidity,%
+88,0.7 mb,SPFH,Specific Humidity,kg/kg
+89,0.7 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+90,0.7 mb,DZDT,Vertical Velocity (Geometric),m/s
+91,0.7 mb,UGRD,U-Component of Wind,m/s
+92,0.7 mb,VGRD,V-Component of Wind,m/s
+93,0.7 mb,ABSV,Absolute Vorticity,1/s
+94,0.7 mb,O3MR,Ozone Mixing Ratio,kg/kg
+95,1 mb,HGT,Geopotential Height,gpm
+96,1 mb,TMP,Temperature,K
+97,1 mb,RH,Relative Humidity,%
+98,1 mb,SPFH,Specific Humidity,kg/kg
+99,1 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+100,1 mb,DZDT,Vertical Velocity (Geometric),m/s
+101,1 mb,UGRD,U-Component of Wind,m/s
+102,1 mb,VGRD,V-Component of Wind,m/s
+103,1 mb,ABSV,Absolute Vorticity,1/s
+104,1 mb,O3MR,Ozone Mixing Ratio,kg/kg
+105,2 mb,HGT,Geopotential Height,gpm
+106,2 mb,TMP,Temperature,K
+107,2 mb,RH,Relative Humidity,%
+108,2 mb,SPFH,Specific Humidity,kg/kg
+109,2 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+110,2 mb,DZDT,Vertical Velocity (Geometric),m/s
+111,2 mb,UGRD,U-Component of Wind,m/s
+112,2 mb,VGRD,V-Component of Wind,m/s
+113,2 mb,ABSV,Absolute Vorticity,1/s
+114,2 mb,O3MR,Ozone Mixing Ratio,kg/kg
+115,3 mb,HGT,Geopotential Height,gpm
+116,3 mb,TMP,Temperature,K
+117,3 mb,RH,Relative Humidity,%
+118,3 mb,SPFH,Specific Humidity,kg/kg
+119,3 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+120,3 mb,DZDT,Vertical Velocity (Geometric),m/s
+121,3 mb,UGRD,U-Component of Wind,m/s
+122,3 mb,VGRD,V-Component of Wind,m/s
+123,3 mb,ABSV,Absolute Vorticity,1/s
+124,3 mb,O3MR,Ozone Mixing Ratio,kg/kg
+125,5 mb,HGT,Geopotential Height,gpm
+126,5 mb,TMP,Temperature,K
+127,5 mb,RH,Relative Humidity,%
+128,5 mb,SPFH,Specific Humidity,kg/kg
+129,5 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+130,5 mb,DZDT,Vertical Velocity (Geometric),m/s
+131,5 mb,UGRD,U-Component of Wind,m/s
+132,5 mb,VGRD,V-Component of Wind,m/s
+133,5 mb,ABSV,Absolute Vorticity,1/s
+134,5 mb,O3MR,Ozone Mixing Ratio,kg/kg
+135,7 mb,HGT,Geopotential Height,gpm
+136,7 mb,TMP,Temperature,K
+137,7 mb,RH,Relative Humidity,%
+138,7 mb,SPFH,Specific Humidity,kg/kg
+139,7 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+140,7 mb,DZDT,Vertical Velocity (Geometric),m/s
+141,7 mb,UGRD,U-Component of Wind,m/s
+142,7 mb,VGRD,V-Component of Wind,m/s
+143,7 mb,ABSV,Absolute Vorticity,1/s
+144,7 mb,O3MR,Ozone Mixing Ratio,kg/kg
+145,10 mb,HGT,Geopotential Height,gpm
+146,10 mb,TMP,Temperature,K
+147,10 mb,RH,Relative Humidity,%
+148,10 mb,SPFH,Specific Humidity,kg/kg
+149,10 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+150,10 mb,DZDT,Vertical Velocity (Geometric),m/s
+151,10 mb,UGRD,U-Component of Wind,m/s
+152,10 mb,VGRD,V-Component of Wind,m/s
+153,10 mb,ABSV,Absolute Vorticity,1/s
+154,10 mb,O3MR,Ozone Mixing Ratio,kg/kg
+155,15 mb,HGT,Geopotential Height,gpm
+156,15 mb,TMP,Temperature,K
+157,15 mb,RH,Relative Humidity,%
+158,15 mb,SPFH,Specific Humidity,kg/kg
+159,15 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+160,15 mb,DZDT,Vertical Velocity (Geometric),m/s
+161,15 mb,UGRD,U-Component of Wind,m/s
+162,15 mb,VGRD,V-Component of Wind,m/s
+163,15 mb,ABSV,Absolute Vorticity,1/s
+164,15 mb,O3MR,Ozone Mixing Ratio,kg/kg
+165,20 mb,HGT,Geopotential Height,gpm
+166,20 mb,TMP,Temperature,K
+167,20 mb,RH,Relative Humidity,%
+168,20 mb,SPFH,Specific Humidity,kg/kg
+169,20 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+170,20 mb,DZDT,Vertical Velocity (Geometric),m/s
+171,20 mb,UGRD,U-Component of Wind,m/s
+172,20 mb,VGRD,V-Component of Wind,m/s
+173,20 mb,ABSV,Absolute Vorticity,1/s
+174,20 mb,O3MR,Ozone Mixing Ratio,kg/kg
+175,30 mb,HGT,Geopotential Height,gpm
+176,30 mb,TMP,Temperature,K
+177,30 mb,RH,Relative Humidity,%
+178,30 mb,SPFH,Specific Humidity,kg/kg
+179,30 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+180,30 mb,DZDT,Vertical Velocity (Geometric),m/s
+181,30 mb,UGRD,U-Component of Wind,m/s
+182,30 mb,VGRD,V-Component of Wind,m/s
+183,30 mb,ABSV,Absolute Vorticity,1/s
+184,30 mb,O3MR,Ozone Mixing Ratio,kg/kg
+185,40 mb,HGT,Geopotential Height,gpm
+186,40 mb,TMP,Temperature,K
+187,40 mb,RH,Relative Humidity,%
+188,40 mb,SPFH,Specific Humidity,kg/kg
+189,40 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+190,40 mb,DZDT,Vertical Velocity (Geometric),m/s
+191,40 mb,UGRD,U-Component of Wind,m/s
+192,40 mb,VGRD,V-Component of Wind,m/s
+193,40 mb,ABSV,Absolute Vorticity,1/s
+194,40 mb,O3MR,Ozone Mixing Ratio,kg/kg
+195,50 mb,HGT,Geopotential Height,gpm
+196,50 mb,TMP,Temperature,K
+197,50 mb,RH,Relative Humidity,%
+198,50 mb,TCDC,Total Cloud Cover,%
+199,50 mb,SPFH,Specific Humidity,kg/kg
+200,50 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+201,50 mb,DZDT,Vertical Velocity (Geometric),m/s
+202,50 mb,UGRD,U-Component of Wind,m/s
+203,50 mb,VGRD,V-Component of Wind,m/s
+204,50 mb,ABSV,Absolute Vorticity,1/s
+205,50 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+206,50 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+207,50 mb,RWMR,Rain Mixing Ratio,kg/kg
+208,50 mb,SNMR,Snow Mixing Ratio,kg/kg
+209,50 mb,GRLE,Graupel,kg/kg
+210,50 mb,O3MR,Ozone Mixing Ratio,kg/kg
+211,70 mb,HGT,Geopotential Height,gpm
+212,70 mb,TMP,Temperature,K
+213,70 mb,RH,Relative Humidity,%
+214,70 mb,SPFH,Specific Humidity,kg/kg
+215,70 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+216,70 mb,DZDT,Vertical Velocity (Geometric),m/s
+217,70 mb,UGRD,U-Component of Wind,m/s
+218,70 mb,VGRD,V-Component of Wind,m/s
+219,70 mb,ABSV,Absolute Vorticity,1/s
+220,70 mb,O3MR,Ozone Mixing Ratio,kg/kg
+221,100 mb,HGT,Geopotential Height,gpm
+222,100 mb,TMP,Temperature,K
+223,100 mb,RH,Relative Humidity,%
+224,100 mb,TCDC,Total Cloud Cover,%
+225,100 mb,SPFH,Specific Humidity,kg/kg
+226,100 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+227,100 mb,DZDT,Vertical Velocity (Geometric),m/s
+228,100 mb,UGRD,U-Component of Wind,m/s
+229,100 mb,VGRD,V-Component of Wind,m/s
+230,100 mb,ABSV,Absolute Vorticity,1/s
+231,100 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+232,100 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+233,100 mb,RWMR,Rain Mixing Ratio,kg/kg
+234,100 mb,SNMR,Snow Mixing Ratio,kg/kg
+235,100 mb,GRLE,Graupel,kg/kg
+236,100 mb,O3MR,Ozone Mixing Ratio,kg/kg
+237,150 mb,HGT,Geopotential Height,gpm
+238,150 mb,TMP,Temperature,K
+239,150 mb,RH,Relative Humidity,%
+240,150 mb,TCDC,Total Cloud Cover,%
+241,150 mb,SPFH,Specific Humidity,kg/kg
+242,150 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+243,150 mb,DZDT,Vertical Velocity (Geometric),m/s
+244,150 mb,UGRD,U-Component of Wind,m/s
+245,150 mb,VGRD,V-Component of Wind,m/s
+246,150 mb,ABSV,Absolute Vorticity,1/s
+247,150 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+248,150 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+249,150 mb,RWMR,Rain Mixing Ratio,kg/kg
+250,150 mb,SNMR,Snow Mixing Ratio,kg/kg
+251,150 mb,GRLE,Graupel,kg/kg
+252,150 mb,O3MR,Ozone Mixing Ratio,kg/kg
+253,200 mb,HGT,Geopotential Height,gpm
+254,200 mb,TMP,Temperature,K
+255,200 mb,RH,Relative Humidity,%
+256,200 mb,TCDC,Total Cloud Cover,%
+257,200 mb,SPFH,Specific Humidity,kg/kg
+258,200 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+259,200 mb,DZDT,Vertical Velocity (Geometric),m/s
+260,200 mb,UGRD,U-Component of Wind,m/s
+261,200 mb,VGRD,V-Component of Wind,m/s
+262,200 mb,ABSV,Absolute Vorticity,1/s
+263,200 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+264,200 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+265,200 mb,RWMR,Rain Mixing Ratio,kg/kg
+266,200 mb,SNMR,Snow Mixing Ratio,kg/kg
+267,200 mb,GRLE,Graupel,kg/kg
+268,200 mb,O3MR,Ozone Mixing Ratio,kg/kg
+269,250 mb,HGT,Geopotential Height,gpm
+270,250 mb,TMP,Temperature,K
+271,250 mb,RH,Relative Humidity,%
+272,250 mb,TCDC,Total Cloud Cover,%
+273,250 mb,SPFH,Specific Humidity,kg/kg
+274,250 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+275,250 mb,DZDT,Vertical Velocity (Geometric),m/s
+276,250 mb,UGRD,U-Component of Wind,m/s
+277,250 mb,VGRD,V-Component of Wind,m/s
+278,250 mb,ABSV,Absolute Vorticity,1/s
+279,250 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+280,250 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+281,250 mb,RWMR,Rain Mixing Ratio,kg/kg
+282,250 mb,SNMR,Snow Mixing Ratio,kg/kg
+283,250 mb,GRLE,Graupel,kg/kg
+284,250 mb,O3MR,Ozone Mixing Ratio,kg/kg
+285,300 mb,HGT,Geopotential Height,gpm
+286,300 mb,TMP,Temperature,K
+287,300 mb,RH,Relative Humidity,%
+288,300 mb,TCDC,Total Cloud Cover,%
+289,300 mb,SPFH,Specific Humidity,kg/kg
+290,300 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+291,300 mb,DZDT,Vertical Velocity (Geometric),m/s
+292,300 mb,UGRD,U-Component of Wind,m/s
+293,300 mb,VGRD,V-Component of Wind,m/s
+294,300 mb,ABSV,Absolute Vorticity,1/s
+295,300 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+296,300 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+297,300 mb,RWMR,Rain Mixing Ratio,kg/kg
+298,300 mb,SNMR,Snow Mixing Ratio,kg/kg
+299,300 mb,GRLE,Graupel,kg/kg
+300,300 mb,O3MR,Ozone Mixing Ratio,kg/kg
+301,350 mb,HGT,Geopotential Height,gpm
+302,350 mb,TMP,Temperature,K
+303,350 mb,RH,Relative Humidity,%
+304,350 mb,TCDC,Total Cloud Cover,%
+305,350 mb,SPFH,Specific Humidity,kg/kg
+306,350 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+307,350 mb,DZDT,Vertical Velocity (Geometric),m/s
+308,350 mb,UGRD,U-Component of Wind,m/s
+309,350 mb,VGRD,V-Component of Wind,m/s
+310,350 mb,ABSV,Absolute Vorticity,1/s
+311,350 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+312,350 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+313,350 mb,RWMR,Rain Mixing Ratio,kg/kg
+314,350 mb,SNMR,Snow Mixing Ratio,kg/kg
+315,350 mb,GRLE,Graupel,kg/kg
+316,350 mb,O3MR,Ozone Mixing Ratio,kg/kg
+317,400 mb,HGT,Geopotential Height,gpm
+318,400 mb,TMP,Temperature,K
+319,400 mb,RH,Relative Humidity,%
+320,400 mb,TCDC,Total Cloud Cover,%
+321,400 mb,SPFH,Specific Humidity,kg/kg
+322,400 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+323,400 mb,DZDT,Vertical Velocity (Geometric),m/s
+324,400 mb,UGRD,U-Component of Wind,m/s
+325,400 mb,VGRD,V-Component of Wind,m/s
+326,400 mb,ABSV,Absolute Vorticity,1/s
+327,400 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+328,400 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+329,400 mb,RWMR,Rain Mixing Ratio,kg/kg
+330,400 mb,SNMR,Snow Mixing Ratio,kg/kg
+331,400 mb,GRLE,Graupel,kg/kg
+332,400 mb,O3MR,Ozone Mixing Ratio,kg/kg
+333,450 mb,HGT,Geopotential Height,gpm
+334,450 mb,TMP,Temperature,K
+335,450 mb,RH,Relative Humidity,%
+336,450 mb,TCDC,Total Cloud Cover,%
+337,450 mb,SPFH,Specific Humidity,kg/kg
+338,450 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+339,450 mb,DZDT,Vertical Velocity (Geometric),m/s
+340,450 mb,UGRD,U-Component of Wind,m/s
+341,450 mb,VGRD,V-Component of Wind,m/s
+342,450 mb,ABSV,Absolute Vorticity,1/s
+343,450 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+344,450 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+345,450 mb,RWMR,Rain Mixing Ratio,kg/kg
+346,450 mb,SNMR,Snow Mixing Ratio,kg/kg
+347,450 mb,GRLE,Graupel,kg/kg
+348,450 mb,O3MR,Ozone Mixing Ratio,kg/kg
+349,500 mb,HGT,Geopotential Height,gpm
+350,500 mb,TMP,Temperature,K
+351,500 mb,RH,Relative Humidity,%
+352,500 mb,TCDC,Total Cloud Cover,%
+353,500 mb,SPFH,Specific Humidity,kg/kg
+354,500 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+355,500 mb,DZDT,Vertical Velocity (Geometric),m/s
+356,500 mb,UGRD,U-Component of Wind,m/s
+357,500 mb,VGRD,V-Component of Wind,m/s
+358,500 mb,ABSV,Absolute Vorticity,1/s
+359,500 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+360,500 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+361,500 mb,RWMR,Rain Mixing Ratio,kg/kg
+362,500 mb,SNMR,Snow Mixing Ratio,kg/kg
+363,500 mb,GRLE,Graupel,kg/kg
+364,500 mb,O3MR,Ozone Mixing Ratio,kg/kg
+365,550 mb,HGT,Geopotential Height,gpm
+366,550 mb,TMP,Temperature,K
+367,550 mb,RH,Relative Humidity,%
+368,550 mb,TCDC,Total Cloud Cover,%
+369,550 mb,SPFH,Specific Humidity,kg/kg
+370,550 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+371,550 mb,DZDT,Vertical Velocity (Geometric),m/s
+372,550 mb,UGRD,U-Component of Wind,m/s
+373,550 mb,VGRD,V-Component of Wind,m/s
+374,550 mb,ABSV,Absolute Vorticity,1/s
+375,550 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+376,550 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+377,550 mb,RWMR,Rain Mixing Ratio,kg/kg
+378,550 mb,SNMR,Snow Mixing Ratio,kg/kg
+379,550 mb,GRLE,Graupel,kg/kg
+380,550 mb,O3MR,Ozone Mixing Ratio,kg/kg
+381,600 mb,HGT,Geopotential Height,gpm
+382,600 mb,TMP,Temperature,K
+383,600 mb,RH,Relative Humidity,%
+384,600 mb,TCDC,Total Cloud Cover,%
+385,600 mb,SPFH,Specific Humidity,kg/kg
+386,600 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+387,600 mb,DZDT,Vertical Velocity (Geometric),m/s
+388,600 mb,UGRD,U-Component of Wind,m/s
+389,600 mb,VGRD,V-Component of Wind,m/s
+390,600 mb,ABSV,Absolute Vorticity,1/s
+391,600 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+392,600 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+393,600 mb,RWMR,Rain Mixing Ratio,kg/kg
+394,600 mb,SNMR,Snow Mixing Ratio,kg/kg
+395,600 mb,GRLE,Graupel,kg/kg
+396,600 mb,O3MR,Ozone Mixing Ratio,kg/kg
+397,650 mb,HGT,Geopotential Height,gpm
+398,650 mb,TMP,Temperature,K
+399,650 mb,RH,Relative Humidity,%
+400,650 mb,TCDC,Total Cloud Cover,%
+401,650 mb,SPFH,Specific Humidity,kg/kg
+402,650 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+403,650 mb,DZDT,Vertical Velocity (Geometric),m/s
+404,650 mb,UGRD,U-Component of Wind,m/s
+405,650 mb,VGRD,V-Component of Wind,m/s
+406,650 mb,ABSV,Absolute Vorticity,1/s
+407,650 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+408,650 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+409,650 mb,RWMR,Rain Mixing Ratio,kg/kg
+410,650 mb,SNMR,Snow Mixing Ratio,kg/kg
+411,650 mb,GRLE,Graupel,kg/kg
+412,650 mb,O3MR,Ozone Mixing Ratio,kg/kg
+413,700 mb,HGT,Geopotential Height,gpm
+414,700 mb,TMP,Temperature,K
+415,700 mb,RH,Relative Humidity,%
+416,700 mb,TCDC,Total Cloud Cover,%
+417,700 mb,SPFH,Specific Humidity,kg/kg
+418,700 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+419,700 mb,DZDT,Vertical Velocity (Geometric),m/s
+420,700 mb,UGRD,U-Component of Wind,m/s
+421,700 mb,VGRD,V-Component of Wind,m/s
+422,700 mb,ABSV,Absolute Vorticity,1/s
+423,700 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+424,700 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+425,700 mb,RWMR,Rain Mixing Ratio,kg/kg
+426,700 mb,SNMR,Snow Mixing Ratio,kg/kg
+427,700 mb,GRLE,Graupel,kg/kg
+428,700 mb,O3MR,Ozone Mixing Ratio,kg/kg
+429,750 mb,HGT,Geopotential Height,gpm
+430,750 mb,TMP,Temperature,K
+431,750 mb,RH,Relative Humidity,%
+432,750 mb,TCDC,Total Cloud Cover,%
+433,750 mb,SPFH,Specific Humidity,kg/kg
+434,750 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+435,750 mb,DZDT,Vertical Velocity (Geometric),m/s
+436,750 mb,UGRD,U-Component of Wind,m/s
+437,750 mb,VGRD,V-Component of Wind,m/s
+438,750 mb,ABSV,Absolute Vorticity,1/s
+439,750 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+440,750 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+441,750 mb,RWMR,Rain Mixing Ratio,kg/kg
+442,750 mb,SNMR,Snow Mixing Ratio,kg/kg
+443,750 mb,GRLE,Graupel,kg/kg
+444,750 mb,O3MR,Ozone Mixing Ratio,kg/kg
+445,800 mb,HGT,Geopotential Height,gpm
+446,800 mb,TMP,Temperature,K
+447,800 mb,RH,Relative Humidity,%
+448,800 mb,TCDC,Total Cloud Cover,%
+449,800 mb,SPFH,Specific Humidity,kg/kg
+450,800 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+451,800 mb,DZDT,Vertical Velocity (Geometric),m/s
+452,800 mb,UGRD,U-Component of Wind,m/s
+453,800 mb,VGRD,V-Component of Wind,m/s
+454,800 mb,ABSV,Absolute Vorticity,1/s
+455,800 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+456,800 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+457,800 mb,RWMR,Rain Mixing Ratio,kg/kg
+458,800 mb,SNMR,Snow Mixing Ratio,kg/kg
+459,800 mb,GRLE,Graupel,kg/kg
+460,800 mb,O3MR,Ozone Mixing Ratio,kg/kg
+461,850 mb,HGT,Geopotential Height,gpm
+462,850 mb,TMP,Temperature,K
+463,850 mb,RH,Relative Humidity,%
+464,850 mb,TCDC,Total Cloud Cover,%
+465,850 mb,SPFH,Specific Humidity,kg/kg
+466,850 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+467,850 mb,DZDT,Vertical Velocity (Geometric),m/s
+468,850 mb,UGRD,U-Component of Wind,m/s
+469,850 mb,VGRD,V-Component of Wind,m/s
+470,850 mb,ABSV,Absolute Vorticity,1/s
+471,850 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+472,850 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+473,850 mb,RWMR,Rain Mixing Ratio,kg/kg
+474,850 mb,SNMR,Snow Mixing Ratio,kg/kg
+475,850 mb,GRLE,Graupel,kg/kg
+476,850 mb,O3MR,Ozone Mixing Ratio,kg/kg
+477,900 mb,HGT,Geopotential Height,gpm
+478,900 mb,TMP,Temperature,K
+479,900 mb,RH,Relative Humidity,%
+480,900 mb,TCDC,Total Cloud Cover,%
+481,900 mb,SPFH,Specific Humidity,kg/kg
+482,900 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+483,900 mb,DZDT,Vertical Velocity (Geometric),m/s
+484,900 mb,UGRD,U-Component of Wind,m/s
+485,900 mb,VGRD,V-Component of Wind,m/s
+486,900 mb,ABSV,Absolute Vorticity,1/s
+487,900 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+488,900 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+489,900 mb,RWMR,Rain Mixing Ratio,kg/kg
+490,900 mb,SNMR,Snow Mixing Ratio,kg/kg
+491,900 mb,GRLE,Graupel,kg/kg
+492,900 mb,O3MR,Ozone Mixing Ratio,kg/kg
+493,925 mb,HGT,Geopotential Height,gpm
+494,925 mb,TMP,Temperature,K
+495,925 mb,RH,Relative Humidity,%
+496,925 mb,TCDC,Total Cloud Cover,%
+497,925 mb,SPFH,Specific Humidity,kg/kg
+498,925 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+499,925 mb,DZDT,Vertical Velocity (Geometric),m/s
+500,925 mb,UGRD,U-Component of Wind,m/s
+501,925 mb,VGRD,V-Component of Wind,m/s
+502,925 mb,ABSV,Absolute Vorticity,1/s
+503,925 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+504,925 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+505,925 mb,RWMR,Rain Mixing Ratio,kg/kg
+506,925 mb,SNMR,Snow Mixing Ratio,kg/kg
+507,925 mb,GRLE,Graupel,kg/kg
+508,925 mb,O3MR,Ozone Mixing Ratio,kg/kg
+509,950 mb,HGT,Geopotential Height,gpm
+510,950 mb,TMP,Temperature,K
+511,950 mb,RH,Relative Humidity,%
+512,950 mb,TCDC,Total Cloud Cover,%
+513,950 mb,SPFH,Specific Humidity,kg/kg
+514,950 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+515,950 mb,DZDT,Vertical Velocity (Geometric),m/s
+516,950 mb,UGRD,U-Component of Wind,m/s
+517,950 mb,VGRD,V-Component of Wind,m/s
+518,950 mb,ABSV,Absolute Vorticity,1/s
+519,950 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+520,950 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+521,950 mb,RWMR,Rain Mixing Ratio,kg/kg
+522,950 mb,SNMR,Snow Mixing Ratio,kg/kg
+523,950 mb,GRLE,Graupel,kg/kg
+524,950 mb,O3MR,Ozone Mixing Ratio,kg/kg
+525,surface,HINDEX,Haines Index,Numeric
+526,975 mb,HGT,Geopotential Height,gpm
+527,975 mb,TMP,Temperature,K
+528,975 mb,RH,Relative Humidity,%
+529,975 mb,TCDC,Total Cloud Cover,%
+530,975 mb,SPFH,Specific Humidity,kg/kg
+531,975 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+532,975 mb,DZDT,Vertical Velocity (Geometric),m/s
+533,975 mb,UGRD,U-Component of Wind,m/s
+534,975 mb,VGRD,V-Component of Wind,m/s
+535,975 mb,ABSV,Absolute Vorticity,1/s
+536,975 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+537,975 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+538,975 mb,RWMR,Rain Mixing Ratio,kg/kg
+539,975 mb,SNMR,Snow Mixing Ratio,kg/kg
+540,975 mb,GRLE,Graupel,kg/kg
+541,975 mb,O3MR,Ozone Mixing Ratio,kg/kg
+542,1000 mb,TMP,Temperature,K
+543,1000 mb,RH,Relative Humidity,%
+544,1000 mb,TCDC,Total Cloud Cover,%
+545,1000 mb,SPFH,Specific Humidity,kg/kg
+546,1000 mb,VVEL,Vertical Velocity (Pressure),Pa/s
+547,1000 mb,DZDT,Vertical Velocity (Geometric),m/s
+548,1000 mb,UGRD,U-Component of Wind,m/s
+549,1000 mb,VGRD,V-Component of Wind,m/s
+550,1000 mb,ABSV,Absolute Vorticity,1/s
+551,1000 mb,CLWMR,Cloud Mixing Ratio,kg/kg
+552,1000 mb,ICMR,Ice Water Mixing Ratio,kg/kg
+553,1000 mb,RWMR,Rain Mixing Ratio,kg/kg
+554,1000 mb,SNMR,Snow Mixing Ratio,kg/kg
+555,1000 mb,GRLE,Graupel,kg/kg
+556,1000 mb,O3MR,Ozone Mixing Ratio,kg/kg
+557,mean sea level,MSLET M,(Eta model reduction),Pa
+558,1000 mb,HGT,Geopotential Height,gpm
+559,4000 m above ground,REFD,Reflectivity,dB
+560,1000 m above ground,REFD,Reflectivity,dB
+561,surface,PRES,Pressure,Pa
+562,surface,HGT,Geopotential Height,gpm
+563,surface,TMP,Temperature,K
+564,0-0.1 m below ground,TSOIL,Soil Temperature,K
+565,0-0.1 m below ground,SOILW,Volumetric Soil Moisture Content,Fraction
+566,0-0.1 m below ground,SOILL,Liquid Volumetric Soil Moisture (non Frozen),Proportion
+567,0.1-0.4 m below ground,TSOIL,Soil Temperature,K
+568,0.1-0.4 m below ground,SOILW,Volumetric Soil Moisture Content,Fraction
+569,0.1-0.4 m below ground,SOILL,Liquid Volumetric Soil Moisture (non Frozen),Proportion
+570,0.4-1 m below ground,TSOIL,Soil Temperature,K
+571,0.4-1 m below ground,SOILW,Volumetric Soil Moisture Content,Fraction
+572,0.4-1 m below ground,SOILL,Liquid Volumetric Soil Moisture (non Frozen),Proportion
+573,1-2 m below ground,TSOIL,Soil Temperature,K
+574,1-2 m below ground,SOILW,Volumetric Soil Moisture Content,Fraction
+575,1-2 m below ground,SOILL,Liquid Volumetric Soil Moisture (non Frozen),Proportion
+576,surface,CNWAT,Plant Canopy Surface Water,kg/m^2
+577,surface,WEASD,Water Equivalent of Accumulated Snow Depth,kg/m^2
+578,surface,SNOD,Snow Depth,m
+579,surface,ICETK,Ice Thickness,m
+580,2 m above ground,TMP,Temperature,K
+581,2 m above ground,SPFH,Specific Humidity,kg/kg
+582,2 m above ground,DPT,Dew Point Temperature,K
+583,2 m above ground,RH,Relative Humidity,%
+584,2 m above ground,APTMP,Apparent Temperature,K
+585,10 m above ground,UGRD,U-Component of Wind,m/s
+586,10 m above ground,VGRD,V-Component of Wind,m/s
+587,10 m above mean sea level,ICEG,Ice Growth Rate,m/s
+588,surface,CPOFP,Percent frozen precipitation,%
+589,surface,PRATE,Precipitation Rate,kg/m^2/s
+590,surface,CSNOW,Categorical Snow,-
+591,surface,CICEP,Categorical Ice Pellets,-
+592,surface,CFRZR,Categorical Freezing Rain,-
+593,surface,CRAIN,Categorical Rain,-
+594,surface,SFCR,Surface Roughness,m
+595,surface,FRICV,Frictional Velocity,m/s
+596,surface,VEG,Vegetation,%
+597,surface,SOTYP,Soil Type,-
+598,surface,WILT,Wilting Point,Fraction
+599,surface,FLDCP,Field Capacity,Fraction
+600,surface,SUNSD,Sunshine Duration,s
+601,surface,LFTX,Surface Lifted Index,K
+602,surface,CAPE,Convective Available Potential Energy,J/kg
+603,surface,CIN,Convective Inhibition,J/kg
+604,entire atmosphere (considered as a single layer),PWAT,Precipitable Water,kg/m^2
+605,entire atmosphere (considered as a single layer),CWAT,Cloud Water,kg/m^2
+606,entire atmosphere (considered as a single layer),RH,Relative Humidity,%
+607,entire atmosphere (considered as a single layer),TOZNE,Total Ozone,DU
+608,low cloud layer,LCDC,Low Cloud Cover,%
+609,middle cloud layer,MCDC,Medium Cloud Cover,%
+610,high cloud layer,HCDC,High Cloud Cover,%
+611,entire atmosphere,TCDC,Total Cloud Cover,%
+612,cloud ceiling,HGT,Geopotential Height,gpm
+613,3000-0 m above ground,HLCY,Storm Relative Helicity,m^2/s^2
+614,6000-0 m above ground,USTM,U-Component Storm Motion,m/s
+615,6000-0 m above ground,VSTM,V-Component Storm Motion,m/s
+616,tropopause,PRES,Pressure,Pa
+617,tropopause,ICAHT I,Standard Atmosphere Reference Height,m
+618,tropopause,HGT,Geopotential Height,gpm
+619,tropopause,TMP,Temperature,K
+620,tropopause,UGRD,U-Component of Wind,m/s
+621,tropopause,VGRD,V-Component of Wind,m/s
+622,tropopause,VWSH,Vertical Speed Shear,1/s
+623,max wind,PRES,Pressure,Pa
+624,max wind,ICAHT I,Standard Atmosphere Reference Height,m
+625,max wind,HGT,Geopotential Height,gpm
+626,max wind,UGRD,U-Component of Wind,m/s
+627,max wind,VGRD,V-Component of Wind,m/s
+628,max wind,TMP,Temperature,K
+629,20 m above ground,UGRD,U-Component of Wind,m/s
+630,20 m above ground,VGRD,V-Component of Wind,m/s
+631,30 m above ground,UGRD,U-Component of Wind,m/s
+632,30 m above ground,VGRD,V-Component of Wind,m/s
+633,40 m above ground,UGRD,U-Component of Wind,m/s
+634,40 m above ground,VGRD,V-Component of Wind,m/s
+635,50 m above ground,UGRD,U-Component of Wind,m/s
+636,50 m above ground,VGRD,V-Component of Wind,m/s
+637,80 m above ground,TMP,Temperature,K
+638,80 m above ground,SPFH,Specific Humidity,kg/kg
+639,80 m above ground,PRES,Pressure,Pa
+640,80 m above ground,UGRD,U-Component of Wind,m/s
+641,80 m above ground,VGRD,V-Component of Wind,m/s
+642,100 m above ground,TMP,Temperature,K
+643,100 m above ground,UGRD,U-Component of Wind,m/s
+644,100 m above ground,VGRD,V-Component of Wind,m/s
+645,1829 m above mean sea level,TMP,Temperature,K
+646,1829 m above mean sea level,UGRD,U-Component of Wind,m/s
+647,1829 m above mean sea level,VGRD,V-Component of Wind,m/s
+648,2743 m above mean sea level,TMP,Temperature,K
+649,2743 m above mean sea level,UGRD,U-Component of Wind,m/s
+650,2743 m above mean sea level,VGRD,V-Component of Wind,m/s
+651,3658 m above mean sea level,TMP,Temperature,K
+652,3658 m above mean sea level,UGRD,U-Component of Wind,m/s
+653,3658 m above mean sea level,VGRD,V-Component of Wind,m/s
+654,0C isotherm,HGT,Geopotential Height,gpm
+655,0C isotherm,RH,Relative Humidity,%
+656,highest tropospheric freezing level,HGT,Geopotential Height,gpm
+657,highest tropospheric freezing level,RH,Relative Humidity,%
+658,30-0 mb above ground,TMP,Temperature,K
+659,30-0 mb above ground,RH,Relative Humidity,%
+660,30-0 mb above ground,SPFH,Specific Humidity,kg/kg
+661,30-0 mb above ground,UGRD,U-Component of Wind,m/s
+662,30-0 mb above ground,VGRD,V-Component of Wind,m/s
+663,surface,4LFTX,Best (4 layer) Lifted Index,K
+664,180-0 mb above ground,CAPE,Convective Available Potential Energy,J/kg
+665,180-0 mb above ground,CIN,Convective Inhibition,J/kg
+666,surface,HPBL,Planetary Boundary Layer Height,m
+667,0.33-1 sigma layer,RH,Relative Humidity,%
+668,0.44-1 sigma layer,RH,Relative Humidity,%
+669,0.72-0.94 sigma layer,RH,Relative Humidity,%
+670,0.44-0.72 sigma layer,RH,Relative Humidity,%
+671,0.995 sigma level,TMP,Temperature,K
+672,0.995 sigma level,POT,Potential Temperature,K
+673,0.995 sigma level,RH,Relative Humidity,%
+674,0.995 sigma level,UGRD,U-Component of Wind,m/s
+675,0.995 sigma level,VGRD,V-Component of Wind,m/s
+676,0.995 sigma level,VVEL,Vertical Velocity (Pressure),Pa/s
+677,90-0 mb above ground,CAPE,Convective Available Potential Energy,J/kg
+678,90-0 mb above ground,CIN,Convective Inhibition,J/kg
+679,255-0 mb above ground,CAPE,Convective Available Potential Energy,J/kg
+680,255-0 mb above ground,CIN,Convective Inhibition,J/kg
+681,255-0 mb above ground,PLPL,Pressure of level from which parcel was lifted,Pa
+682,surface,LAND,"Land Cover (0=sea, 1=land)",Proportion
+683,surface,ICEC,Ice Cover,Proportion
+684,surface,ICETMP,Ice Temperature,K
+685,PV=2e-06 (Km^2/kg/s) surface,UGRD,U-Component of Wind,m/s
+686,PV=2e-06 (Km^2/kg/s) surface,VGRD,V-Component of Wind,m/s
+687,PV=2e-06 (Km^2/kg/s) surface,TMP,Temperature,K
+688,PV=2e-06 (Km^2/kg/s) surface,HGT,Geopotential Height,gpm
+689,PV=2e-06 (Km^2/kg/s) surface,PRES,Pressure,Pa
+690,PV=2e-06 (Km^2/kg/s) surface,VWSH,Vertical Speed Shear,1/s
+691,PV=-2e-06 (Km^2/kg/s) surface,UGRD,U-Component of Wind,m/s
+692,PV=-2e-06 (Km^2/kg/s) surface,VGRD,V-Component of Wind,m/s
+693,PV=-2e-06 (Km^2/kg/s) surface,TMP,Temperature,K
+694,PV=-2e-06 (Km^2/kg/s) surface,HGT,Geopotential Height,gpm
+695,PV=-2e-06 (Km^2/kg/s) surface,PRES,Pressure,Pa
+696,PV=-2e-06 (Km^2/kg/s) surface,VWSH,Vertical Speed Shear,1/s
