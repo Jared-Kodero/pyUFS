@@ -176,8 +176,11 @@ CONUS-specific model with 3km resolution, ideal for high-resolution runs.
   https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfnatfFF.grib2  
 
 - Google Cloud Storage  
-  https://storage.googleapis.com/high-resolution-rapid-refresh/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfsfcf00.grib2  
+  https://storage.googleapis.com/high-resolution-rapid-refresh/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfsfcf00.grib2
 
+
+
+**Note:** Initialization data are automatically retrieved by `py_scripts/fv3gfs_ic_data.py`. Manual download is only required in cases where automated retrieval fails.
 
 **You can modify** the initial condition NetCDF (`.nc`) files to use alternative datasets, such as **ERA5**. 
 
