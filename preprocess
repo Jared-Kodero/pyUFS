@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+export TMPDIR="$TMP_DIR"
+
+cd $WORK_DIR
+/preprocess $UFS_UTILS/py_scripts/driver.py  
+
+exit_code=$?
+echo $exit_code > $WORK_DIR/exit_code
+wait
+exit $exit_code

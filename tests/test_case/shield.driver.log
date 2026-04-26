@@ -1,0 +1,59 @@
+INFO: Current directory: /oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/tests/test_case
+INFO: Working directory: /jobtmp/jkodero/shield/tests/test_case
+INFO: Case directory: /oscar/scratch/jkodero/models/shield/runs/tests/test_case
+INFO: Archive directory: /users/jkodero/data/jkodero/data/models/SHiELD/output/tests/test_case
+INFO: Fix directory: /oscar/data/deeps/shared/GFDL_SHiELD/fix
+INFO: Model executable path: /users/jkodero/research/models/SHiELD/data/bins/shield/SHiELD_nh.prod.64bit.gnu.x
+INFO: Loading configuration from: /oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/tests/test_case/run_config.yaml
+INFO: Description: TEST_CASE
+INFO: Initial run mode selected
+INFO: Full Grid/IC regeneration will be performed.
+INFO: Model initialization time: 2025-09-20 06:00:00 UTC
+INFO: Forecast length: 3 hours
+INFO: Vertical levels: 64
+INFO: Grid type: uniform
+INFO: Global cubed-sphere resolution: C96
+INFO: Global tile 1 resolution: 104.36 km
+INFO: Global tile 2 resolution: 104.36 km
+INFO: Global tile 3 resolution: 104.36 km
+INFO: Global tile 4 resolution: 104.36 km
+INFO: Global tile 5 resolution: 104.36 km
+INFO: Global tile 6 resolution: 104.36 km
+INFO: Target longitude: -96.0
+INFO: Target latitude: 35.0
+INFO: Starting FV3 Grid and IC generation driver
+INFO: Generating Grid and Orography files
+INFO: Generating uniform grid: C96
+INFO: Generating grid mosaics
+INFO: Filtering topography for global tiles
+INFO: Generating surface climatology
+INFO: No chgres_cube configuration provided. Using default settings.
+INFO: Running chgres_cube to generate initial conditions
+INFO: Staging requred files and data
+INFO: Diag files staged at: /jobtmp/jkodero/shield/tests/test_case
+INFO: IC files staged at: /jobtmp/jkodero/shield/tests/test_case/INPUT
+INFO: Fix files staged at: /jobtmp/jkodero/shield/tests/test_case/FIXED
+INFO: Grid files staged at: /jobtmp/jkodero/shield/tests/test_case/GRID
+INFO: Mosaic files staged at: /jobtmp/jkodero/shield/tests/test_case/GRID
+
+INFO: Init Run
+INFO: Generating global namelist
+INFO: Total PEs needed for run: 36
+INFO: Running GFDL SHiELD Model
+INFO: Log file: /jobtmp/jkodero/shield/tests/test_case/LOGS/shield_000.log
+INFO: Start Time: Wed Apr 22 09:45:29 PM EDT 2026
+INFO: End Time: Wed Apr 22 09:46:04 PM EDT 2026
+INFO: Total model runtime: 0.01 hours
+INFO: Regridding FV3 hist files to regular lat-lon grid
+INFO: Restart 0 completed in 0.02 hours.
+
+INFO: Restart number: 1
+INFO: Generating namelist for restart 1
+INFO: Running GFDL SHiELD Model
+INFO: Log file: /jobtmp/jkodero/shield/tests/test_case/LOGS/shield_001.log
+INFO: Start Time: Wed Apr 22 09:46:54 PM EDT 2026
+INFO: End Time: Wed Apr 22 09:47:20 PM EDT 2026
+INFO: Total model runtime: 0.01 hours
+INFO: Regridding FV3 hist files to regular lat-lon grid
+INFO: Run Completed Successfully!
+INFO: Case tests.test_case completed in 0.19 hours.

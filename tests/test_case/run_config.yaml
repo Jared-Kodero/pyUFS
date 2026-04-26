@@ -1,0 +1,48 @@
+debug: false
+do_deep: false
+levels: 64
+gtype: "uniform"
+res: "C96"
+continue_run: true
+
+init_datetime: "2025092006Z"
+run_nhours: 3
+shield_exe: "/users/jkodero/research/models/SHiELD/data/bins/shield/SHiELD_nh.prod.64bit.gnu.x"
+
+sbatch:
+  exclusive: false
+  constraint: false
+  cpus_per_task: 1
+  time: "1:00:00"
+  mem: 100
+  nnodes: 1
+  ntasks: 36
+  output: "shield.driver.log"
+  partition: "batch"
+
+case_name: null
+ensemble_run: false
+n_ensembles: 1
+resubmit: 1
+archive_data: false
+
+# k_split: 1
+# n_split: 3
+# nest_k_split: [2, 2, 2]
+# nest_n_split: [6, 6, 10]
+# dt_atmos: 90
+# dt_ocean: 90
+# refine_ratio: [4, 4, 2]
+
+
+
+# lon_min : [-125, -95, -85]
+# lon_max : [-47, -57, -67]
+# lat_min : [25, 32, 38]
+# lat_max : [60, 55, 47]
+
+
+
+
+
+

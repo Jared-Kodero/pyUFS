@@ -1,0 +1,193 @@
+id,long_name,level,short_name ,units
+1,Hail,0.1_sigma_layer,HAIL_max_fcst,m
+2,Hail,0.1_sigma_layer,HAIL_1hr_max_fcst,m
+3,Vertical Velocity,0.5_0.8_sigma_layer,DZDT_ave_fcst,m/s
+4,Vertical Velocity,0.5_0.8_sigma_layer,DZDT_1hr_ave_fcst,m/s
+5,U-Component Vertical Wind Shear,0_1000m_above_ground,VUCSH,1/s
+6,V-Component Vertical Wind Shear,0_1000m_above_ground,VVCSH,1/s
+7,Convective Available Potential Energy,0_3000m_above_ground,CAPE,J/kg
+8,U-Component Storm Motion,0_6000m_above_ground,USTM,m/s
+9,V-Component Storm Motion,0_6000m_above_ground,VSTM,m/s
+10,U-Component Vertical Wind Shear,0_6000m_above_ground,VUCSH,1/s
+11,V-Component Vertical Wind Shear,0_6000m_above_ground,VVCSH,1/s
+12,Height of the 0 C isotherm,0C_isotherm,HGT,m
+13,Pressure at the 0 C isotherm,0C_isotherm,PRES,Pa
+14,Relative Humidity at the 0 C isotherm,0C_isotherm,RH,%
+15,Moisture Availability,0m_underground,MSTAV,%
+16,Hourly Maximum of Upward Vertical Velocity,100_1000mb_above_ground,MAXUVV_max_fcst,m/s
+17,Hourly Maximum of Downward Vertical Velocity,100_1000mb_above_ground,MAXDVV_max_fcst,m/s
+18,Hourly Maximum of Upward Vertical Velocity,100_1000mb_above_ground,MAXUVV_1hr_max_fcst,m/s
+19,Hourly Maximum of Downward Vertical Velocity,100_1000mb_above_ground,MAXDVV_1hr_max_fcst,m/s
+20,Relative Vorticity,1000_0m_above_ground,RELV_max_fcst,1/s
+21,Relative Vorticity,1000_0m_above_ground,RELV_1hr_max_fcst,1/s
+22,Storm Relative Helicity,1000_0m_above_ground,HLCY,m2/s2
+23,Reflectivity,1000m_above_ground,REFD,dB
+24,Hourly Maximum of Simulated Reflectivity at 1 km AGL,1000m_above_ground,MAXREF_max_fcst,dB
+25,Hourly Maximum of Simulated Reflectivity at 1 km AGL,1000m_above_ground,MAXREF_1hr_max_fcst,dB
+26,Temperature,1000mb,TMP,K
+27,DewPoint Temperature,1000mb,DPT,K
+28,U-Component of Wind,1000mb,UGRD,m/s
+29,V-Component of Wind,1000mb,VGRD,m/s
+30,Geopotential Height,1000mb,HGT,gpm
+31,U-Component of Wind,10m_above_ground,UGRD,m/s
+32,V-Component of Wind,10m_above_ground,VGRD,m/s
+33,Wind Speed,10m_above_ground,WIND_max_fcst,m/s
+34,Wind Speed,10m_above_ground,WIND_1hr_max_fcst,m/s
+35,U-Component of Hourly Maximum Wind,10m_above_ground,MAXUW_max_fcst,m/s
+36,U-Component of Hourly Maximum Wind,10m_above_ground,MAXUW_1hr_max_fcst,m/s
+37,V-Component of Hourly Maximum Wind,10m_above_ground,MAXVW_max_fcst,m/s
+38,V-Component of Hourly Maximum Wind,10m_above_ground,MAXVW_1hr_max_fcst,m/s
+39,Best (4 layer) Lifted Index,180_0mb_above_ground,4LFTX,
+40,Convective Available Potential Energy,180_0mb_above_ground,CAPE,
+41,Convective Inhibition,180_0mb_above_ground,CIN,
+42,Lightning Potential Index,1m_above_ground,LTPINX,J/kg
+43,Hourly Maximum of Updraft Helicity,2000_0m_above_ground,MXUPHL_max_fcst,m2/s2
+44,Hourly Maximum of Updraft Helicity,2000_0m_above_ground,MXUPHL_1hr_max_fcst,m2/s2
+45,Hourly Minimum of Updraft Helicity,2000_0m_above_ground,MNUPHL_min_fcst,m2/s2
+46,Hourly Minimum of Updraft Helicity,2000_0m_above_ground,MNUPHL_1hr_min_fcst,m2/s2
+47,Relative Vorticity,2000_0m_above_ground,RELV_max_fcst,1/s
+48,Relative Vorticity,2000_0m_above_ground,RELV_1hr_max_fcst,1/s
+49,U-Component of Wind,250mb,UGRD,m/s
+50,V-Component of Wind,250mb,VGRD,m/s
+51,Height at the 253 K,253K_level,HGT,m
+52,Convective Available Potential Energy,255_0mb_above_ground,CAPE,J/kg
+53,Convective Inhibition,255_0mb_above_ground,CIN,J/kg
+54,Pressure of Level From Which Parcel Was Lifted,255_0mb_above_ground,PLPL,Pa
+55,Depth of Layer Supporting Dendritic Growth,261K_level___256K_level,LAYTH,m
+56,Height at the 263 K,263K_level,HGT,m
+57,Reflectivity,263K_level,REFD,dB
+58,Reflectivity,263K_level,REFD_max_fcst,dB
+59,Reflectivity,263K_level,REFD_1hr_max_fcst,dB
+60,Lightning Potential Index,2m_above_ground,LTPINX,J/kg
+61,Temperature,2m_above_ground,TMP,K
+62,Potential Temperature,2m_above_ground,POT,K
+63,Specific Humidity,2m_above_ground,SPFH,kg/kg
+64,Dew Point Temperature,2m_above_ground,DPT,K
+65,Relative Humidity,2m_above_ground,RH,kg/kg
+66,Hourly Maximum of Updraft Helicity,3000_0m_above_ground,MXUPHL_max_fcst,m2/s2
+67,Hourly Maximum of Updraft Helicity,3000_0m_above_ground,MXUPHL_1hr_max_fcst,m2/s2
+68,Hourly Minimum of Updraft Helicity,3000_0m_above_ground,MNUPHL_min_fcst,m2/s2
+69,Hourly Minimum of Updraft Helicity,3000_0m_above_ground,MNUPHL_1hr_min_fcst,m2/s2
+70,Storm Relative Helicity,3000_0m_above_ground,HLCY,m2/s2
+71,U-Component of Wind,300mb,UGRD,m/s
+72,V-Component of Wind,300mb,VGRD,m/s
+73,Reflectivity,4000m_Above_Ground,REFD,dB
+74,Surface Lifted Index,500_1000mb,LFTX,K
+75,Hourly Maximum of Updraft Helicity,5000_2000m_above_ground,MXUPHL_max_fcst,m2/s2
+76,Hourly Maximum of Updraft Helicity,5000_2000m_above_ground,MXUPHL_1hr_max_fcst,m2/s2
+77,Hourly Minimum of Updraft Helicity,5000_2000m_above_ground,MNUPHL_min_fcst,m2/s2
+78,Hourly Minimum of Updraft Helicity,5000_2000m_above_ground,MNUPHL_1hr_min_fcst,m2/s2
+79,Geopotential Height,500mb,HGT,gpm
+80,Temperature,500mb,TMP,K
+81,Dew Point Temperature,500mb,DPT,K
+82,U-Component of Wind,500mb,UGRD,m/s
+83,V-Component of Wind,500mb,VGRD,m/s
+84,Geopotential Height,700mb,HGT,gpm
+85,Temperature,700mb,TMP,K
+86,Dew Point Temperature,700mb,DPT,K
+87,Vertical Velocity,700mb,DZDT,m/s
+88,U-Component of Wind,700mb,UGRD,m/s
+89,V-Component of Wind,700mb,VGRD,m/s
+90,U-Component of Wind,80m_above_ground,UGRD,m/s
+91,V-Component of Wind,80m_above_ground,VGRD,m/s
+92,Geopotential Height,850mb,HGT,gpm
+93,Temperature,850mb,TMP,K
+94,Dew Point Temperature,850mb,DPT,K
+95,U-Component of Wind,850mb,UGRD,m/s
+96,V-Component of Wind,850mb,VGRD,m/s
+97,Mass Density,8m_above_ground,MASSDEN,Concentration (kg/m3)
+98,Convective Available Potential Energy,90_0mb_above_ground,CAPE,J/kg
+99,Convective Inhibition,90_0mb_above_ground,CIN,J/kg
+100,Temperature,925mb,TMP,K
+101,Dew Point Temperature,925mb,DPT,K
+102,U-Component of Wind,925mb,UGRD,m/s
+103,V-Component of Wind,925mb,VGRD,m/s
+104,Total Cloud Cover,boundary_layer_cloud_cover,TCDC,%
+105,Geopotential Height,cloud_base,HGT,gpm
+106,Pressure,cloud_base,PRES,Pa
+107,Geopotential Height,cloud_ceiling,HGT,gpm
+108,Echo Top,cloud_top,RETOP,m
+109,Pressure,cloud_top,PRES,Pa
+110,Geopotential Height,cloud_top,HGT,gpm
+111,Composite Reflectivity,entire_atmosphere,REFC,dB
+112,Vertically Integrated Liquid,entire_atmosphere,VIL,kg/m2
+113,Relative Humidity with Respect to Precipitable Water,entire_atmosphere,RHPW,%
+114,Hail,entire_atmosphere,HAIL_max_fcst,m
+115,Hail,entire_atmosphere,HAIL_1hr_max_fcst,m
+116,Lightning,entire_atmosphere,LTNG,Non-Dim
+117,Total Cloud Cover,entire_atmosphere,TCDC,%
+118,Total Column Integrated Graupel,entire_atmosphere_single_layer,TCOLG_max_fcst,kg/m2
+119,Total Column Integrated Graupel,entire_atmosphere_single_layer,TCOLG_1hr_max_fcst,kg/m2
+120,Precipitable Water,entire_atmosphere_single_layer,PWAT,kg/m2
+121,Aeorosol Optical Thickness,entire_atmosphere_single_layer,AOTK,
+122,Total Column-Integrated Mass Density,entire_atmosphere_single_layer,COLMD,kg/m2
+123,Total Column-Integrated Cloud Ice,entire_atmosphere_single_layer,TCOLWold,kg/m2
+124,Height of the Level of Equilibrium Level,equilibrium_level,HGT,gpm
+125,High Cloud Cover,high_cloud_layer,HCDC,%
+126,Height of the highest tropospheric freezing level,highest_tropospheric_freezing_level,HGT,m
+127,Pressure at the highest tropospheric freezing level,highest_tropospheric_freezing_level,PRES,Pa
+128,Relative Humidity at the highest tropospheric freezing level,highest_tropospheric_freezing_level,RH,%
+129,Geopotential Height,level_of_adiabatic_condensation_from_sfc,HGT,gpm
+130,Low Cloud Cover,low_cloud_layer,LCDC,%
+131,Mean Sea Level Pressure,mean_sea_level,MSLMA,Pa
+132,Middle Cloud Cover,middle_cloud_layer,MCDC,%
+133,Height of the Level of Free Convection,no_level,HGT,m
+134,Visibility,surface,VIS,m
+135,Wind Gust,surface,GUST,m/s
+136,Hail,surface,HAIL_max_fcst,m
+137,Hail,surface,HAIL_1hr_max_fcst,m
+138,Pressure,surface,PRES,Pa
+139,Geopotential Height,surface,HGT,gpm
+140,Temperature,surface,TMP,K
+141,Total Snowfall,surface,ASNOW_acc_fcst,m
+142,Total Snowfall,surface,ASNOW_1hr_acc_fcst,m
+143,Plant Canopy Surface Water,surface,CNWAT,kg/m2
+144,Cloud Forcing Net Solar Flux,surface,CFNSF,W/m2
+145,Water Equivalent of Accumulated Snow Depth,surface,WEASD,kg/m2
+146,Water Equivalent of Accumulated Snow Depth UTC Day,surface,WEASD_acc_fcst,kg/m2
+147,Water Equivalent of Accumulated Snow Depth UTC Day,surface,WEASD_1hr_acc_fcst,kg/m2
+148,Snow Cover,surface,SNOWC,%
+149,Snow Depth,surface,SNOD,m
+150,Percent Frozen Precipitation,surface,CPOFP,%
+151,Precipitation Rate,surface,PRATE,kg/(m2 s)
+152,Total Precipitation UTC day,surface,APCP_acc_fcst,kg/m2
+153,Total Precipitation UTC day,surface,APCP_1hr_acc_fcst,kg/m2
+154,Frozen RainUTC day,surface,FROZR_acc_fcst,kg/m2
+155,Frozen RainUTC day,surface,FROZR_1hr_acc_fcst,kg/m2
+156,Freezing Rain UTC day,surface,FRZR_acc_fcst,kg/m2
+157,Freezing Rain UTC day,surface,FRZR_1hr_acc_fcst,kg/m2
+158,Storm Surface Runoff,surface,SSRUN_acc_fcst,kg/m2
+159,Storm Surface Runoff,surface,SSRUN_1hr_acc_fcst,kg/m2
+160,Baseflow-Groundwater,surface,BGRUN_acc_fcst,kg/m2
+161,Baseflow-Groundwater,surface,BGRUN_1hr_acc_fcst,kg/m2
+162,Categorical Snow,surface,CSNOW,
+163,Categorical Ice Pellets,surface,CICEP,
+164,Categorical Freezing Rain,surface,CFRZR,
+165,Categorical Rain,surface,CRAIN,
+166,Surface Roughness,surface,SFCR,m
+167,Frictional Velocity,surface,FRICV,m/s
+168,Sensible Heat Net Flux,surface,SHTFL,W/m2
+169,Latent Heat Net Flux,surface,LHTFL,W/m2
+170,Vegetation,surface,VEG,%
+171,Annual Maximum Vegetation Fraction,surface,MXVEG,
+172,Annual Minimum Vegetation Fraction,surface,MNVEG,
+173,Leaf Area Index,surface,LAI,
+174,Ground Heat Flux,surface,GFLUX,W/m2
+175,Vegetation Type,surface,VGTYP,
+176,Convective Available Potential Energy,surface,CAPE,J/kg
+177,Convective Inhibition,surface,CIN,J/kg
+178,Upward Long-Wave Rad. Flux,surface,ULWRF,W/m2
+179,Upward Short-Wave Rad. Flux,surface,USWRF,W/m2
+180,Downward Long-Wave Rad. Flux,surface,DLWRF,W/m2
+181,Downward Short-Wave Rad. Flux,surface,DSWRF,W/m2
+182,Visible Beam Downward Solar Flux,surface,VBDSF,W/m2
+183,Visible Diffuse Downward Solar Flux,surface,VDDSF,W/m2
+184,Planetary Boundary Layer Height,surface,HPBL,m
+185,"Land Cover (0=sea, 1=land)",surface,LAND,Proportion
+186,Ice Cover,surface,ICEC,Proportion
+187,Upward Long-Wave Rad. Flux,top_of_atmosphere,ULWRF,W/m2
+188,Upward Short-Wave Rad. Flux,top_of_atmosphere,USWRF,W/m2
+189,"Simulated Brightness Temperature for GOES 11, Channel 3",top_of_atmosphere,SBT113,K
+190,"Simulated Brightness Temperature for GOES 11, Channel 4",top_of_atmosphere,SBT114,K
+191,"Simulated Brightness Temperature for GOES 12, Channel 3",top_of_atmosphere,SBT123,K
+192,"Simulated Brightness Temperature for GOES 12, Channel 4",top_of_atmosphere,SBT124,K

@@ -1,0 +1,43 @@
+global:
+    external_model: GFS
+    convert_atm: true
+    convert_sfc: true
+    convert_nst: false
+
+
+# same external model can be used for multiple nests
+nestX:
+    external_model: HRRR
+    convert_atm: true
+    convert_sfc: false
+    convert_nst: false
+    # additional config options can be added here as needed see chgres_cube_template.yaml
+
+
+
+# to use multiple external models for a given nest, use the following format or comment out
+tileX:
+  external_models:
+    - external_model: HRRR
+      convert_atm: true
+      convert_sfc: false
+      convert_nst: false
+      # additional config options can be added here as needed see chgres_cube_template.yaml
+
+    - external_model: GFS
+      convert_atm: false
+      convert_sfc: true
+      convert_nst: false
+      # additional config options can be added here as needed see chgres_cube_template.yaml
+
+    
+# you can also specify specific nests by replacing 'X' with the nest number starting from 1
+# e.g., tile7, tile8, tile9, etc.
+
+tile7:
+    external_model: HRRR
+    convert_atm: true
+    convert_sfc: false
+    convert_nst: false
+    # additional config options can be added here as needed see chgres_cube_template.yaml
+

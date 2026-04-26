@@ -1,0 +1,1133 @@
+﻿module,field,long_name,units
+dynamics,bk,vertical coordinate sigma value,none
+dynamics,pk,pressure part of the hybrid coordinate,pascal
+dynamics,hyam,vertical coordinate A value,1E-5 Pa
+dynamics,hybm,vertical coordinate B value,none
+dynamics,grid_lon,longitude,degrees_E
+dynamics,grid_lat,latitude,degrees_N
+dynamics,grid_lont,longitude,degrees_E
+dynamics,grid_latt,latitude,degrees_N
+dynamics,area,cell area,m**2
+dynamics,dx,dx,m
+dynamics,dy,dy,m
+dynamics,zsurf,surface height,m
+dynamics,zs,Original Mean Terrain,m
+dynamics,ze,Hybrid_Z_surface,m
+dynamics,oro,Land/Water Mask,none
+dynamics,sgh,Terrain Standard deviation,m
+dynamics,ps_ic,initial surface pressure,Pa
+dynamics,ua_ic,initial zonal wind,m/s
+dynamics,va_ic,initial meridional wind,m/s
+dynamics,ppt_ic,initial potential temperature,K
+dynamics,sphum_ic,initial surface pressure,Pa
+dynamics,ps,surface pressure,Pa
+dynamics,mq,mountain torque,Hadleys per unit area
+dynamics,aam,angular momentum,kg*m^2/s
+dynamics,amdt,angular momentum error,kg*m^2/s^2
+dynamics,pret,total precipitation,mm/day
+dynamics,prew,water precipitation,mm/day
+dynamics,prer,rain precipitation,mm/day
+dynamics,prei,ice precipitation,mm/day
+dynamics,pres,snow precipitation,mm/day
+dynamics,preg,graupel precipitation,mm/day
+dynamics,qcw,cloud water water content,g/m^2
+dynamics,qcr,rain water content,g/m^2
+dynamics,qci,cloud ice water content,g/m^2
+dynamics,qcs,snow water content,g/m^2
+dynamics,qcg,graupel water content,g/m^2
+dynamics,rew,cloud water effective radius,micron
+dynamics,rer,rain effective radius,micron
+dynamics,rei,cloud ice effective radius,micron
+dynamics,res,snow effective radius,micron
+dynamics,reg,graupel effective radius,micron
+dynamics,cld,cloud fraction,%
+dynamics,mppcw,Condensation (to Cloud Water) Rate,mm/day
+dynamics,mppew,Evaporation (of Cloud Water) Rate,mm/day
+dynamics,mppe1,Instant Evaporation (of Cloud Water) Rate,mm/day
+dynamics,mpper,Evaporation (of Rain) Rate,mm/day
+dynamics,mppdi,Deposition (to Cloud Ice) Rate,mm/day
+dynamics,mppd1,Instant Deposition (to Cloud Ice) Rate,mm/day
+dynamics,mppds,Deposition (to Snow) Rate,mm/day
+dynamics,mppdg,Deposition (to Graupel) Rate,mm/day
+dynamics,mppsi,Sublimation (of Cloud Ice) Rate,mm/day
+dynamics,mpps1,Instant Sublimation (of Cloud Ice) Rate,mm/day
+dynamics,mppss,Sublimation (of Snow) Rate,mm/day
+dynamics,mppsg,Sublimation (of Graupel) Rate,mm/day
+dynamics,mppfw,Freezing (of Cloud Water) Rate,mm/day
+dynamics,mppfr,Freezing (of Rain) Rate,mm/day
+dynamics,mppmi,Melting (of Cloud Ice) Rate,mm/day
+dynamics,mppms,Melting (of Snow) Rate,mm/day
+dynamics,mppmg,Melting (of Graupel) Rate,mm/day
+dynamics,mppm1,Sedimentational Melting (of Cloud Ice) Rate,mm/day
+dynamics,mppm2,Sedimentational Melting (of Snow) Rate,mm/day
+dynamics,mppm3,Sedimentational Melting (of Graupel) Rate,mm/day
+dynamics,mppar,Autoconversion (to Rain) Rate,mm/day
+dynamics,mppas,Autoconversion (to Snow) Rate,mm/day
+dynamics,mppag,Autoconversion (to Graupel) Rate,mm/day
+dynamics,mpprs,Riming (to Snow) Rate,mm/day
+dynamics,mpprg,Riming (to Graupel) Rate,mm/day
+dynamics,mppxr,Accretion (to Rain) Rate,mm/day
+dynamics,mppxs,Accretion (to Snow) Rate,mm/day
+dynamics,mppxg,Accretion (to Graupel) Rate,mm/day
+dynamics,qv_dt_gfdlmp,water vapor specific humidity tendency from GFDL MP,kg/kg/s
+dynamics,ql_dt_gfdlmp,total liquid water tendency from GFDL MP,kg/kg/s
+dynamics,qi_dt_gfdlmp,total ice water tendency from GFDL MP,kg/kg/s
+dynamics,liq_wat_dt_gfdlmp,liquid water tracer tendency from GFDL MP,kg/kg/s
+dynamics,ice_wat_dt_gfdlmp,ice water tracer tendency from GFDL MP,kg/kg/s
+dynamics,qr_dt_gfdlmp,rain water tendency from GFDL MP,kg/kg/s
+dynamics,qg_dt_gfdlmp,graupel tendency from GFDL MP,kg/kg/s
+dynamics,qs_dt_gfdlmp,snow water tendency from GFDL MP,kg/kg/s
+dynamics,T_dt_gfdlmp,temperature tendency from GFDL MP,K/s
+dynamics,u_dt_gfdlmp,zonal wind tendency from GFDL MP,m/s/s
+dynamics,v_dt_gfdlmp,meridional wind tendency from GFDL MP,m/s/s
+dynamics,T_dt_phys,temperature tendency from physics,K/s
+dynamics,u_dt_phys,zonal wind tendency from physics,m/s/s
+dynamics,v_dt_phys,meridional wind tendency from physics,m/s/s
+dynamics,qv_dt_phys,water vapor specific humidity tendency from physics,kg/kg/s
+dynamics,ql_dt_phys,total liquid water tendency from physics,kg/kg/s
+dynamics,qi_dt_phys,total ice water tendency from physics,kg/kg/s
+dynamics,liq_wat_dt_phys,liquid water tracer tendency from physics,kg/kg/s
+dynamics,ice_wat_dt_phys,ice water tracer tendency from physics,kg/kg/s
+dynamics,qr_dt_phys,rain water tendency from physics,kg/kg/s
+dynamics,qg_dt_phys,graupel tendency from physics,kg/kg/s
+dynamics,qs_dt_phys,snow water tendency from physics,kg/kg/s
+dynamics,T_dt_sg,temperature tendency from 2dz subgrid mixing,K/s
+dynamics,u_dt_sg,zonal wind tendency from 2dz subgrid mixing,m/s/s
+dynamics,v_dt_sg,meridional wind tendency from 2dz subgrid mixing,m/s/s
+dynamics,qv_dt_sg,water vapor tendency from 2dz subgrid mixing,kg/kg/s
+dynamics,t_dt_nudge,temperature tendency from nudging,K/s
+dynamics,ps_dt_nudge,surface pressure tendency from nudging,Pa/s
+dynamics,delp_dt_nudge,pressure thickness tendency from nudging,Pa/s
+dynamics,u_dt_nudge,zonal wind tendency from nudging,m/s/s
+dynamics,v_dt_nudge,meridional wind tendency from nudging,m/s/s
+dynamics,qv_dt_nudge,specific humidity tendency from nudging,kg/kg/s
+dynamics,T_dt_diabatic,temperature tendency from diabatic processes (t_dt_phys + t_dt_gfdlmp),K/s
+dynamics,qv_dt_diabatic,temperature tendency from diabatic processes (qv_dt_phys + qv_dt_gfdlmp),kg/kg/s
+dynamics,z1,1-mb height,m
+dynamics,u1,1-mb u,m/s
+dynamics,v1,1-mb v,m/s
+dynamics,t1,1-mb temperature,K
+dynamics,q1,1-mb specific humidity,kg/kg
+dynamics,ql1,1-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi1,1-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr1,1-mb rain mass mixing ratio,kg/kg
+dynamics,qs1,1-mb snow mass mixing ratio,kg/kg
+dynamics,qg1,1-mb graupel mass mixing ratio,kg/kg
+dynamics,cf1,1-mb cloud fraction,1
+dynamics,omg1,1-mb omega,Pa/s
+dynamics,w1,1-mb vertical velocity,m/s
+dynamics,vort1,1-mb vertical vorticity,1/s
+dynamics,rh1,1-mb relative humidity,%
+dynamics,dp1,1-mb dew point,K
+dynamics,theta1,1-mb potential temperature,K
+dynamics,theta_e1,1-mb equivalent potential temperature,K
+dynamics,z2,2-mb height,m
+dynamics,u2,2-mb u,m/s
+dynamics,v2,2-mb v,m/s
+dynamics,t2,2-mb temperature,K
+dynamics,q2,2-mb specific humidity,kg/kg
+dynamics,ql2,2-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi2,2-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr2,2-mb rain mass mixing ratio,kg/kg
+dynamics,qs2,2-mb snow mass mixing ratio,kg/kg
+dynamics,qg2,2-mb graupel mass mixing ratio,kg/kg
+dynamics,cf2,2-mb cloud fraction,1
+dynamics,omg2,2-mb omega,Pa/s
+dynamics,w2,2-mb vertical velocity,m/s
+dynamics,vort2,2-mb vertical vorticity,1/s
+dynamics,rh2,2-mb relative humidity,%
+dynamics,dp2,2-mb dew point,K
+dynamics,theta2,2-mb potential temperature,K
+dynamics,theta_e2,2-mb equivalent potential temperature,K
+dynamics,z3,3-mb height,m
+dynamics,u3,3-mb u,m/s
+dynamics,v3,3-mb v,m/s
+dynamics,t3,3-mb temperature,K
+dynamics,q3,3-mb specific humidity,kg/kg
+dynamics,ql3,3-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi3,3-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr3,3-mb rain mass mixing ratio,kg/kg
+dynamics,qs3,3-mb snow mass mixing ratio,kg/kg
+dynamics,qg3,3-mb graupel mass mixing ratio,kg/kg
+dynamics,cf3,3-mb cloud fraction,1
+dynamics,omg3,3-mb omega,Pa/s
+dynamics,w3,3-mb vertical velocity,m/s
+dynamics,vort3,3-mb vertical vorticity,1/s
+dynamics,rh3,3-mb relative humidity,%
+dynamics,dp3,3-mb dew point,K
+dynamics,theta3,3-mb potential temperature,K
+dynamics,theta_e3,3-mb equivalent potential temperature,K
+dynamics,z5,5-mb height,m
+dynamics,u5,5-mb u,m/s
+dynamics,v5,5-mb v,m/s
+dynamics,t5,5-mb temperature,K
+dynamics,q5,5-mb specific humidity,kg/kg
+dynamics,ql5,5-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi5,5-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr5,5-mb rain mass mixing ratio,kg/kg
+dynamics,qs5,5-mb snow mass mixing ratio,kg/kg
+dynamics,qg5,5-mb graupel mass mixing ratio,kg/kg
+dynamics,cf5,5-mb cloud fraction,1
+dynamics,omg5,5-mb omega,Pa/s
+dynamics,w5,5-mb vertical velocity,m/s
+dynamics,vort5,5-mb vertical vorticity,1/s
+dynamics,rh5,5-mb relative humidity,%
+dynamics,dp5,5-mb dew point,K
+dynamics,theta5,5-mb potential temperature,K
+dynamics,theta_e5,5-mb equivalent potential temperature,K
+dynamics,z7,7-mb height,m
+dynamics,u7,7-mb u,m/s
+dynamics,v7,7-mb v,m/s
+dynamics,t7,7-mb temperature,K
+dynamics,q7,7-mb specific humidity,kg/kg
+dynamics,ql7,7-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi7,7-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr7,7-mb rain mass mixing ratio,kg/kg
+dynamics,qs7,7-mb snow mass mixing ratio,kg/kg
+dynamics,qg7,7-mb graupel mass mixing ratio,kg/kg
+dynamics,cf7,7-mb cloud fraction,1
+dynamics,omg7,7-mb omega,Pa/s
+dynamics,w7,7-mb vertical velocity,m/s
+dynamics,vort7,7-mb vertical vorticity,1/s
+dynamics,rh7,7-mb relative humidity,%
+dynamics,dp7,7-mb dew point,K
+dynamics,theta7,7-mb potential temperature,K
+dynamics,theta_e7,7-mb equivalent potential temperature,K
+dynamics,z10,10-mb height,m
+dynamics,u10,10-mb u,m/s
+dynamics,v10,10-mb v,m/s
+dynamics,t10,10-mb temperature,K
+dynamics,q10,10-mb specific humidity,kg/kg
+dynamics,ql10,10-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi10,10-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr10,10-mb rain mass mixing ratio,kg/kg
+dynamics,qs10,10-mb snow mass mixing ratio,kg/kg
+dynamics,qg10,10-mb graupel mass mixing ratio,kg/kg
+dynamics,cf10,10-mb cloud fraction,1
+dynamics,omg10,10-mb omega,Pa/s
+dynamics,w10,10-mb vertical velocity,m/s
+dynamics,vort10,10-mb vertical vorticity,1/s
+dynamics,rh10,10-mb relative humidity,%
+dynamics,dp10,10-mb dew point,K
+dynamics,theta10,10-mb potential temperature,K
+dynamics,theta_e10,10-mb equivalent potential temperature,K
+dynamics,z20,20-mb height,m
+dynamics,u20,20-mb u,m/s
+dynamics,v20,20-mb v,m/s
+dynamics,t20,20-mb temperature,K
+dynamics,q20,20-mb specific humidity,kg/kg
+dynamics,ql20,20-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi20,20-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr20,20-mb rain mass mixing ratio,kg/kg
+dynamics,qs20,20-mb snow mass mixing ratio,kg/kg
+dynamics,qg20,20-mb graupel mass mixing ratio,kg/kg
+dynamics,cf20,20-mb cloud fraction,1
+dynamics,omg20,20-mb omega,Pa/s
+dynamics,w20,20-mb vertical velocity,m/s
+dynamics,vort20,20-mb vertical vorticity,1/s
+dynamics,rh20,20-mb relative humidity,%
+dynamics,dp20,20-mb dew point,K
+dynamics,theta20,20-mb potential temperature,K
+dynamics,theta_e20,20-mb equivalent potential temperature,K
+dynamics,z30,30-mb height,m
+dynamics,u30,30-mb u,m/s
+dynamics,v30,30-mb v,m/s
+dynamics,t30,30-mb temperature,K
+dynamics,q30,30-mb specific humidity,kg/kg
+dynamics,ql30,30-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi30,30-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr30,30-mb rain mass mixing ratio,kg/kg
+dynamics,qs30,30-mb snow mass mixing ratio,kg/kg
+dynamics,qg30,30-mb graupel mass mixing ratio,kg/kg
+dynamics,cf30,30-mb cloud fraction,1
+dynamics,omg30,30-mb omega,Pa/s
+dynamics,w30,30-mb vertical velocity,m/s
+dynamics,vort30,30-mb vertical vorticity,1/s
+dynamics,rh30,30-mb relative humidity,%
+dynamics,dp30,30-mb dew point,K
+dynamics,theta30,30-mb potential temperature,K
+dynamics,theta_e30,30-mb equivalent potential temperature,K
+dynamics,z50,50-mb height,m
+dynamics,u50,50-mb u,m/s
+dynamics,v50,50-mb v,m/s
+dynamics,t50,50-mb temperature,K
+dynamics,q50,50-mb specific humidity,kg/kg
+dynamics,ql50,50-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi50,50-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr50,50-mb rain mass mixing ratio,kg/kg
+dynamics,qs50,50-mb snow mass mixing ratio,kg/kg
+dynamics,qg50,50-mb graupel mass mixing ratio,kg/kg
+dynamics,cf50,50-mb cloud fraction,1
+dynamics,omg50,50-mb omega,Pa/s
+dynamics,w50,50-mb vertical velocity,m/s
+dynamics,vort50,50-mb vertical vorticity,1/s
+dynamics,rh50,50-mb relative humidity,%
+dynamics,dp50,50-mb dew point,K
+dynamics,theta50,50-mb potential temperature,K
+dynamics,theta_e50,50-mb equivalent potential temperature,K
+dynamics,z70,70-mb height,m
+dynamics,u70,70-mb u,m/s
+dynamics,v70,70-mb v,m/s
+dynamics,t70,70-mb temperature,K
+dynamics,q70,70-mb specific humidity,kg/kg
+dynamics,ql70,70-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi70,70-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr70,70-mb rain mass mixing ratio,kg/kg
+dynamics,qs70,70-mb snow mass mixing ratio,kg/kg
+dynamics,qg70,70-mb graupel mass mixing ratio,kg/kg
+dynamics,cf70,70-mb cloud fraction,1
+dynamics,omg70,70-mb omega,Pa/s
+dynamics,w70,70-mb vertical velocity,m/s
+dynamics,vort70,70-mb vertical vorticity,1/s
+dynamics,rh70,70-mb relative humidity,%
+dynamics,dp70,70-mb dew point,K
+dynamics,theta70,70-mb potential temperature,K
+dynamics,theta_e70,70-mb equivalent potential temperature,K
+dynamics,z100,100-mb height,m
+dynamics,u100,100-mb u,m/s
+dynamics,v100,100-mb v,m/s
+dynamics,t100,100-mb temperature,K
+dynamics,q100,100-mb specific humidity,kg/kg
+dynamics,ql100,100-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi100,100-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr100,100-mb rain mass mixing ratio,kg/kg
+dynamics,qs100,100-mb snow mass mixing ratio,kg/kg
+dynamics,qg100,100-mb graupel mass mixing ratio,kg/kg
+dynamics,cf100,100-mb cloud fraction,1
+dynamics,omg100,100-mb omega,Pa/s
+dynamics,w100,100-mb vertical velocity,m/s
+dynamics,vort100,100-mb vertical vorticity,1/s
+dynamics,rh100,100-mb relative humidity,%
+dynamics,dp100,100-mb dew point,K
+dynamics,theta100,100-mb potential temperature,K
+dynamics,theta_e100,100-mb equivalent potential temperature,K
+dynamics,z150,150-mb height,m
+dynamics,u150,150-mb u,m/s
+dynamics,v150,150-mb v,m/s
+dynamics,t150,150-mb temperature,K
+dynamics,q150,150-mb specific humidity,kg/kg
+dynamics,ql150,150-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi150,150-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr150,150-mb rain mass mixing ratio,kg/kg
+dynamics,qs150,150-mb snow mass mixing ratio,kg/kg
+dynamics,qg150,150-mb graupel mass mixing ratio,kg/kg
+dynamics,cf150,150-mb cloud fraction,1
+dynamics,omg150,150-mb omega,Pa/s
+dynamics,w150,150-mb vertical velocity,m/s
+dynamics,vort150,150-mb vertical vorticity,1/s
+dynamics,rh150,150-mb relative humidity,%
+dynamics,dp150,150-mb dew point,K
+dynamics,theta150,150-mb potential temperature,K
+dynamics,theta_e150,150-mb equivalent potential temperature,K
+dynamics,z200,200-mb height,m
+dynamics,u200,200-mb u,m/s
+dynamics,v200,200-mb v,m/s
+dynamics,t200,200-mb temperature,K
+dynamics,q200,200-mb specific humidity,kg/kg
+dynamics,ql200,200-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi200,200-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr200,200-mb rain mass mixing ratio,kg/kg
+dynamics,qs200,200-mb snow mass mixing ratio,kg/kg
+dynamics,qg200,200-mb graupel mass mixing ratio,kg/kg
+dynamics,cf200,200-mb cloud fraction,1
+dynamics,omg200,200-mb omega,Pa/s
+dynamics,w200,200-mb vertical velocity,m/s
+dynamics,vort200,200-mb vertical vorticity,1/s
+dynamics,rh200,200-mb relative humidity,%
+dynamics,dp200,200-mb dew point,K
+dynamics,theta200,200-mb potential temperature,K
+dynamics,theta_e200,200-mb equivalent potential temperature,K
+dynamics,z250,250-mb height,m
+dynamics,u250,250-mb u,m/s
+dynamics,v250,250-mb v,m/s
+dynamics,t250,250-mb temperature,K
+dynamics,q250,250-mb specific humidity,kg/kg
+dynamics,ql250,250-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi250,250-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr250,250-mb rain mass mixing ratio,kg/kg
+dynamics,qs250,250-mb snow mass mixing ratio,kg/kg
+dynamics,qg250,250-mb graupel mass mixing ratio,kg/kg
+dynamics,cf250,250-mb cloud fraction,1
+dynamics,omg250,250-mb omega,Pa/s
+dynamics,w250,250-mb vertical velocity,m/s
+dynamics,vort250,250-mb vertical vorticity,1/s
+dynamics,rh250,250-mb relative humidity,%
+dynamics,dp250,250-mb dew point,K
+dynamics,theta250,250-mb potential temperature,K
+dynamics,theta_e250,250-mb equivalent potential temperature,K
+dynamics,z300,300-mb height,m
+dynamics,u300,300-mb u,m/s
+dynamics,v300,300-mb v,m/s
+dynamics,t300,300-mb temperature,K
+dynamics,q300,300-mb specific humidity,kg/kg
+dynamics,ql300,300-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi300,300-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr300,300-mb rain mass mixing ratio,kg/kg
+dynamics,qs300,300-mb snow mass mixing ratio,kg/kg
+dynamics,qg300,300-mb graupel mass mixing ratio,kg/kg
+dynamics,cf300,300-mb cloud fraction,1
+dynamics,omg300,300-mb omega,Pa/s
+dynamics,w300,300-mb vertical velocity,m/s
+dynamics,vort300,300-mb vertical vorticity,1/s
+dynamics,rh300,300-mb relative humidity,%
+dynamics,dp300,300-mb dew point,K
+dynamics,theta300,300-mb potential temperature,K
+dynamics,theta_e300,300-mb equivalent potential temperature,K
+dynamics,z350,350-mb height,m
+dynamics,u350,350-mb u,m/s
+dynamics,v350,350-mb v,m/s
+dynamics,t350,350-mb temperature,K
+dynamics,q350,350-mb specific humidity,kg/kg
+dynamics,ql350,350-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi350,350-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr350,350-mb rain mass mixing ratio,kg/kg
+dynamics,qs350,350-mb snow mass mixing ratio,kg/kg
+dynamics,qg350,350-mb graupel mass mixing ratio,kg/kg
+dynamics,cf350,350-mb cloud fraction,1
+dynamics,omg350,350-mb omega,Pa/s
+dynamics,w350,350-mb vertical velocity,m/s
+dynamics,vort350,350-mb vertical vorticity,1/s
+dynamics,rh350,350-mb relative humidity,%
+dynamics,dp350,350-mb dew point,K
+dynamics,theta350,350-mb potential temperature,K
+dynamics,theta_e350,350-mb equivalent potential temperature,K
+dynamics,z400,400-mb height,m
+dynamics,u400,400-mb u,m/s
+dynamics,v400,400-mb v,m/s
+dynamics,t400,400-mb temperature,K
+dynamics,q400,400-mb specific humidity,kg/kg
+dynamics,ql400,400-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi400,400-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr400,400-mb rain mass mixing ratio,kg/kg
+dynamics,qs400,400-mb snow mass mixing ratio,kg/kg
+dynamics,qg400,400-mb graupel mass mixing ratio,kg/kg
+dynamics,cf400,400-mb cloud fraction,1
+dynamics,omg400,400-mb omega,Pa/s
+dynamics,w400,400-mb vertical velocity,m/s
+dynamics,vort400,400-mb vertical vorticity,1/s
+dynamics,rh400,400-mb relative humidity,%
+dynamics,dp400,400-mb dew point,K
+dynamics,theta400,400-mb potential temperature,K
+dynamics,theta_e400,400-mb equivalent potential temperature,K
+dynamics,z450,450-mb height,m
+dynamics,u450,450-mb u,m/s
+dynamics,v450,450-mb v,m/s
+dynamics,t450,450-mb temperature,K
+dynamics,q450,450-mb specific humidity,kg/kg
+dynamics,ql450,450-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi450,450-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr450,450-mb rain mass mixing ratio,kg/kg
+dynamics,qs450,450-mb snow mass mixing ratio,kg/kg
+dynamics,qg450,450-mb graupel mass mixing ratio,kg/kg
+dynamics,cf450,450-mb cloud fraction,1
+dynamics,omg450,450-mb omega,Pa/s
+dynamics,w450,450-mb vertical velocity,m/s
+dynamics,vort450,450-mb vertical vorticity,1/s
+dynamics,rh450,450-mb relative humidity,%
+dynamics,dp450,450-mb dew point,K
+dynamics,theta450,450-mb potential temperature,K
+dynamics,theta_e450,450-mb equivalent potential temperature,K
+dynamics,z500,500-mb height,m
+dynamics,u500,500-mb u,m/s
+dynamics,v500,500-mb v,m/s
+dynamics,t500,500-mb temperature,K
+dynamics,q500,500-mb specific humidity,kg/kg
+dynamics,ql500,500-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi500,500-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr500,500-mb rain mass mixing ratio,kg/kg
+dynamics,qs500,500-mb snow mass mixing ratio,kg/kg
+dynamics,qg500,500-mb graupel mass mixing ratio,kg/kg
+dynamics,cf500,500-mb cloud fraction,1
+dynamics,omg500,500-mb omega,Pa/s
+dynamics,w500,500-mb vertical velocity,m/s
+dynamics,vort500,500-mb vertical vorticity,1/s
+dynamics,rh500,500-mb relative humidity,%
+dynamics,dp500,500-mb dew point,K
+dynamics,theta500,500-mb potential temperature,K
+dynamics,theta_e500,500-mb equivalent potential temperature,K
+dynamics,z550,550-mb height,m
+dynamics,u550,550-mb u,m/s
+dynamics,v550,550-mb v,m/s
+dynamics,t550,550-mb temperature,K
+dynamics,q550,550-mb specific humidity,kg/kg
+dynamics,ql550,550-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi550,550-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr550,550-mb rain mass mixing ratio,kg/kg
+dynamics,qs550,550-mb snow mass mixing ratio,kg/kg
+dynamics,qg550,550-mb graupel mass mixing ratio,kg/kg
+dynamics,cf550,550-mb cloud fraction,1
+dynamics,omg550,550-mb omega,Pa/s
+dynamics,w550,550-mb vertical velocity,m/s
+dynamics,vort550,550-mb vertical vorticity,1/s
+dynamics,rh550,550-mb relative humidity,%
+dynamics,dp550,550-mb dew point,K
+dynamics,theta550,550-mb potential temperature,K
+dynamics,theta_e550,550-mb equivalent potential temperature,K
+dynamics,z600,600-mb height,m
+dynamics,u600,600-mb u,m/s
+dynamics,v600,600-mb v,m/s
+dynamics,t600,600-mb temperature,K
+dynamics,q600,600-mb specific humidity,kg/kg
+dynamics,ql600,600-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi600,600-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr600,600-mb rain mass mixing ratio,kg/kg
+dynamics,qs600,600-mb snow mass mixing ratio,kg/kg
+dynamics,qg600,600-mb graupel mass mixing ratio,kg/kg
+dynamics,cf600,600-mb cloud fraction,1
+dynamics,omg600,600-mb omega,Pa/s
+dynamics,w600,600-mb vertical velocity,m/s
+dynamics,vort600,600-mb vertical vorticity,1/s
+dynamics,rh600,600-mb relative humidity,%
+dynamics,dp600,600-mb dew point,K
+dynamics,theta600,600-mb potential temperature,K
+dynamics,theta_e600,600-mb equivalent potential temperature,K
+dynamics,z650,650-mb height,m
+dynamics,u650,650-mb u,m/s
+dynamics,v650,650-mb v,m/s
+dynamics,t650,650-mb temperature,K
+dynamics,q650,650-mb specific humidity,kg/kg
+dynamics,ql650,650-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi650,650-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr650,650-mb rain mass mixing ratio,kg/kg
+dynamics,qs650,650-mb snow mass mixing ratio,kg/kg
+dynamics,qg650,650-mb graupel mass mixing ratio,kg/kg
+dynamics,cf650,650-mb cloud fraction,1
+dynamics,omg650,650-mb omega,Pa/s
+dynamics,w650,650-mb vertical velocity,m/s
+dynamics,vort650,650-mb vertical vorticity,1/s
+dynamics,rh650,650-mb relative humidity,%
+dynamics,dp650,650-mb dew point,K
+dynamics,theta650,650-mb potential temperature,K
+dynamics,theta_e650,650-mb equivalent potential temperature,K
+dynamics,z700,700-mb height,m
+dynamics,u700,700-mb u,m/s
+dynamics,v700,700-mb v,m/s
+dynamics,t700,700-mb temperature,K
+dynamics,q700,700-mb specific humidity,kg/kg
+dynamics,ql700,700-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi700,700-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr700,700-mb rain mass mixing ratio,kg/kg
+dynamics,qs700,700-mb snow mass mixing ratio,kg/kg
+dynamics,qg700,700-mb graupel mass mixing ratio,kg/kg
+dynamics,cf700,700-mb cloud fraction,1
+dynamics,omg700,700-mb omega,Pa/s
+dynamics,w700,700-mb vertical velocity,m/s
+dynamics,vort700,700-mb vertical vorticity,1/s
+dynamics,rh700,700-mb relative humidity,%
+dynamics,dp700,700-mb dew point,K
+dynamics,theta700,700-mb potential temperature,K
+dynamics,theta_e700,700-mb equivalent potential temperature,K
+dynamics,z750,750-mb height,m
+dynamics,u750,750-mb u,m/s
+dynamics,v750,750-mb v,m/s
+dynamics,t750,750-mb temperature,K
+dynamics,q750,750-mb specific humidity,kg/kg
+dynamics,ql750,750-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi750,750-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr750,750-mb rain mass mixing ratio,kg/kg
+dynamics,qs750,750-mb snow mass mixing ratio,kg/kg
+dynamics,qg750,750-mb graupel mass mixing ratio,kg/kg
+dynamics,cf750,750-mb cloud fraction,1
+dynamics,omg750,750-mb omega,Pa/s
+dynamics,w750,750-mb vertical velocity,m/s
+dynamics,vort750,750-mb vertical vorticity,1/s
+dynamics,rh750,750-mb relative humidity,%
+dynamics,dp750,750-mb dew point,K
+dynamics,theta750,750-mb potential temperature,K
+dynamics,theta_e750,750-mb equivalent potential temperature,K
+dynamics,z800,800-mb height,m
+dynamics,u800,800-mb u,m/s
+dynamics,v800,800-mb v,m/s
+dynamics,t800,800-mb temperature,K
+dynamics,q800,800-mb specific humidity,kg/kg
+dynamics,ql800,800-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi800,800-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr800,800-mb rain mass mixing ratio,kg/kg
+dynamics,qs800,800-mb snow mass mixing ratio,kg/kg
+dynamics,qg800,800-mb graupel mass mixing ratio,kg/kg
+dynamics,cf800,800-mb cloud fraction,1
+dynamics,omg800,800-mb omega,Pa/s
+dynamics,w800,800-mb vertical velocity,m/s
+dynamics,vort800,800-mb vertical vorticity,1/s
+dynamics,rh800,800-mb relative humidity,%
+dynamics,dp800,800-mb dew point,K
+dynamics,theta800,800-mb potential temperature,K
+dynamics,theta_e800,800-mb equivalent potential temperature,K
+dynamics,z850,850-mb height,m
+dynamics,u850,850-mb u,m/s
+dynamics,v850,850-mb v,m/s
+dynamics,t850,850-mb temperature,K
+dynamics,q850,850-mb specific humidity,kg/kg
+dynamics,ql850,850-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi850,850-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr850,850-mb rain mass mixing ratio,kg/kg
+dynamics,qs850,850-mb snow mass mixing ratio,kg/kg
+dynamics,qg850,850-mb graupel mass mixing ratio,kg/kg
+dynamics,cf850,850-mb cloud fraction,1
+dynamics,omg850,850-mb omega,Pa/s
+dynamics,w850,850-mb vertical velocity,m/s
+dynamics,vort850,850-mb vertical vorticity,1/s
+dynamics,rh850,850-mb relative humidity,%
+dynamics,dp850,850-mb dew point,K
+dynamics,theta850,850-mb potential temperature,K
+dynamics,theta_e850,850-mb equivalent potential temperature,K
+dynamics,z900,900-mb height,m
+dynamics,u900,900-mb u,m/s
+dynamics,v900,900-mb v,m/s
+dynamics,t900,900-mb temperature,K
+dynamics,q900,900-mb specific humidity,kg/kg
+dynamics,ql900,900-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi900,900-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr900,900-mb rain mass mixing ratio,kg/kg
+dynamics,qs900,900-mb snow mass mixing ratio,kg/kg
+dynamics,qg900,900-mb graupel mass mixing ratio,kg/kg
+dynamics,cf900,900-mb cloud fraction,1
+dynamics,omg900,900-mb omega,Pa/s
+dynamics,w900,900-mb vertical velocity,m/s
+dynamics,vort900,900-mb vertical vorticity,1/s
+dynamics,rh900,900-mb relative humidity,%
+dynamics,dp900,900-mb dew point,K
+dynamics,theta900,900-mb potential temperature,K
+dynamics,theta_e900,900-mb equivalent potential temperature,K
+dynamics,z925,925-mb height,m
+dynamics,u925,925-mb u,m/s
+dynamics,v925,925-mb v,m/s
+dynamics,t925,925-mb temperature,K
+dynamics,q925,925-mb specific humidity,kg/kg
+dynamics,ql925,925-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi925,925-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr925,925-mb rain mass mixing ratio,kg/kg
+dynamics,qs925,925-mb snow mass mixing ratio,kg/kg
+dynamics,qg925,925-mb graupel mass mixing ratio,kg/kg
+dynamics,cf925,925-mb cloud fraction,1
+dynamics,omg925,925-mb omega,Pa/s
+dynamics,w925,925-mb vertical velocity,m/s
+dynamics,vort925,925-mb vertical vorticity,1/s
+dynamics,rh925,925-mb relative humidity,%
+dynamics,dp925,925-mb dew point,K
+dynamics,theta925,925-mb potential temperature,K
+dynamics,theta_e925,925-mb equivalent potential temperature,K
+dynamics,z950,950-mb height,m
+dynamics,u950,950-mb u,m/s
+dynamics,v950,950-mb v,m/s
+dynamics,t950,950-mb temperature,K
+dynamics,q950,950-mb specific humidity,kg/kg
+dynamics,ql950,950-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi950,950-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr950,950-mb rain mass mixing ratio,kg/kg
+dynamics,qs950,950-mb snow mass mixing ratio,kg/kg
+dynamics,qg950,950-mb graupel mass mixing ratio,kg/kg
+dynamics,cf950,950-mb cloud fraction,1
+dynamics,omg950,950-mb omega,Pa/s
+dynamics,w950,950-mb vertical velocity,m/s
+dynamics,vort950,950-mb vertical vorticity,1/s
+dynamics,rh950,950-mb relative humidity,%
+dynamics,dp950,950-mb dew point,K
+dynamics,theta950,950-mb potential temperature,K
+dynamics,theta_e950,950-mb equivalent potential temperature,K
+dynamics,z975,975-mb height,m
+dynamics,u975,975-mb u,m/s
+dynamics,v975,975-mb v,m/s
+dynamics,t975,975-mb temperature,K
+dynamics,q975,975-mb specific humidity,kg/kg
+dynamics,ql975,975-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi975,975-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr975,975-mb rain mass mixing ratio,kg/kg
+dynamics,qs975,975-mb snow mass mixing ratio,kg/kg
+dynamics,qg975,975-mb graupel mass mixing ratio,kg/kg
+dynamics,cf975,975-mb cloud fraction,1
+dynamics,omg975,975-mb omega,Pa/s
+dynamics,w975,975-mb vertical velocity,m/s
+dynamics,vort975,975-mb vertical vorticity,1/s
+dynamics,rh975,975-mb relative humidity,%
+dynamics,dp975,975-mb dew point,K
+dynamics,theta975,975-mb potential temperature,K
+dynamics,theta_e975,975-mb equivalent potential temperature,K
+dynamics,z1000,1000-mb height,m
+dynamics,u1000,1000-mb u,m/s
+dynamics,v1000,1000-mb v,m/s
+dynamics,t1000,1000-mb temperature,K
+dynamics,q1000,1000-mb specific humidity,kg/kg
+dynamics,ql1000,1000-mb cloud water mass mixing ratio,kg/kg
+dynamics,qi1000,1000-mb cloud ice mass mixing ratio,kg/kg
+dynamics,qr1000,1000-mb rain mass mixing ratio,kg/kg
+dynamics,qs1000,1000-mb snow mass mixing ratio,kg/kg
+dynamics,qg1000,1000-mb graupel mass mixing ratio,kg/kg
+dynamics,cf1000,1000-mb cloud fraction,1
+dynamics,omg1000,1000-mb omega,Pa/s
+dynamics,w1000,1000-mb vertical velocity,m/s
+dynamics,vort1000,1000-mb vertical vorticity,1/s
+dynamics,rh1000,1000-mb relative humidity,%
+dynamics,dp1000,1000-mb dew point,K
+dynamics,theta1000,1000-mb potential temperature,K
+dynamics,theta_e1000,1000-mb equivalent potential temperature,K
+dynamics,u_plev,zonal wind,m/sec
+dynamics,v_plev,meridional wind,m/sec
+dynamics,t_plev,temperature,K
+dynamics,h_plev,height,m
+dynamics,q_plev,specific humidity,kg/kg
+dynamics,ql_plev,cloud water mass mixing ratio,kg/kg
+dynamics,qi_plev,cloud ice mass mixing ratio,kg/kg
+dynamics,qr_plev,rain mass mixing ratio,kg/kg
+dynamics,qs_plev,snow mass mixing ratio,kg/kg
+dynamics,qg_plev,graupel mass mixing ratio,kg/kg
+dynamics,cf_plev,cloud fraction,1
+dynamics,omg_plev,omega,Pa/s
+dynamics,w_plev,vertical velocity,m/s
+dynamics,vort_plev,vertical vorticity,1/s
+dynamics,rh_plev,relative humidity,%
+dynamics,dp_plev,dew point,K
+dynamics,theta_plev,potential temperature,K
+dynamics,theta_e_plev,equivalent potential temperature,K
+dynamics,t_plev_ave,layer-averaged temperature,K
+dynamics,q_plev_ave,layer-averaged specific humidity,kg/kg
+dynamics,qv_dt_gfdlmp_plev_ave,layer-averaged water vapor specific humidity tendency from GFDL MP,kg/kg/s
+dynamics,t_dt_gfdlmp_plev_ave,layer-averaged temperature tendency from GFDL MP,K/s
+dynamics,qv_dt_phys_plev_ave,layer-averaged water vapor specific humidity tendency from physics,kg/kg/s
+dynamics,t_dt_phys_plev_ave,layer-averaged temperature tendency from physics,K/s
+dynamics,tm,mean 300-500 mb temp,K
+dynamics,slp,sea-level pressure,mb
+dynamics,pmask,masking pressure at lowest level,mb
+dynamics,pmaskv2,masking pressure at lowest level,mb
+dynamics,cat15,de-pression < 1000,mb
+dynamics,cat25,de-pression < 980,mb
+dynamics,cat35,de-pression < 964,mb
+dynamics,cat45,de-pression < 944,mb
+dynamics,f15,Cat15 frequency,none
+dynamics,f25,Cat25 frequency,none
+dynamics,f35,Cat35 frequency,none
+dynamics,f45,Cat45 frequency,none
+dynamics,ucomp,zonal wind,m/sec
+dynamics,vcomp,meridional wind,m/sec
+dynamics,w,vertical wind,m/sec
+dynamics,temp,temperature,K
+dynamics,theta,potential temperature,K
+dynamics,theta_e,equivalent potential temperature,K
+dynamics,omega,omega,Pa/s
+dynamics,divg,instantaneous divergence,1/s
+dynamics,divg_mean,timestep-mean divergence,1/s
+dynamics,diss_est,Dissipation estimate,J/kg/s
+dynamics,diss_heat,Dissipative heating rate,K/s
+dynamics,hght,height,m
+dynamics,rh,Relative Humidity,%
+dynamics,delp,pressure thickness (GFS moist-mass),pa
+dynamics,delp_dycore,pressure thickness as seen by the dynamical core,pa
+dynamics,delz,height thickness,m
+dynamics,pfnh,non-hydrostatic pressure (GFS moist-mass),pa
+dynamics,ppnh,non-hydrostatic pressure perturbation,pa
+dynamics,qn,cloud condensate,kg/m/s^2
+dynamics,qp,precip condensate,kg/m/s^2
+dynamics,qdt,Dqv/Dt: fast moist phys,kg/kg/sec
+dynamics,reflectivity,Stoelinga simulated reflectivity,dBz
+dynamics,vort,vorticity,1/s
+dynamics,pv,potential vorticity,1/s
+dynamics,pv350K,350-K potential vorticity; needs x350 scaling,(K m**2) / (kg s)
+dynamics,pv550K,550-K potential vorticity; needs x550 scaling,(K m**2) / (kg s)
+dynamics,uq,zonal moisture flux,Kg/Kg*m/sec
+dynamics,vq,meridional moisture flux,Kg/Kg*m/sec
+dynamics,ut,zonal heat flux,K*m/sec
+dynamics,vt,meridional heat flux,K*m/sec
+dynamics,uu,zonal flux of zonal wind,(m/sec)^2
+dynamics,uv,zonal flux of meridional wind,(m/sec)^2
+dynamics,vv,meridional flux of meridional wind,(m/sec)^2
+dynamics,uw,vertical zonal momentum flux,N/m**2
+dynamics,vw,vertical meridional momentum flux,N/m**
+dynamics,wq,vertical moisture flux,Kg/Kg*m/sec
+dynamics,wt,vertical heat flux,K*m/sec
+dynamics,ww,vertical flux of vertical wind,(m/sec)^2
+dynamics,uq_vi,vertical integral of uq,Kg/Kg*m/sec*Pa
+dynamics,vq_vi,vertical integral of vq,Kg/Kg*m/sec*Pa
+dynamics,ut_vi,vertical integral of ut,K*m/sec*Pa
+dynamics,vt_vi,vertical integral of vt,K*m/sec*Pa
+dynamics,uu_vi,vertical integral of uu,(m/sec)^2*Pa
+dynamics,uv_vi,vertical integral of uv,(m/sec)^2*Pa
+dynamics,vv_vi,vertical integral of vv,(m/sec)^2*Pa
+dynamics,wq_vi,vertical integral of wq,Kg/Kg*m/sec*Pa
+dynamics,wt_vi,vertical integral of wt,K*m/sec*Pa
+dynamics,uw_vi,vertical integral of uw,(m/sec)^2*Pa
+dynamics,vw_vi,vertical integral of vw,(m/sec)^2*Pa
+dynamics,ww_vi,vertical integral of ww,(m/sec)^2*Pa
+dynamics,te,Total Energy,J/m/s^2
+dynamics,ke,Total KE,m^2/s^2
+dynamics,ws,Terrain W,m/s
+dynamics,max_reflectivity,Stoelinga simulated maximum (composite) reflectivity,dBz
+dynamics,base_reflectivity,Stoelinga simulated base (1 km AGL) reflectivity,dBz
+dynamics,4km_reflectivity,Stoelinga simulated base reflectivity,dBz
+dynamics,echo_top,Echo top ( <= 18.5 dBz ),m
+dynamics,m10C_reflectivity,Reflectivity at -10C level,m
+dynamics,40dBz_height,Height of 40 dBz reflectivity,m
+dynamics,vorts,surface vorticity,1/s
+dynamics,us,surface u-wind,m/sec
+dynamics,vs,surface v-wind,m/sec
+dynamics,tq,Total water path,kg/m**2
+dynamics,iw,Ice water path,kg/m**2
+dynamics,lw,Liquid water path,kg/m**2
+dynamics,ts,Skin temperature,K
+dynamics,tb,lowest layer temperature,K
+dynamics,ctt,cloud_top temperature,K
+dynamics,ctp,cloud_top pressure,hPa
+dynamics,ctz,cloud_top height,hPa
+dynamics,cape,Convective available potential energy (surface-based),J/kg
+dynamics,cin,Convective inhibition (surface-based),J/kg
+dynamics,BRN,Bulk Richardson Number,nondim
+dynamics,shear06,0--6 km shear,m/s
+dynamics,intqv,Vertically Integrated Water Vapor,kg/m**2
+dynamics,intql,Vertically Integrated Cloud Water,kg/m**2
+dynamics,intqi,Vertically Integrated Cloud Ice,kg/m**2
+dynamics,intqr,Vertically Integrated Rain,kg/m**2
+dynamics,intqs,Vertically Integrated Snow,kg/m**2
+dynamics,intqg,Vertically Integrated Graupel,kg/m**2
+dynamics,acl,Column-averaged Cl mixing ratio,kg/kg
+dynamics,acl2,Column-averaged Cl2 mixing ratio,kg/kg
+dynamics,acly,Column-averaged total chlorine mixing ratio,kg/kg
+dynamics,s200,200-mb wind_speed,m/s
+dynamics,sl12,12th L wind_speed,m/s
+dynamics,sl13,13th L wind_speed,m/s
+dynamics,qn200,200mb condensate,kg/m/s^2
+dynamics,qn500,500mb condensate,kg/m/s^2
+dynamics,qn850,850mb condensate,kg/m/s^2
+dynamics,rain5km,5-km AGL liquid water,kg/kg
+dynamics,w5km,5-km AGL w-wind,m/s
+dynamics,w2500m,2.5-km AGL w-wind,m/s
+dynamics,w1km,1-km AGL w-wind,m/s
+dynamics,wmaxup,column-maximum updraft (below 100 mb),m/s
+dynamics,wmaxdn,column-maximum downdraft (below 100 mb),m/s
+dynamics,x850,850-mb vertical comp. of helicity,m/s**2
+dynamics,srh01,0-1 km Storm Relative Helicity,m/s**2
+dynamics,srh03,0-3 km Storm Relative Helicity,m/s**2
+dynamics,ustm,u Component of Storm Motion,m/s
+dynamics,vstm,v Component of Storm Motion,m/s
+dynamics,srh25,2-5 km Storm Relative Helicity,m/s**2
+dynamics,uh03,0-3 km Updraft Helicity,m/s**2
+dynamics,uh25,2-5 km Updraft Helicity,m/s**2
+dynamics,w100m,100-m AGL w-wind,m/s
+dynamics,u100m,100-m AGL u-wind,m/s
+dynamics,v100m,100-m AGL v-wind,m/s
+dynamics,wind100m,100-m AGL windspeed,m/s
+dynamics,rh10_cmip,10-mb relative humidity (CMIP),%
+dynamics,rh50_cmip,50-mb relative humidity (CMIP),%
+dynamics,rh100_cmip,100-mb relative humidity (CMIP),%
+dynamics,rh250_cmip,250-mb relative humidity (CMIP),%
+dynamics,rh300_cmip,300-mb relative humidity (CMIP),%
+dynamics,rh500_cmip,500-mb relative humidity (CMIP),%
+dynamics,rh700_cmip,700-mb relative humidity (CMIP),%
+dynamics,rh850_cmip,850-mb relative humidity (CMIP),%
+dynamics,rh925_cmip,925-mb relative humidity (CMIP),%
+dynamics,rh1000_cmip,1000-mb relative humidity (CMIP),%
+dynamics,sphum,specific humidity,kg/kg
+dynamics,liq_wat,cloud water mixing ratio,kg/kg
+dynamics,rainwat,rain mixing ratio,kg/kg
+dynamics,ice_wat,cloud ice mixing ratio,kg/kg
+dynamics,snowwat,snow mixing ratio,kg/kg
+dynamics,graupel,graupel mixing ratio,kg/kg
+dynamics,o3mr,ozone mixing ratio,kg/kg
+dynamics,cld_amt,cloud amount,1
+gfs_dyn,ucomp,zonal wind,m/sec
+gfs_dyn,vcomp,meridional wind,m/sec
+gfs_dyn,pfnh,non-hydrostatic pressure,pa
+gfs_dyn,w,vertical wind,m/sec
+gfs_dyn,delz,height thickness,m
+gfs_dyn,omga,Vertical pressure velocity,pa/sec
+gfs_dyn,temp,temperature,K
+gfs_dyn,delp,pressure thickness,pa
+gfs_dyn,diss_est,dissipation estimate,none
+gfs_dyn,sphum,specific humidity,kg/kg
+gfs_dyn,liq_wat,cloud water mixing ratio,kg/kg
+gfs_dyn,rainwat,rain mixing ratio,kg/kg
+gfs_dyn,ice_wat,cloud ice mixing ratio,kg/kg
+gfs_dyn,snowwat,snow mixing ratio,kg/kg
+gfs_dyn,graupel,graupel mixing ratio,kg/kg
+gfs_dyn,o3mr,ozone mixing ratio,kg/kg
+gfs_dyn,cld_amt,cloud amount,1
+gfs_dyn,ps,surface pressure,pa
+gfs_dyn,hs,surface geopotential height,gpm
+gfs_dyn,reflectivity,Stoelinga simulated reflectivity,dBz
+gfs_dyn,ustm,u comp of storm motion,m/s
+gfs_dyn,vstm,v comp of storm motion,m/s
+gfs_dyn,srh01,0-1km storm rel. helicity,m/s**2
+gfs_dyn,srh03,0-3km storm rel. helicity,m/s**2
+gfs_dyn,maxvort01,Max hourly 0-1km vert vorticity,1/s
+gfs_dyn,maxvort02,Max hourly 0-2km vert vorticity,1/s
+gfs_dyn,maxvorthy1,Max hourly hybrid lev1 vert. vorticity,1/s
+gfs_dyn,wmaxup,Max hourly updraft velocity,m/s
+gfs_dyn,wmaxdn,Max hourly downdraft velocity,m/s
+gfs_dyn,uhmax03,Max hourly max 0-3km updraft helicity,m/s**2
+gfs_dyn,uhmin03,Max hourly min 0-3km updraft helicity,m/s**2
+gfs_dyn,uhmax25,Max hourly max 2-5km updraft helicity,m/s**2
+gfs_dyn,uhmin25,Max hourly min 2-5km updraft helicity,m/s**2
+gfs_phys,ALBDOsfc,surface albedo,%
+gfs_phys,USWRFsfc,Interval-averaged unadjusted upward shortwave flux at the surface,W/m**2
+gfs_phys,DSWRFsfc,Interval-averaged unadjusted downward shortwave flux at the surface,W/m**2
+gfs_phys,DLWRFsfc,Interval-averaged unadjusted downward longwave flux at the surface,W/m**2
+gfs_phys,ULWRFsfc,Interval-averaged unadjusted upward longwave flux at the surface,W/m**2
+gfs_phys,duvb_ave,UV-B Downward Solar Flux,W/m**2
+gfs_phys,cduvb_ave,Clear sky UV-B Downward Solar Flux,W/m**2
+gfs_phys,vbdsf_ave,Visible Beam Downward Solar Flux,W/m**2
+gfs_phys,vddsf_ave,Visible Diffuse Downward Solar Flux,W/m**2
+gfs_phys,nbdsf_ave,Near IR Beam Downward Solar Flux,W/m**2
+gfs_phys,nddsf_ave,Near IR Diffuse Downward Solar Flux,W/m**2
+gfs_phys,csulf_avetoa,Clear Sky Upward Long Wave Flux at toa,W/m**2
+gfs_phys,csusf_avetoa,Clear Sky Upward Short Wave Flux at toa,W/m**2
+gfs_phys,csdlf_ave,Clear Sky Downward Long Wave Flux,W/m**2
+gfs_phys,csusf_ave,Clear Sky Upward Short Wave Flux,W/m**2
+gfs_phys,csdsf_ave,Clear Sky Downward Short Wave Flux,W/m**2
+gfs_phys,csulf_ave,Clear Sky Upward Long Wave Flux,W/m**2
+gfs_phys,DSWRFtoa,top of atmos downward shortwave flux [W/m**2],W/m**2
+gfs_phys,USWRFtoa,top of atmos upward shortwave flux [W/m**2],W/m**2
+gfs_phys,ULWRFtoa,top of atmos upward longwave flux [W/m**2],W/m**2
+gfs_phys,TCDCclm,atmos column total cloud cover [%],%
+gfs_phys,TCDCbndcl,boundary layer cloud layer total cloud cover,%
+gfs_phys,TCDCcnvcl,convective cloud layer total cloud cover,%
+gfs_phys,PREScnvclt,pressure at convective cloud top level,pa
+gfs_phys,PREScnvclb,pressure at convective cloud bottom level,pa
+gfs_phys,TCDChcl,high cloud level total cloud cover [%],%
+gfs_phys,PRES_avehct,pressure high cloud top level,%
+gfs_phys,PRES_avehcb,pressure high cloud bottom level,%
+gfs_phys,TEMP_avehct,temperature high cloud top level,K
+gfs_phys,TCDCmcl,mid cloud level total cloud cover,%
+gfs_phys,PRES_avemct,pressure middle cloud top level,%
+gfs_phys,PRES_avemcb,pressure middle cloud bottom level,%
+gfs_phys,TEMP_avemct,temperature middle cloud top level,K
+gfs_phys,TCDClcl,low cloud level total cloud cover,%
+gfs_phys,PRES_avelct,pressure low cloud top level,%
+gfs_phys,PRES_avelcb,pressure low cloud bottom level,%
+gfs_phys,TEMP_avelct,temperature low cloud top level,K
+gfs_phys,fluxr_01,fluxr diagnostic 01 - GFS radiation,XXX
+gfs_phys,fluxr_02,fluxr diagnostic 02 - GFS radiation,XXX
+gfs_phys,fluxr_03,fluxr diagnostic 03 - GFS radiation,XXX
+gfs_phys,fluxr_04,fluxr diagnostic 04 - GFS radiation,XXX
+gfs_phys,fluxr_05,fluxr diagnostic 05 - GFS radiation,XXX
+gfs_phys,fluxr_06,fluxr diagnostic 06 - GFS radiation,XXX
+gfs_phys,fluxr_07,fluxr diagnostic 07 - GFS radiation,XXX
+gfs_phys,fluxr_08,fluxr diagnostic 08 - GFS radiation,XXX
+gfs_phys,fluxr_09,fluxr diagnostic 09 - GFS radiation,XXX
+gfs_phys,fluxr_10,fluxr diagnostic 10 - GFS radiation,XXX
+gfs_phys,fluxr_11,fluxr diagnostic 11 - GFS radiation,XXX
+gfs_phys,fluxr_12,fluxr diagnostic 12 - GFS radiation,XXX
+gfs_phys,fluxr_13,fluxr diagnostic 13 - GFS radiation,XXX
+gfs_phys,fluxr_14,fluxr diagnostic 14 - GFS radiation,XXX
+gfs_phys,fluxr_15,fluxr diagnostic 15 - GFS radiation,XXX
+gfs_phys,fluxr_16,fluxr diagnostic 16 - GFS radiation,XXX
+gfs_phys,fluxr_17,fluxr diagnostic 17 - GFS radiation,XXX
+gfs_phys,fluxr_18,fluxr diagnostic 18 - GFS radiation,XXX
+gfs_phys,fluxr_19,fluxr diagnostic 19 - GFS radiation,XXX
+gfs_phys,fluxr_20,fluxr diagnostic 20 - GFS radiation,XXX
+gfs_phys,fluxr_21,fluxr diagnostic 21 - GFS radiation,XXX
+gfs_phys,fluxr_22,fluxr diagnostic 22 - GFS radiation,XXX
+gfs_phys,fluxr_23,fluxr diagnostic 23 - GFS radiation,XXX
+gfs_phys,fluxr_24,fluxr diagnostic 24 - GFS radiation,XXX
+gfs_phys,fluxr_25,fluxr diagnostic 25 - GFS radiation,XXX
+gfs_phys,fluxr_26,fluxr diagnostic 26 - GFS radiation,XXX
+gfs_phys,fluxr_27,fluxr diagnostic 27 - GFS radiation,XXX
+gfs_phys,fluxr_28,fluxr diagnostic 28 - GFS radiation,XXX
+gfs_phys,fluxr_29,fluxr diagnostic 29 - GFS radiation,XXX
+gfs_phys,fluxr_30,fluxr diagnostic 30 - GFS radiation,XXX
+gfs_phys,fluxr_31,fluxr diagnostic 31 - GFS radiation,XXX
+gfs_phys,fluxr_32,fluxr diagnostic 32 - GFS radiation,XXX
+gfs_phys,fluxr_33,fluxr diagnostic 33 - GFS radiation,XXX
+gfs_phys,fluxr_34,fluxr diagnostic 34 - GFS radiation,XXX
+gfs_phys,fluxr_35,fluxr diagnostic 35 - GFS radiation,XXX
+gfs_phys,fluxr_36,fluxr diagnostic 36 - GFS radiation,XXX
+gfs_phys,fluxr_37,fluxr diagnostic 37 - GFS radiation,XXX
+gfs_phys,fluxr_38,fluxr diagnostic 38 - GFS radiation,XXX
+gfs_phys,fluxr_39,fluxr diagnostic 39 - GFS radiation,XXX
+gfs_phys,cloud_01,cloud diagnostic 01 - GFS radiation,XXX
+gfs_phys,cloud_02,cloud diagnostic 02 - GFS radiation,XXX
+gfs_phys,cloud_03,cloud diagnostic 03 - GFS radiation,XXX
+gfs_phys,cloud_04,cloud diagnostic 04 - GFS radiation,XXX
+gfs_phys,cloud_05,cloud diagnostic 05 - GFS radiation,XXX
+gfs_phys,cloud_06,cloud diagnostic 06 - GFS radiation,XXX
+gfs_phys,cloud_07,cloud diagnostic 07 - GFS radiation,XXX
+gfs_phys,cloud_08,cloud diagnostic 08 - GFS radiation,XXX
+gfs_phys,sw_upfxc,total sky upward sw flux at toa - GFS radiation,w/m**2
+gfs_phys,sw_dnfxc,total sky downward sw flux at toa - GFS radiation,w/m**2
+gfs_phys,sw_upfx0,clear sky upward sw flux at toa - GFS radiation,w/m**2
+gfs_phys,lw_upfxc,total sky upward lw flux at toa - GFS radiation,w/m**2
+gfs_phys,lw_upfx0,clear sky upward lw flux at toa - GFS radiation,w/m**2
+gfs_phys,ssrun_acc,surface storm water runoff - GFS lsm,kg/m**2
+gfs_phys,evbs_ave,Direct Evaporation from Bare Soil - GFS lsm,W/m**2
+gfs_phys,evcw_ave,Canopy water evaporation - GFS lsm,W/m**2
+gfs_phys,snohf_ave,Snow Phase Change Heat Flux - GFS lsm,W/m**2
+gfs_phys,trans_ave,transpiration - GFS lsm,W/m**2
+gfs_phys,sbsno_ave,Sublimation (evaporation from snow) - GFS lsm,W/m**2
+gfs_phys,snowc_ave,snow cover - GFS lsm,%
+gfs_phys,soilm,total column soil moisture content [kg/m**2],kg/m**2
+gfs_phys,tmpmin2m,min temperature at 2m height,K
+gfs_phys,tmpmax2m,max temperature at 2m height,K
+gfs_phys,dusfc,surface zonal momentum flux [N/m**2],N/m**2
+gfs_phys,dvsfc,surface meridional momentum flux,N/m**2
+gfs_phys,shtfl_ave,surface sensible heat flux,w/m**2
+gfs_phys,lhtfl_ave,surface latent heat flux [W/m**2],w/m**2
+gfs_phys,totprcp_ave,surface precipitation rate [kg/m**2/s],kg/m**2/s
+gfs_phys,totprcpb_ave,bucket surface precipitation rate,kg/m**2/s
+gfs_phys,gflux_ave,surface ground heat flux [W/m**2],W/m**2
+gfs_phys,DSWRF,Interval-averaged zenith-angle-adjusted downward shortwave flux at the surface,w/m**2
+gfs_phys,USWRF,Interval-averaged zenith-angle-adjusted upward shortwave flux at the surface,w/m**2
+gfs_phys,DLWRF,Interval-averaged surface-temperature-adjusted downward longwave flux at the surface,w/m**2
+gfs_phys,ULWRF,Interval-averaged surface-temperature-adjusted upward longwave flux at the surface,w/m**2
+gfs_phys,sunsd_acc,sunshine duration time,s
+gfs_phys,watr_acc,total water runoff,kg/m**2
+gfs_phys,pevpr_ave,averaged potential evaporation rate,W/M**2
+gfs_phys,cwork_ave,cloud work function (valid only with sas),J/kg
+gfs_phys,u-gwd_ave,surface zonal gravity wave stress,N/m**2
+gfs_phys,v-gwd_ave,surface meridional gravity wave stress,N/m**2
+gfs_phys,psmean,surface pressure,kPa
+gfs_phys,cnvprcp_ave,averaged surface convective precipitation rate,kg/m**2/s
+gfs_phys,cnvprcpb_ave,averaged bucket surface convective precipitation rate,kg/m**2/s
+gfs_phys,cnvprcp,surface convective precipitation rate,kg/m**2/s
+gfs_phys,spfhmin2m,minimum specific humidity at 2m height,kg/kg
+gfs_phys,spfhmax2m,maximum specific humidity at 2m height,kg/kg
+gfs_phys,u10mmax,maximum (magnitude) u-wind,m/s
+gfs_phys,v10mmax,maximum (magnitude) v-wind,m/s
+gfs_phys,wind10mmax,maximum wind speed,m/s
+gfs_phys,rain,total rain at this time step,XXX
+gfs_phys,rainc,convective rain at this time step,XXX
+gfs_phys,ice,ice fall at this time step,XXX
+gfs_phys,snow,snow fall at this time step,XXX
+gfs_phys,graupel,graupel fall at this time step,XXX
+gfs_phys,totice_ave,surface ice precipitation rate,kg/m**2/s
+gfs_phys,toticeb_ave,bucket surface ice precipitation rate,kg/m**2/s
+gfs_phys,totsnw_ave,surface snow precipitation rate,kg/m**2/s
+gfs_phys,totsnwb_ave,bucket surface snow precipitation rate,kg/m**2/s
+gfs_phys,totgrp_ave,surface graupel precipitation rate,kg/m**2/s
+gfs_phys,totgrpb_ave,bucket surface graupel precipitation rate,kg/m**2/s
+gfs_phys,u10m,10 meter u wind [m/s],m/s
+gfs_phys,v10m,10 meter v wind [m/s],m/s
+gfs_phys,hflx,surface temp flux,K*m/s
+gfs_phys,evap,surface moisture flux,m/s*kg/kg
+gfs_phys,dpt2m,2 meter dew point temperature [K],K
+gfs_phys,dpt2mmax,max 2 meter dew point temperature [K],K
+gfs_phys,hgt_hyblev1,layer 1 height,m
+gfs_phys,psurf,surface pressure [Pa],Pa
+gfs_phys,hpbl,surface planetary boundary layer height [m],m
+gfs_phys,hgamt,ysu counter-gradient heat flux factor,XXX
+gfs_phys,hfxpbl,ysu entrainment heat flux factor,XXX
+gfs_phys,xmb_shal,cloud base mass flux from mass-flux shal cnv,XXX
+gfs_phys,tfac_shal,Tadv/Tcnv factor from  mass-flux shal cnv,XXX
+gfs_phys,sigma_shal,updraft fractional area from mass-flux shal cnv,XXX
+gfs_phys,pwat,atmos column precipitable water [kg/m**2],kg/m**2
+gfs_phys,tmp_hyblev1,layer 1 temperature,K
+gfs_phys,spfh_hyblev1,layer 1 specific humidity,kg/kg
+gfs_phys,ugrd_hyblev1,layer 1 zonal wind,m/s
+gfs_phys,vgrd_hyblev1,layer 1 meridional wind,m/s
+gfs_phys,sfexc,Exchange Coefficient,kg/m2/s
+gfs_phys,acond,Aerodynamic conductance,m/s
+gfs_phys,DLWRFI,Instantaneous surface-temperature-adjusted downward longwave flux at the surface,w/m**2
+gfs_phys,ULWRFI,Instantaneous surface-temperature-adjusted upward longwave flux at the surface,w/m**2
+gfs_phys,DSWRFI,Instantaneous zenith-angle-adjusted downward shortwave flux at the surface,w/m**2
+gfs_phys,USWRFI,Instantaneous zenith-angle-adjusted upward shortwave flux at the surface,w/m**2
+gfs_phys,dusfci,instantaneous u component of surface stress,XXX
+gfs_phys,dvsfci,instantaneous v component of surface stress,XXX
+gfs_phys,shtfl,instantaneous surface sensible heat flux,XXX
+gfs_phys,lhtfl,instantaneous surface latent heat flux,W/m**2
+gfs_phys,gfluxi,instantaneous surface ground heat flux,W/m**2
+gfs_phys,pevpr,instantaneous surface potential evaporation,W/M**2
+gfs_phys,wilt,wiltimg point (volumetric),Proportion
+gfs_phys,fldcp,Field Capacity (volumetric),fraction
+gfs_phys,wet1,normalized soil wetness,XXX
+gfs_phys,cpofp,Percent frozen precipitation,%
+gfs_phys,dt3dt_1,temperature change due to physics 1,XXX
+gfs_phys,dt3dt_2,temperature change due to physics 2,XXX
+gfs_phys,dt3dt_3,temperature change due to physics 3,XXX
+gfs_phys,dt3dt_4,temperature change due to physics 4,XXX
+gfs_phys,dt3dt_5,temperature change due to physics 5,XXX
+gfs_phys,dt3dt_6,temperature change due to physics 6,XXX
+gfs_phys,dq3dt_1,moisture change due to physics 1,XXX
+gfs_phys,dq3dt_2,moisture change due to physics 2,XXX
+gfs_phys,dq3dt_3,moisture change due to physics 3,XXX
+gfs_phys,dq3dt_4,moisture change due to physics 4,XXX
+gfs_phys,dq3dt_5,moisture change due to physics 5,XXX
+gfs_phys,dq3dt_6,moisture change due to physics 6,XXX
+gfs_phys,dq3dt_7,moisture change due to physics 7,XXX
+gfs_phys,dq3dt_8,moisture change due to physics 8,XXX
+gfs_phys,dq3dt_9,moisture change due to physics 9,XXX
+gfs_phys,dq3dt_*,moisture change due to physics *,XXX
+gfs_phys,dq3dt_*,moisture change due to physics *,XXX
+gfs_phys,du3dt_1,u momentum change due to physics 1,XXX
+gfs_phys,du3dt_2,u momentum change due to physics 2,XXX
+gfs_phys,du3dt_3,u momentum change due to physics 3,XXX
+gfs_phys,du3dt_4,u momentum change due to physics 4,XXX
+gfs_phys,dv3dt_1,v momentum change due to physics 1,XXX
+gfs_phys,dv3dt_2,v momentum change due to physics 2,XXX
+gfs_phys,dv3dt_3,v momentum change due to physics 3,XXX
+gfs_phys,dv3dt_4,v momentum change due to physics 4,XXX
+gfs_phys,dkt_pbl,instantaneous heat diffusion coefficient,m**2/s
+gfs_phys,flux_cg,instantaneous counter-gradient heat flux in ysu,K*m/s
+gfs_phys,flux_en,instantaneous entrainment heat flux in ysu,K*m/s
+gfs_phys,elm_pbl,mixing length from tke-edmf,m
+gfs_phys,wu2_shal,updraft velocity square from shallow convection,m**2/s**2
+gfs_phys,eta_shal,normalized mass flux from shallow convection,non-dim
+gfs_phys,diss_est,dissipation rate for skeb,none
+gfs_phys,skebu_wts,perturbation velocity,m/s
+gfs_phys,skebv_wts,perturbation velocity,m/s
+gfs_phys,zmtnblck,level of dividing streamline,m/s
+gfs_phys,sppt_wts,perturbation velocity,m/s
+gfs_phys,shum_wts,perturbation velocity,m/s
+gfs_sfc,alnsf,mean nir albedo with strong cosz dependency,%
+gfs_sfc,alnwf,mean nir albedo with weak cosz dependency,%
+gfs_sfc,alvsf,mean vis albedo with strong cosz dependency,%
+gfs_sfc,alvwf,mean vis albedo with weak cosz dependency,%
+gfs_sfc,canopy,canopy water (cnwat in gfs data),%
+gfs_sfc,f10m,10-meter wind speed divided by lowest model wind speed,N/A
+gfs_sfc,facsf,fractional coverage with strong cosz dependency,XXX
+gfs_sfc,facwf,fractional coverage with weak cosz dependency,XXX
+gfs_sfc,ffhh,fh parameter from PBL scheme,XXX
+gfs_sfc,ffmm,fm parameter from PBL scheme,XXX
+gfs_sfc,uustar,uustar surface frictional wind,XXX
+gfs_sfc,shflx,shflx from coupler,XXX
+gfs_sfc,lhflx,lhflx from coupler,XXX
+gfs_sfc,slope,surface slope type,XXX
+gfs_sfc,fice,surface ice concentration (ice=1; no ice=0) [fraction],fraction
+gfs_sfc,hice,sea ice thickness (icetk in gfs_data),XXX
+gfs_sfc,snoalb,maximum snow albedo in fraction (salbd?? in gfs data),XXX
+gfs_sfc,shdmax,maximum fractional coverage of green vegetation,XXX
+gfs_sfc,shdmin,minimum fractional coverage of green vegetation,XXX
+gfs_sfc,snowd,surface snow depth [m],m
+gfs_sfc,snow_cover,snow cover area fraction,fraction
+gfs_sfc,soil_color,soil color category,none
+gfs_sfc,crain,instantaneous categorical rain,number
+gfs_sfc,stype,soil type in integer 1-9,N/A
+gfs_sfc,q2m,2m specific humidity [kg/kg],kg/kg
+gfs_sfc,t2m,2m temperature [K],K
+gfs_sfc,tsfc,surface temperature [K],K
+gfs_sfc,qsfc,surface specific humidity [kg/kg],kg/kg
+gfs_sfc,tg3,deep soil temperature,K
+gfs_sfc,tisfc,surface temperature over ice fraction,K
+gfs_sfc,tprcp,total precipitation,kg/m**2
+gfs_sfc,vtype,vegetation type in integer 1-13,number
+gfs_sfc,weasd,surface snow water equivalent [kg/m**2],kg/m**2
+gfs_sfc,HGTsfc,surface geopotential height [gpm],gpm
+gfs_sfc,SLMSKsfc,sea-land-ice mask (0-sea, 1-land
+gfs_sfc,ZORLsfc,surface roughness [m],m
+gfs_sfc,ZTRLsfc,surface roughness for heat [m],m
+gfs_sfc,VFRACsfc,vegetation fraction,N/A
+gfs_sfc,slc_1,liquid soil mositure at layer-1,xxx
+gfs_sfc,slc_2,liquid soil mositure at layer-2,xxx
+gfs_sfc,slc_3,liquid soil mositure at layer-3,xxx
+gfs_sfc,slc_4,liquid soil mositure at layer-4,xxx
+gfs_sfc,SOILW1,volumetric soil moisture 0-10cm [fraction],fraction
+gfs_sfc,SOILW2,volumetric soil moisture 10-40cm [fraction],fraction
+gfs_sfc,SOILW3,volumetric soil moisture 40-100cm [fraction],fraction
+gfs_sfc,SOILW4,volumetric soil moisture 100-200cm [fraction],fraction
+gfs_sfc,SOILT1,soil temperature 0-10cm [K],K
+gfs_sfc,SOILT2,soil temperature 10-40cm [K],K
+gfs_sfc,SOILT3,soil temperature 40-100cm [K],K
+gfs_sfc,SOILT4,soil temperature 100-200cm [K],K
+gfs_phys,netflxsfc,net surface heat flux [W/m**2],W/m**2
+gfs_phys,qflux_restore,restoring flux,W/m**2
+gfs_phys,tclim_iano,climatological SST plus initial anomaly,degree C
+gfs_phys,MLD,Interval-average ocean mixed layer depth,m
+gfs_phys,ps_dt,surface pressure tendency,Pa/3hr
+gfs_phys,tendency_of_air_temperature_due_to_longwave_heating,temperature tendency due to longwave radiation,K/s
+gfs_phys,tendency_of_air_temperature_due_to_shortwave_heating,temperature tendency due to shortwave radiation,K/s
+gfs_phys,tendency_of_air_temperature_due_to_turbulence,temperature tendency due to turbulence scheme,K/s
+gfs_phys,tendency_of_air_temperature_due_to_deep_convection,temperature tendency due to deep convection,K/s
+gfs_phys,tendency_of_air_temperature_due_to_shallow_convection,temperature tendency due to shallow convection,K/s
+gfs_phys,tendency_of_air_temperature_due_to_microphysics,temperature tendency due to micro-physics,K/s
+gfs_phys,tendency_of_air_temperature_due_to_dissipation_of_gravity_waves,temperature tendency due to gravity wave drag,K/s
+gfs_phys,tendency_of_air_temperature_due_to_longwave_heating_assuming_clear_sky,temperature tendency due to clear sky longwave radiation,K/s
+gfs_phys,tendency_of_air_temperature_due_to_shortwave_heating_assuming_clear_sky,temperature tendency due to clear sky shortwave radiation,K/s
+gfs_phys,vertically_integrated_tendency_of_air_temperature_due_to_longwave_heating,vertically integrated temperature tendency due to longwave radiation,W/m**2
+gfs_phys,vertically_integrated_tendency_of_air_temperature_due_to_shortwave_heating,vertically integrated temperature tendency due to shortwave radiation,W/m**2
+gfs_phys,vertically_integrated_tendency_of_air_temperature_due_to_turbulence,vertically integrated temperature tendency due to turbulence scheme,W/m**2
+gfs_phys,vertically_integrated_tendency_of_air_temperature_due_to_deep_convection,vertically integrated temperature tendency due to deep convection,W/m**2

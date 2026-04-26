@@ -1,0 +1,6 @@
+# Ignore test_data
+tests/test_data/
+*.nc
+
+
+
