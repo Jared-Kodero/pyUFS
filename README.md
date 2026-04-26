@@ -186,11 +186,22 @@ CONUS-specific model with 3km resolution, ideal for high-resolution runs.
 
 Because `chgres_cube` handles the complex generation of the FV3 cubed-sphere geometries, you **must** generate the base tiles using GFS first. Once the structure is generated, you can swap the underlying data:
 
-1. **Generate Base Tiles:** Run the standard pre-processing step using the default GFS data to allow `chgres_cube` to create the grid structure and output the base `.nc` tile files.
+1. **Generate Base Tiles:** Run the standard pre-processing step using the default GFS data to allow `chgres_cube` to create the grid structure and output the base `.nc` tile files. You can do this by setting 
+```yaml
+ic_gen: true 
+ic_only: true
+```
+in the run_config.yaml
+
 2. **Regrid and Replace:** Pause or intercept the pipeline before the main model execution. Use a Python regridding library like `xesmf` (which pairs well with `xarray` and `numpy` for data manipulation) to regrid your ERA5 data onto the newly created FV3 tile geometries.
 3. **Overwrite Variables:** Replace the existing GFS data variables in the `.nc` tile files with your regridded ERA5 data. 
 
-
+4. Once all the modifications are done you can update the run_config.yaml by setting
+```yaml
+ic_gen: false
+ic_only: false
+```
+Then continue with the run as normal by submitting as ussual.
 
 **Important Note on Variables:** Ensure all required SHiELD variables are present. Some specialized variables needed by the FV3 core may not exist natively in the ERA5 dataset and will need to be manually calculated from available ERA5 fields before you write them into the tile files.  Open tile sfc and atm tiles files and make sure your atm amd sfc ERA5 ds has all the required vars and levels are the same
 

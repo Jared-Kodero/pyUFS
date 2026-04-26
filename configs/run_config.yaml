@@ -40,7 +40,7 @@ description: #"example_run"
 debug: false
 
 # if false, skip grid and IC generation (assumes existing files)
-ic_gen: true  # true → requires valid grid and IC files, false → requires valid IC source path or existing IC files in the expected location
+ic_gen: true  # false → requires valid IC source path or existing IC files in the expected location
 ic_only: false  # if true, only generate ICs snd Grid files, then exit (useful for testing or when only IC generation is needed)
 ic_source_path: null  # Path to existing case for sourcing ICs (REQUIRED if ic_gen = false)
 
