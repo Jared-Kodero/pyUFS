@@ -17,7 +17,7 @@ For deep dives into specific components, refer to the official documentation:
 * **UFS Utilities:** [https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html](https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html)
 * **UFS Weather Model:** [https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html](https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html)
 
-* **Flexible Modeling System:** [https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html](https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html)s
+* **Flexible Modeling System:** [https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html](https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html)
 
 
 ## System & Workflow Architecture
