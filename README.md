@@ -22,7 +22,7 @@ For deep dives into specific components, refer to the official documentation:
 
 ## System & Workflow Architecture
 
-Execution on Oscar is controlled by a set of custom Python scripts located in `/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py`. These scripts reproduce the functionality of the official `UFS_UTILS` workflow system (used on NOAA and GFDL HPC Systems), bypassing the need for original bash scripts that are difficult to port due to strict software requirements. 
+Execution on Oscar is controlled by a set of custom Python scripts located in `<path_to_dir>/gfdl_shield/ufs_py`. These scripts reproduce the functionality of the official `UFS_UTILS` workflow system (used on NOAA and GFDL HPC Systems), bypassing the need for original bash scripts that are difficult to port due to strict software requirements. 
 
 ### The Runtime Pipeline
 The pipeline proceeds through the following sequence:
@@ -35,7 +35,7 @@ The pipeline proceeds through the following sequence:
 7. Output synchronization
 
 ### Shared Environment Tree
-The shared SHiELD installation is located at: `/oscar/data/deeps/shared/GFDL_SHiELD`
+The shared SHiELD installation is located at: `<path_to_dir>/gfdl_shield`
 
 ```text
 ufs_py/
@@ -115,7 +115,7 @@ The `fix` directory contains essential pre-configured data for your runs, includ
 </small>
 
 **Important:** You **do not** need to manually download these files from the NOAA S3 bucket. To save time and storage space, they have already been downloaded and are available globally on the Oscar system at: 
-`/oscar/data/deeps/shared/GFDL_SHiELD/fix`
+`<path_to_dir>/gfdl_shield/fix`
 
 If missing download from https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
 
@@ -172,7 +172,7 @@ Because `chgres_cube` handles the complex generation of the FV3 cubed-sphere geo
 
 
 
-see `/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/py_scripts/era5_to_fv3.py` for example code
+see `<path_to_dir>/gfdl_shield/ufs_py/py_scripts/era5_to_fv3.py` for example code
 
 ### After IC generation has finished the workdir will look like this
 - FIXED
@@ -201,7 +201,7 @@ If you plan to use nests, here are standard configurations to guide your `run_co
 ### The `run_config.yml` File
 Each case directory must contain a `run_config.yml` file. Required parameters include: `init_datetime`, `run_nhours`, `res`, and `gtype`.
 
-see `/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/configs/run_config.yml` for exmaple
+see `<path_to_dir>/gfdl_shield/ufs_py/configs/run_config.yml` for exmaple
 
 ### Example Global run_config.yml
 
@@ -318,7 +318,7 @@ The following cell will execute a full end-to-end setup for a minimal run. It wi
 3. Create the `submit.sh` Slurm script.
 4. Submit the job.
 
-see `/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/configs/run_config.yml` for exmaple
+see `<path_to_dir>/gfdl_shield/ufs_py/configs/run_config.yml` for exmaple
 
 
 ### Create Configuration
@@ -351,10 +351,10 @@ To specify custom output frequencies and variables, you must provide a modified 
 
 **Copy the default table:**
    ```bash
-   cp /oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/configs/diag_table $CASE_DIR/
+   cp "<path_to_dir>/gfdl_shield/ufs_py/configs/diag_table "$CASE_DIR/
    ```
 **Identify variables of intrest and update table**
-Refer to the available fields in: `/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/configs/diag_field.csv`
+Refer to the available fields in: `<path_to_dir>/gfdl_shield/ufs_py/configs/diag_field.csv`
 
 
 
@@ -365,7 +365,7 @@ Refer to the available fields in: `/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/c
 #!/bin/bash -l
 #submit.sh
 
-/oscar/data/deeps/shared/GFDL_SHiELD/ufs_py/case_submit.sh 
+"<path_to_dir>/gfdl_shield/ufs_py/case_submit.sh "
 
 
 # 4. Make executable and submit
