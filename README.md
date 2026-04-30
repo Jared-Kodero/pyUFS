@@ -252,11 +252,12 @@ debug: false
 chgres_config: null
 nml: null
 tileX_nml: null
+shield_exe: null
 sbatch:
   exclusive: false # Run with exclusive node access (true/false)
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
-  time: 12:00:00 # Maximum wall time (HH:MM:SS)
+  time: 12 # Maximum wall time (HH)
   mem: 480 # Total memory (GB)
   nnodes: 3 # Number of nodes
   ntasks: 48 # Total number of tasks (e.g., MPI ranks)
@@ -290,7 +291,7 @@ sbatch:
   exclusive: false # Run with exclusive node access (true/false)
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
-  time: 12:00:00 # Maximum wall time (HH:MM:SS)
+  time: 12 # Maximum wall time (HH)
   mem: 480 # Total memory (GB)
   nnodes: 3 # Number of nodes
   ntasks: 48 # Total number of tasks (e.g., MPI ranks)
@@ -314,14 +315,10 @@ cd SHiELD_build
 git submodule update --init mkmf
 ```
 **The `gettid` patch:** On systems with `glibc > 2.30` (like Oscar), a conflict occurs because `gettid` is already defined in glibc. 
-You must modify line 51 in `SHiELD_SRC/FMS/affinity/affinity.c` to remove the duplicate `static` declaration
+You must modify  `SHiELD_SRC/FMS/affinity/affinity.c` to remove the duplicate `static` declaration around line 45 - 55
 
-```bash
-# 3. Patch the gettid conflict in FMS
-# Replaces 'static pid_t gettid(void)' with 'pid_t gettid(void)' on line 51
-sed -i '51s/static pid_t gettid(void)/pid_t gettid(void)/' ../SHiELD_SRC/FMS/affinity/affinity.c
+To patch the gettid conflict in FMS Replaces 'static pid_t gettid(void)' with 'pid_t gettid(void)' around line 45 - 55 
 
-```
 
 Do your scientific modifications on SHiELD_SRC
 
@@ -341,9 +338,15 @@ Compile
 ```bash
 ./Build/COMPILE 64bit gnu pic
 
-# The executable will be generated. Note its absolute path and export it, 
-export SHIELD_EXE=/path/to/compiled/bin
+
+
 ```
+The executable will be generated. Note its absolute path and set it in run_config.yaml 
+
+```yaml
+  shield_exe: /path/to/shield/exe/SHiELD_nh.prod.64bit.gnu.x
+```
+if `shield_exe` is not set in the run_config.yaml the container executable will be used!
 
 ###  Minimal Quick Start
 
@@ -367,11 +370,12 @@ gtype: uniform
 levels: 64
 continue_run: false
 archive_data: true
+shield_exe: /path/to/shield/exe/SHiELD_nh.prod.64bit.gnu.x
 sbatch:
   exclusive: false # Run with exclusive node access (true/false)
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
-  time: 12:00:00 # Maximum wall time (HH:MM:SS)
+  time: 12 # Maximum wall time (HH)
   mem: 480 # Total memory (GB)
   nnodes: 3 # Number of nodes
   ntasks: 48 # Total number of tasks (e.g., MPI ranks)

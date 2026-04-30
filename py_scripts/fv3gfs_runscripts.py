@@ -4,7 +4,7 @@ import os
 import yaml
 from fv3gfs_state import state
 
-log = logging.getLogger("UFS_UTILS")
+log = logging.getLogger("PREPROCESSING")
 
 
 def gen_shield_run_sh() -> None:

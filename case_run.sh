@@ -10,6 +10,8 @@ set -e
 
 module purge
 
+echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Starting Case"
+
 export WORK_DIR="$JOB_TMP/$CASE_PARENT_DIR/$CASE_NAME"
 export CASE_DIR="$CASE_ROOT/$CASE_PARENT_DIR/$CASE_NAME"
 export ARCHIVE_DIR="$ARCHIVE_ROOT/$CASE_PARENT_DIR/$CASE_NAME"
@@ -75,7 +77,7 @@ CURR_RUN_ID=$((PREV_RUN_ID + 1))
 
 if [ "$CURR_RUN_ID" -gt 1 ]; then
     if [ "$(cat "$EXIT_CODE_FILE")" -ne 0 ]; then
-        echo "ERROR: Previous run $PREV_RUN_ID failed. Aborting!"
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - ERROR - Previous run $PREV_RUN_ID failed. Aborting!."
         exit 1
     fi
 fi
@@ -99,7 +101,7 @@ $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
 if [ "$(cat "$EXIT_CODE_FILE")" -eq 0 ] && [ -f "$WORK_DIR/ic.only" ]; then
     $ON_SUCCESS && rm -f "$WORK_DIR/ic.only"
-    echo "INFO: IC and Grid generation complete"
+    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
     exit 0
 fi
 
@@ -147,7 +149,7 @@ if (( RESUBMIT_COUNT == 0 )) && (( EXIT_CODE == 0 )); then
         cp -rf "$CASE_OUT"/*.nc "$ARCHIVE_DIR/"
         rm -rf "$ARCHIVE_DIR"/atmos_static*
         rm -rf "$ARCHIVE_DIR"/grid_spec*
-        echo "INFO: Archived files to: $ARCHIVE_DIR"
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $ARCHIVE_DIR"
         rm -rf "$CASE_OUT"
     fi
 
@@ -175,7 +177,8 @@ if (( EXIT_CODE == 0 )); then
         elapsed=$(elapsed_hours "$CASE_RUN_START_TIME" "$(date +%s)")
     fi
 
-    echo "INFO: $msg in ${elapsed} hours."
+
+    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
 fi
 
 exit "$EXIT_CODE"

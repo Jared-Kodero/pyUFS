@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -11,8 +12,10 @@ import yaml
 from fv3gfs_ic_data import get_init_data, validate_hrrr_bounds
 from fv3gfs_runtime import get_launcher
 from fv3gfs_stage_data import stage_files
-from fv3gfs_state import FV3State, log, state
+from fv3gfs_state import FV3State, state
 from fv3gfs_utils import cp, env_setup, run_cmd
+
+log = logging.getLogger("PREPROCESSING")
 
 
 @dataclass

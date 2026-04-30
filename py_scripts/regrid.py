@@ -22,8 +22,7 @@ warnings.filterwarnings("ignore")
 load_state()
 logger(state.debug)
 
-
-log = logging.getLogger("FREGRID")
+log = logging.getLogger("REGRIDDING")
 
 
 def get_stream_handles() -> list[str]:

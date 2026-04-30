@@ -7,6 +7,7 @@ possible while using Python-native data handling and interpolation.
 from __future__ import annotations
 
 import inspect
+import logging
 import sys
 import warnings
 from dataclasses import dataclass
@@ -20,6 +21,8 @@ import xesmf as xe
 warnings.filterwarnings("ignore", message=".*F_CONTIGUOUS.*", module="xesmf.backend")
 
 _tiles_type: Literal["global", "nest"] = None
+
+log = logging.getLogger("REGRIDING")
 
 
 @dataclass

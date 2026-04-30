@@ -4,8 +4,9 @@ __MODULES__
 
 cd __RUNDIR__
 
-echo "INFO: Running GFDL SHiELD Model"
-echo "INFO: Start Time: $(date)"
+
+echo "$(date '+%Y-%m-%d %H:%M') - SHIELD - INFO - Starting Model Execution"
+
 start_time=$(date +%s)
 
 __LAUNCHER__ __TOTAL_PES__ __EXECUTABLE__ > __LOG_FILE__ 2>&1
@@ -13,13 +14,15 @@ exit_code=$?
 echo $exit_code > __EXIT_CODE_FILE__
 
 if [ "$exit_code" -ne 0 ]; then
-    echo "ERROR: Model execution failed with exit code $exit_code. See logs for details."
+    echo "$(date '+%Y-%m-%d %H:%M') - SHIELD - ERROR - Model execution failed, see logs!"
 else
-    echo "INFO: End Time: $(date)"
+    
+    echo "$(date '+%Y-%m-%d %H:%M') - SHIELD - INFO - Finished Model Execution"
+
     end_time=$(date +%s)
     elapsed_hours=$(awk -v start="$start_time" -v end="$end_time" \
         'BEGIN {printf "%.2f", (end - start)/3600}')
-    echo "INFO: Total model runtime: $elapsed_hours hours"
+    echo "$(date '+%Y-%m-%d %H:%M') - SHIELD - INFO - Total model runtime: $elapsed_hours hours"
 fi
 
 wait
