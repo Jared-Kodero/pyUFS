@@ -61,16 +61,16 @@ def load_state():
 
 
 def logger(debug=False):
-    LOG_FORMAT = "%(levelname)s: %(message)s"
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level = logging.DEBUG if debug else logging.INFO
 
     logging.basicConfig(
-        level=(logging.DEBUG if debug else logging.INFO),
-        format=LOG_FORMAT,
+        format=log_format,
+        datefmt="%Y-%m-%d %H:%M",
+        level=level,
         handlers=[logging.StreamHandler()],
+        force=True,
     )
-
-
-log = logging.getLogger("UFS_UTILS")
 
 
 env_vars = {
@@ -87,3 +87,5 @@ env_vars = {
 }
 
 state.update(env_vars)
+logger()
+log = logging.getLogger("PREPROCESSING")

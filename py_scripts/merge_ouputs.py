@@ -3,7 +3,7 @@ from pathlib import Path
 
 import xarray as xr
 
-log = logging.getLogger("merge_outputs")
+log = logging.getLogger("POSTPROCESSING")
 
 
 def stream_family(stream: str) -> tuple:

@@ -7,7 +7,7 @@ from pathlib import Path
 import xarray as xr
 from fv3gfs_paths import paths
 
-log = logging.getLogger("UFS_UTILS")
+log = logging.getLogger("PREPROCESSING")
 
 
 def get_newres(gridfile):

@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 from fv3gfs_paths import paths
 
-log = logging.getLogger("UFS_UTILS")
+log = logging.getLogger("PREPROCESSING")
 
 
 def run_cmd(
