@@ -10,7 +10,7 @@ set -e
 
 module purge
 
-echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Starting Case"
+
 
 export WORK_DIR="$JOB_TMP/$CASE_PARENT_DIR/$CASE_NAME"
 export CASE_DIR="$CASE_ROOT/$CASE_PARENT_DIR/$CASE_NAME"
