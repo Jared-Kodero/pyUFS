@@ -7,13 +7,13 @@ continue_run: true
 
 init_datetime: "2025092006Z"
 run_nhours: 3
-shield_exe: "/users/jkodero/research/models/SHiELD/data/bins/shield/SHiELD_nh.prod.64bit.gnu.x"
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
 
 sbatch:
   exclusive: false
   constraint: false
   cpus_per_task: 1
-  time: "1:00:00"
+  time: 1
   mem: 100
   nnodes: 1
   ntasks: 36

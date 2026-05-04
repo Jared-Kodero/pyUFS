@@ -1,0 +1,80 @@
+C96.R4N2.R2N1.1SIGMA_WET
+2025 07 12 06 0 0
+
+"HIST/grid_spec",              -1,  "hours",   1, "days",  "time"
+"HIST/atmos_static",           -1,  "hours",   1, "days",  "time"
+"HIST/fv3_hist",           1,  "hours",   1, "days",  "time"
+
+
+
+ "dynamics", "grid_lon",    "grid_lon",   "HIST/grid_spec", "all", .false., "none", 2
+ "dynamics", "grid_lat",    "grid_lat",   "HIST/grid_spec", "all", .false., "none", 2
+ "dynamics", "grid_lont",   "grid_lont",  "HIST/grid_spec", "all", .false., "none", 2
+ "dynamics", "grid_latt",   "grid_latt",  "HIST/grid_spec", "all", .false., "none", 2
+ "dynamics", "area",        "area",  "HIST/grid_spec", "all", .false., "none", 2
+
+ "dynamics", "pk",    "pk",    "HIST/atmos_static", "all", .false., "none", 2
+ "dynamics", "bk",    "bk",    "HIST/atmos_static", "all", .false., "none", 2
+ "dynamics", "hyam",  "hyam",  "HIST/atmos_static", "all", .false., "none", 2
+ "dynamics", "hybm",  "hybm",  "HIST/atmos_static", "all", .false., "none", 2
+ "dynamics", "zsurf", "HGTsfc","HIST/atmos_static", "all", .false., "none", 2
+
+ "dynamics", "ts",   "ts",   "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "ps",   "ps",   "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "slp",  "slp",  "HIST/fv3_hist", "all", .false., "none", 2
+
+"gfs_sfc", "SLMSKsfc", "slmsk", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_sfc",  "t2m",  "t2m",  "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_sfc",  "q2m",  "q2m",  "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "dpt2m","dpt2m","HIST/fv3_hist", "all", .false., "none", 2
+
+
+ "gfs_sfc", "SOILW1", "soilw1", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_sfc", "SOILW2", "soilw2", "HIST/fv3_hist", "all", .false., "none", 2
+
+
+ "gfs_sfc", "SOILT1", "soilt1", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_sfc", "SOILT2", "soilt2", "HIST/fv3_hist", "all", .false., "none", 2
+
+
+ "gfs_phys", "soilm", "soilm", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_phys", "lhtfl_ave", "lhtfl", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "shtfl_ave", "shtfl", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_phys", "hpbl", "hpbl", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_phys", "u10m", "u10m", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "v10m", "v10m", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "dynamics", "shear06", "shear06", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_phys", "pwat", "pw", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "dynamics", "cape", "cape", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "cin", "cin", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "max_reflectivity", "max_refl", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_phys", "totprcpb_ave", "pr", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "cnvprcpb_ave", "prc", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "dynamics", "t_plev", "t", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "u_plev", "u", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "v_plev", "v", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "dynamics", "dp_plev", "dp", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "q_plev", "q", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "rh_plev", "rh", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "dynamics", "omg_plev", "w", "HIST/fv3_hist", "all", .false., "none", 2
+ "dynamics", "h_plev", "z", "HIST/fv3_hist", "all", .false., "none", 2
+
+ "gfs_phys", "DSWRFtoa", "dswrftoa", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "USWRFtoa", "uswrftoa", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "ULWRFtoa", "ulwrftoa", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "ULWRFsfc", "ulwrfsfc", "HIST/fv3_hist", "all", .false., "none", 2
+ "gfs_phys", "DLWRFsfc", "dlwrfsfc", "HIST/fv3_hist", "all", .false., "none", 2
+
+
+

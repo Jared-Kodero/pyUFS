@@ -47,11 +47,12 @@ def init_driver():
         # Generate ICs
         run_chgres_cube()
         ensemble_config()
-    log.info(f"Diag files staged at: {state.home}")
-    log.info(f"IC files staged at: {state.input}")
-    log.info(f"Fix files staged at: {state.fixed}")
-    log.info(f"Grid files staged at: {state.grid}")
-    log.info(f"Mosaic files staged at: {state.grid}")
+
+    log.info(f"Staged diag files: {state.home}")
+    log.info(f"Staged grid files: {state.grid}")
+    log.info(f"Staged ic files: {state.input}")
+    log.info(f"Staged fixed files: {state.fixed}")
+    log.info(f"Staged mosaic files: {state.grid}")
 
     if state.ic_only:
         ic_only()

@@ -8,9 +8,9 @@ log = logging.getLogger("POSTPROCESSING")
 
 def stream_family(stream: str) -> tuple:
     stream_file = str(Path(stream).name)
-    restart_id = stream_file.split("_r")[-1]
-    fam = stream_file.replace(f"_r{restart_id}", "")
-    return fam, int(restart_id)
+
+    fam = stream_file.split(".")[0]
+    return fam
 
 
 def get_group_name(p: Path) -> str | None:
@@ -28,7 +28,7 @@ def merge_outputs(
 ) -> None:
 
     for stream in streams:
-        handle, _ = stream_family(stream)
+        handle = stream_family(stream)
 
         # include ALL files (not just tile*)
         candidates = list(Path(output_dir).glob(f"{handle}*.nc"))
