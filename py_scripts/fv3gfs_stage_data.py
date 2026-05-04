@@ -194,11 +194,13 @@ def update_table_files():
     cp(field_file, field_table_path)
 
     with open(diag_table_path) as f:
-        lines = [i for i in f if not i.lstrip().startswith("#")]
+        lines = f.readlines()
+        lines = [line for line in lines if not line.strip().startswith("#")]
 
-    lines = [i.replace("XXX", f"{restart_no:03d}") for i in lines]
-    lines[0] = f"{state.description}\n"
-    lines[1] = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
-
+    dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
+    desc_str = f"{state.description}\n"
+    lines = [desc_str, dt_str] + [
+        line.replace("XX", f"{restart_no:02d}") for line in lines
+    ]
     with open(diag_table_path, "w") as f:
         f.writelines(lines)

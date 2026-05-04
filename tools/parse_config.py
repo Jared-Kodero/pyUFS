@@ -11,22 +11,16 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:
-    print(
-        "Error: PyYAML is not installed in the current environment\n",
-        "Shield configuration requires PyYAML to parse the YAML configuration files",
-    )
-    sys.exit(1)
+    print("ERROR: PyYAML is not installed in the current Python environment")
+    sys.exit(0)
 
 script_dir = Path(__file__).resolve()
 machine_cfg = script_dir.parent.parent / "configs" / "machine_config.yaml"
 user_sbatch_file = Path.cwd() / "run_config.yaml"
 
 if not user_sbatch_file.exists():
-    print(
-        f" Error: File not found: {user_sbatch_file}\n",
-        "Please create a run_config.yaml file in the current directory.",
-    )
-    sys.exit(1)
+    print(f"ERROR: File not found: {user_sbatch_file}")
+    sys.exit(0)
 
 
 def read_yaml_as_file(file_path, line_no):
@@ -44,15 +38,15 @@ def read_yaml(file_path):
             mark = e.problem_mark
             v, n = read_yaml_as_file(file_path, mark.line)
             print(
-                " Error in run_config.yaml\n",
+                "ERROR: Error in run_config.yaml\n",
                 f"File path: {file_path}\n",
                 f"Line: {mark.line},  Column: {mark.column}, {e.problem}\n",
                 f"\t-> {v}\n",
                 f"\t   {'^' * n}",
             )
         else:
-            print(f"Error: Invalid YAML file: {file_path}")
-        sys.exit(1)
+            print(f"ERROR: Invalid YAML file: {file_path}")
+        sys.exit(0)
     return data
 
 
@@ -126,16 +120,16 @@ def get_directories():
         "archive_root",
     }:
         if k not in dirs:
-            print(f" Missing `directories` configuration: {k} in {machine_cfg}")
-            sys.exit(1)
+            print(f"ERROR: Missing `directories` configuration: {k} in {machine_cfg}")
+            sys.exit(0)
 
     for key, value in dirs.items():
         dirs[key] = str(Path(os.path.expandvars(value)))
         try:
             Path(dirs[key]).mkdir(parents=True, exist_ok=True)
         except Exception:
-            print(f"Error creating directory {dirs[key]}")
-            sys.exit(1)
+            print(f"ERROR: Failed to create directory {dirs[key]}")
+            sys.exit(0)
 
     directories = [
         f"export JOB_TMP={dirs['jobtmp']}",
@@ -161,8 +155,8 @@ def get_containers():
         "container_bindpath",
     }:
         if k not in containers:
-            print(f" Missing `containers` configuration: {k} in {machine_cfg}")
-            sys.exit(1)
+            print(f"ERROR: Missing `containers` configuration: {k} in {machine_cfg}")
+            sys.exit(0)
 
     for key, value in containers.items():
         if key == "container_bindpath":

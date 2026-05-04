@@ -1,11 +1,8 @@
-# Header
-DESCRIPTION
-DATETIME
 
 # Stream Handles
 "HIST/grid_spec",              -1,  "hours",   1, "days",  "time"
 "HIST/atmos_static",           -1,  "hours",   1, "days",  "time"
-"HIST/fv3_hist_rXXX",           1,  "hours",   1, "days",  "time"
+"HIST/fv3_hist.XX",           1,  "hours",   1, "days",  "time"
 
 
 # "module_name", "field_name", "output_name", "stream_handle", "time_sampling", "reduction_method", "regional_section", packing
@@ -25,78 +22,78 @@ DATETIME
  "dynamics", "zsurf", "HGTsfc","HIST/atmos_static", "all", .false., "none", 2
 
 # Surface thermodynamics
- "dynamics", "ts",   "ts",   "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "ps",   "ps",   "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "slp",  "slp",  "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "dynamics", "ts",   "ts",   "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "ps",   "ps",   "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "slp",  "slp",  "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Surface mask
-"gfs_sfc", "SLMSKsfc", "slmsk", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+"gfs_sfc", "SLMSKsfc", "slmsk", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # 2 m diagnostics
- "gfs_sfc",  "t2m",  "t2m",  "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_sfc",  "q2m",  "q2m",  "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "dpt2m","dpt2m","HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_sfc",  "t2m",  "t2m",  "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_sfc",  "q2m",  "q2m",  "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "dpt2m","dpt2m","HIST/fv3_hist.XX", "all", .false., "none", 2
 
 
 # Soil moisture
- "gfs_sfc", "SOILW1", "soilw1", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_sfc", "SOILW2", "soilw2", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_sfc", "SOILW1", "soilw1", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_sfc", "SOILW2", "soilw2", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 
 # Soil temperature
- "gfs_sfc", "SOILT1", "soilt1", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_sfc", "SOILT2", "soilt2", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_sfc", "SOILT1", "soilt1", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_sfc", "SOILT2", "soilt2", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 
 # Column-integrated soil water
- "gfs_phys", "soilm", "soilm", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "soilm", "soilm", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Turbulent fluxes
- "gfs_phys", "lhtfl_ave", "lhtfl", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "shtfl_ave", "shtfl", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "lhtfl_ave", "lhtfl", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "shtfl_ave", "shtfl", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Boundary layer depth
- "gfs_phys", "hpbl", "hpbl", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "hpbl", "hpbl", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Near-surface winds
- "gfs_phys", "u10m", "u10m", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "v10m", "v10m", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "u10m", "u10m", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "v10m", "v10m", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Bulk shear
- "dynamics", "shear06", "shear06", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "dynamics", "shear06", "shear06", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Column moisture
- "gfs_phys", "pwat", "pw", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "pwat", "pw", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Convective instability
- "dynamics", "cape", "cape", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "cin", "cin", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "max_reflectivity", "max_refl", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "dynamics", "cape", "cape", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "cin", "cin", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "max_reflectivity", "max_refl", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Total and convective precipitation
- "gfs_phys", "totprcpb_ave", "pr", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "cnvprcpb_ave", "prc", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "totprcpb_ave", "pr", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "cnvprcpb_ave", "prc", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Thermodynamics and winds
- "dynamics", "t_plev", "t", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "u_plev", "u", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "v_plev", "v", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "dynamics", "t_plev", "t", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "u_plev", "u", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "v_plev", "v", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Moisture and circulation
- "dynamics", "dp_plev", "dp", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "q_plev", "q", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "rh_plev", "rh", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "dynamics", "dp_plev", "dp", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "q_plev", "q", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "rh_plev", "rh", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Vertical structure
- "dynamics", "omg_plev", "w", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "dynamics", "h_plev", "z", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "dynamics", "omg_plev", "w", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "h_plev", "z", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Radiative fluxes
- "gfs_phys", "DSWRFtoa", "dswrftoa", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "USWRFtoa", "uswrftoa", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "ULWRFtoa", "ulwrftoa", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "ULWRFsfc", "ulwrfsfc", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
- "gfs_phys", "DLWRFsfc", "dlwrfsfc", "HIST/fv3_hist_rXXX", "all", .false., "none", 2
+ "gfs_phys", "DSWRFtoa", "dswrftoa", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "USWRFtoa", "uswrftoa", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "ULWRFtoa", "ulwrftoa", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "ULWRFsfc", "ulwrfsfc", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "gfs_phys", "DLWRFsfc", "dlwrfsfc", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 
 
