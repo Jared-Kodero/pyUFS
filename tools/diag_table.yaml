@@ -1,0 +1,234 @@
+title: C96.R4N2.R2N1.1SIGMA_WET
+base_date: 2025 07 12 06 0 0
+diag_files:
+- file_name: HIST/grid_spec
+  freq: -1
+  freq_units: hours
+  time_units: days
+  unlimdim: time
+  varlist:
+  - module: dynamics
+    var_name: grid_lon
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: grid_lat
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: grid_lont
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: grid_latt
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: area
+    reduction: none
+    kind: r4
+- file_name: HIST/atmos_static
+  freq: -1
+  freq_units: hours
+  time_units: days
+  unlimdim: time
+  varlist:
+  - module: dynamics
+    var_name: pk
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: bk
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: hyam
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: hybm
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: zsurf
+    output_name: HGTsfc
+    reduction: none
+    kind: r4
+- file_name: HIST/fv3_hist
+  freq: 1
+  freq_units: hours
+  time_units: days
+  unlimdim: time
+  varlist:
+  - module: dynamics
+    var_name: ts
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: ps
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: slp
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: SLMSKsfc
+    output_name: slmsk
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: t2m
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: q2m
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: dpt2m
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: SOILW1
+    output_name: soilw1
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: SOILW2
+    output_name: soilw2
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: SOILT1
+    output_name: soilt1
+    reduction: none
+    kind: r4
+  - module: gfs_sfc
+    var_name: SOILT2
+    output_name: soilt2
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: soilm
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: lhtfl_ave
+    output_name: lhtfl
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: shtfl_ave
+    output_name: shtfl
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: hpbl
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: u10m
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: v10m
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: shear06
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: pwat
+    output_name: pw
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: cape
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: cin
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: max_reflectivity
+    output_name: max_refl
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: totprcpb_ave
+    output_name: pr
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: cnvprcpb_ave
+    output_name: prc
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: t_plev
+    output_name: t
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: u_plev
+    output_name: u
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: v_plev
+    output_name: v
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: dp_plev
+    output_name: dp
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: q_plev
+    output_name: q
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: rh_plev
+    output_name: rh
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: omg_plev
+    output_name: w
+    reduction: none
+    kind: r4
+  - module: dynamics
+    var_name: h_plev
+    output_name: z
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: DSWRFtoa
+    output_name: dswrftoa
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: USWRFtoa
+    output_name: uswrftoa
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: ULWRFtoa
+    output_name: ulwrftoa
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: ULWRFsfc
+    output_name: ulwrfsfc
+    reduction: none
+    kind: r4
+  - module: gfs_phys
+    var_name: DLWRFsfc
+    output_name: dlwrfsfc
+    reduction: none
+    kind: r4

@@ -286,6 +286,8 @@ def regrid():
         log.info("Run Completed Successfully!")
 
     for f in state.hist.glob("*"):
+        if "spec" in f.name or "static" in f.name:
+            continue
         f.unlink(missing_ok=True)
     shutil.rmtree(state.tmp)
 

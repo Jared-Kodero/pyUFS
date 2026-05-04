@@ -1,7 +1,8 @@
 # runtime.py
-
 import logging
 import re
+import sys
+import traceback
 from pathlib import Path
 
 import xarray as xr
@@ -36,3 +37,25 @@ def sort_paths(f):
 
 def to_list(x):
     return [x] if not isinstance(x, list) else x
+
+
+def handle_errors(type, value, tb):
+    log = logging.getLogger("ERROR_HANDLER")
+    frames = traceback.extract_tb(tb)
+
+    frame = [
+        f
+        for f in frames
+        if "site-packages" not in str(Path(f.filename).resolve())
+        and f.filename.endswith(".py")
+    ][-1]
+
+    file_name = Path(frame.filename).name
+    lineno = f"{frame.lineno}"
+    code_line = frame.line.strip() if frame.line else ""
+
+    log.warning(f"An error has been detected in: {file_name}: {lineno}: {code_line}")
+    log.error(f"{type.__qualname__}: {value}")
+
+
+sys.excepthook = handle_errors

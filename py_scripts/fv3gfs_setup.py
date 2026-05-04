@@ -86,16 +86,15 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Working directory: {params['home']}")
     run_logs.append(f"Case directory: {params['case_dir']}")
     run_logs.append(f"Archive directory: {params['archive_dir']}")
-    run_logs.append(f"Fix directory: {params['fix']}")
+    run_logs.append(f"Fixed/static directory: {params['fix']}")
+    run_logs.append(f"Configuration file: {params['run_config']}")
 
     if "shield_exe" in params:
-        run_logs.append(f"Model executable path: {params['shield_exe']}")
+        run_logs.append(f"Model executable:         {params['shield_exe']}")
     else:
-        run_logs.append("Model executable path: container")
+        run_logs.append("Model executable:         container image (SHiELD)")
 
-    run_logs.append(f"Loading configuration from: {params['run_config']}")
     run_logs.append(f"Description: {params.description}")
-
     run_logs.append("Initial run mode selected")
 
     if params["update_nml_only"]:

@@ -15,7 +15,10 @@ export UFS_UTILS="$(cd "$(dirname "$0")" && pwd)"
 
 
 parse_result=$("$UFS_UTILS/tools/parse_config.py" 2>&1)
-if [[ $? -ne 0 ]]; then printf '%s\n' "$parse_result"; exit 1; fi
+if [[ "$parse_result" == *ERROR:* ]]; then
+    printf '%s\n' "$parse_result"
+    exit 1
+fi
 source "$parse_result" && rm -f "$parse_result"
 
 
