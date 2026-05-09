@@ -45,7 +45,7 @@ def check_prev_state(params: dict) -> None:
         params["restart_no"] = 0
         params["update_nml_only"] = False
 
-        resubmit = int(os.getenv("RESUBMIT_COUNT", 0))
+        resubmit = int(os.getenv("CASE_RESUBMIT_COUNT", 0))
         params["resubmit"] = resubmit
         params["total_restarts"] = resubmit + 1
 

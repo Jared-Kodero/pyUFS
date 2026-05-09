@@ -42,7 +42,7 @@
 2026-05-02 17:40 - SHIELD - INFO - Finished Model Execution
 2026-05-02 17:40 - SHIELD - INFO - Total model runtime: 0.01 hours
 2026-05-02 17:40 - REGRIDDING - INFO - Regridding FV3 hist files to regular lat-lon grid
-2026-05-02 17:40 - UFS_UTILS - INFO - Restart 0 completed in 0.01 hours.
+2026-05-02 17:40 - UFS_UTILS_DIR - INFO - Restart 0 completed in 0.01 hours.
 2026-05-02 17:41 - PREPROCESSING - INFO - Restart number: 1
 2026-05-02 17:41 - PREPROCESSING - INFO - Generating namelist for restart 1
 2026-05-02 17:41 - SHIELD - INFO - Starting Model Execution
@@ -50,4 +50,4 @@
 2026-05-02 17:42 - SHIELD - INFO - Total model runtime: 0.01 hours
 2026-05-02 17:42 - REGRIDDING - INFO - Regridding FV3 hist files to regular lat-lon grid
 2026-05-02 17:42 - REGRIDDING - INFO - Run Completed Successfully!
-2026-05-02 17:43 - UFS_UTILS - INFO - Case tests.test_case completed in 0.20 hours.
+2026-05-02 17:43 - UFS_UTILS_DIR - INFO - Case tests.test_case completed in 0.20 hours.

@@ -20,7 +20,7 @@ sbatch:
   output: "shield.driver.log"
   partition: "batch"
 
-case_name: null
+case_name: test_case
 ensemble_run: false
 n_ensembles: 1
 resubmit: 1
@@ -40,9 +40,3 @@ archive_data: false
 # lon_max : [-47, -57, -67]
 # lat_min : [25, 32, 38]
 # lat_max : [60, 55, 47]
-
-
-
-
-
-

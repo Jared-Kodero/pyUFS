@@ -1,8 +1,8 @@
 global:
-    external_model: GFS
-    convert_atm: true
-    convert_sfc: true
-    convert_nst: false
+  external_model: GFS
+  convert_atm: true
+  convert_sfc: true
+  convert_nst: false
 
 tileX:
   external_models:
@@ -15,7 +15,3 @@ tileX:
       convert_atm: false
       convert_sfc: true
       convert_nst: false
-
-    
-
-

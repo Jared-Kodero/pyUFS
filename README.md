@@ -4,7 +4,7 @@ A portable Python workflow framework for configuring, initializing, and executin
 
 # Overview
 
-This guide documents the end-to-end workflow for running the GFDL SHiELD model on the Oscar HPC system. The provided Python-based framework replaces the native UFS_UTILS workflow with a portable implementation designed for systems where the original infrastructure is not directly supported.
+This guide documents the end-to-end workflow for running the GFDL SHiELD model on the Oscar HPC system. The provided Python-based framework replaces the native UFS_UTILS_DIR workflow with a portable implementation designed for systems where the original infrastructure is not directly supported.
 
 The workflow supports configuration, preprocessing, model execution, and postprocessing within a unified and reproducible environment.
 
@@ -22,7 +22,7 @@ For deep dives into specific components, refer to the official documentation:
 
 ## System & Workflow Architecture
 
-Execution on Oscar is controlled by a set of custom Python scripts located in `<path_to_dir>/gfdl_shield/ufs_py`. These scripts reproduce the functionality of the official `UFS_UTILS` workflow system (used on NOAA and GFDL HPC Systems), bypassing the need for original bash scripts that are difficult to port due to strict software requirements. 
+Execution on Oscar is controlled by a set of custom Python scripts located in `<path_to_dir>/gfdl_shield/ufs_py`. These scripts reproduce the functionality of the official `UFS_UTILS_DIR` workflow system (used on NOAA and GFDL HPC Systems), bypassing the need for original bash scripts that are difficult to port due to strict software requirements. 
 
 ### The Runtime Pipeline
 The pipeline proceeds through the following sequence:
@@ -131,7 +131,7 @@ echo "Creating Work Directory at: $CASE_DIR"
 mkdir -p "$CASE_DIR"
 ```
 ```markdown
-CASE_ROOT/
+CASE_ROOT_DIR/
 └── YYYYMMDDHHZ/
     └── CASE_NAME/
         ├── run_config.yml
