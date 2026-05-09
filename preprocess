@@ -3,7 +3,7 @@ set -e
 export TMPDIR="$TMP_DIR"
 
 cd $WORK_DIR
-/preprocess $UFS_UTILS/py_scripts/driver.py  
+/preprocess $UFS_UTILS_DIR/py_scripts/driver.py  
 
 exit_code=$?
 echo $exit_code > $WORK_DIR/exit_code

@@ -90,9 +90,9 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Configuration file: {params['run_config']}")
 
     if "shield_exe" in params:
-        run_logs.append(f"Model executable:         {params['shield_exe']}")
+        run_logs.append(f"Model executable: {params['shield_exe']}")
     else:
-        run_logs.append("Model executable:         container image (SHiELD)")
+        run_logs.append("Model executable: container image (SHiELD)")
 
     run_logs.append(f"Description: {params.description}")
     run_logs.append("Initial run mode selected")

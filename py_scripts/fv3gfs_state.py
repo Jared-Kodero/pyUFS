@@ -78,10 +78,10 @@ env_vars = {
     "n_cpus": int(os.environ.get("SBATCH_NTASKS")),
     "n_nodes": int(os.environ.get("SBATCH_NNODES", 1)),
     "node_list": os.environ.get("SLURM_NODELIST"),
-    "ensemble_id": int(os.environ.get("ENSEMBLE_ID", 0)),
-    "n_ensembles": int(os.environ.get("N_ENSEMBLES", 1)),
+    "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
+    "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 1)),
     "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
-    "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE", 0))),
+    "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE_FLAG", 0))),
     "ufs_utils": Path(__file__).resolve().parent.parent,
     "configs": Path(__file__).resolve().parent.parent / "configs",
 }

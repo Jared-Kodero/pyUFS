@@ -1,0 +1,304 @@
+atm:
+  delp:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  graupel:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  ice_wat:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  liq_wat:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  o3mr:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  ps:
+    dims:
+    - lat
+    - lon
+    levels: null
+  rainwat:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  snowwat:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  sphum:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  t:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  u_s:
+    dims:
+    - lev
+    - latp
+    - lon
+    levels: 64
+  u_w:
+    dims:
+    - lev
+    - lat
+    - lonp
+    levels: 64
+  v_s:
+    dims:
+    - lev
+    - latp
+    - lon
+    levels: 64
+  v_w:
+    dims:
+    - lev
+    - lat
+    - lonp
+    levels: 64
+  w:
+    dims:
+    - lev
+    - lat
+    - lon
+    levels: 64
+  zh:
+    dims:
+    - levp
+    - lat
+    - lon
+    levels: null
+sfc:
+  alnsf:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  alnwf:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  alvsf:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  alvwf:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  canopy:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  f10m:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  facsf:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  facwf:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  ffhh:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  ffmm:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  fice:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  hice:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  q2m:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  shdmax:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  shdmin:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  sheleg:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  slc:
+    dims:
+    - Time
+    - zaxis_1
+    - yaxis_1
+    - xaxis_1
+    levels: 1
+  slmsk:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  slope:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  smc:
+    dims:
+    - Time
+    - zaxis_1
+    - yaxis_1
+    - xaxis_1
+    levels: 1
+  snoalb:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  snwdph:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  srflag:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  stc:
+    dims:
+    - Time
+    - zaxis_1
+    - yaxis_1
+    - xaxis_1
+    levels: 1
+  stype:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  t2m:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  tg3:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  tisfc:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  tprcp:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  tsea:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  uustar:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  vfrac:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  vtype:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null
+  zorl:
+    dims:
+    - Time
+    - yaxis_1
+    - xaxis_1
+    levels: null

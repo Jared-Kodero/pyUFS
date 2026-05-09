@@ -6,8 +6,8 @@ env_paths = {}
 env_paths["fix"] = Path(os.getenv("FIX_DIR"))
 env_paths["home"] = Path(os.getenv("WORK_DIR"))
 env_paths["fix_am"] = env_paths["fix"] / "am"
-env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
-env_paths["rundir"] = Path(os.getenv("RUN_DIR"))
+env_paths["ufs_exe"] = Path("/UFS_UTILS_DIR/exec")
+env_paths["rundir"] = Path(os.getenv("CASE_PWD"))
 env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
 env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
 
