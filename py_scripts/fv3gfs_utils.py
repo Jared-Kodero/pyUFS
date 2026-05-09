@@ -74,7 +74,7 @@ def cp(src, dest):
 
 def env_setup():
     """
-    Set up environment variables for UFS_UTILS execution.
+    Set up environment variables for UFS_UTILS_DIR execution.
     """
     python_path = str(Path(sys.executable).resolve().parent)
     openmpi_bin = "/opt/openmpi/bin"

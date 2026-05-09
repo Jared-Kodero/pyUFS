@@ -12,10 +12,10 @@ module purge
 
 
 
-export WORK_DIR="$JOB_TMP/$CASE_PARENT_DIR/$CASE_NAME"
-export CASE_DIR="$CASE_ROOT/$CASE_PARENT_DIR/$CASE_NAME"
-export ARCHIVE_DIR="$ARCHIVE_ROOT/$CASE_PARENT_DIR/$CASE_NAME"
-export TMP_DIR="$JOB_TMP/tmp"
+export WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+export TMP_DIR="$JOBTMP_DIR/tmp"
 
 
 if [ -z "$CASE_RUN_START_TIME" ]; then
@@ -23,10 +23,10 @@ if [ -z "$CASE_RUN_START_TIME" ]; then
 fi
 
 
-cd "$RUN_DIR"
+cd "$CASE_PWD"
 
 
-if  [ ! -d "$JOB_TMP" ]; then 
+if  [ ! -d "$JOBTMP_DIR" ]; then 
     WORK_DIR="$CASE_DIR"
     SYNC=0
 else
@@ -42,13 +42,13 @@ mkdir -p "$TMP_DIR"
 
 
 if [ ! -d "$CONTAINERS_DIR" ] || [ -z "$(ls -A "$CONTAINERS_DIR")" ]; then
-    source "$UFS_UTILS/configs/install_images.sh" > $WORK_DIR/image_build.log 2>&1
+    source "$UFS_UTILS_DIR/configs/install_images.sh" > $WORK_DIR/image_build.log 2>&1
 fi
 
 
 # CREATE SYMLINK TO WORK_DIR
-rm -f "$DATA_SYMLINK"
-ln -s "$WORK_DIR" "$DATA_SYMLINK"
+rm -f "$CASE_DATA_SYMLINK"
+ln -s "$WORK_DIR" "$CASE_DATA_SYMLINK"
 
 # SYNC CASE_DIR TO WORK_DIR
 if (( SYNC == 1 )); then
@@ -67,10 +67,10 @@ touch "$EXIT_CODE_FILE"
 # CHECK FOR PREVIOUS RUN
 if [ -f "$ID_FILE" ]; then
     PREV_RUN_ID=$(cat "$ID_FILE")
-    exec >>"$LOG_FILE" 2>&1
+    exec >>"$CASE_LOG_FILE" 2>&1
 else
     PREV_RUN_ID=0
-    exec >"$LOG_FILE" 2>&1
+    exec >"$CASE_LOG_FILE" 2>&1
 fi
 
 CURR_RUN_ID=$((PREV_RUN_ID + 1))
@@ -92,8 +92,8 @@ export APPTAINER_HOME=$HOME
 export APPTAINER_BINDPATH=$(printf "%s" "$CONTAINER_BINDPATH" | base64 -d)
 
 
-FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS/fregrid"
-PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS/preprocess"
+FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
+PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
 ON_SUCCESS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
 ON_FAILURE="rsync -a --delete "$WORK_DIR/LOGS/" "$CASE_DIR/LOGS/""
 
@@ -106,7 +106,7 @@ if [ "$(cat "$EXIT_CODE_FILE")" -eq 0 ] && [ -f "$WORK_DIR/ic.only" ]; then
 fi
 
 
-if [[ "$SBATCH_MULTI_NODE" ==  1 ]] || [[ -f "$SHIELD_NATIVE" ]]; then
+if [[ "$SBATCH_MULTI_NODE_FLAG" ==  1 ]] || [[ -f "$SHIELD_NATIVE" ]]; then
     SHIELD="$WORK_DIR/shield"
 else
     SHIELD="apptainer exec $SHIELD_SIF $WORK_DIR/shield"
@@ -128,24 +128,24 @@ if (( SYNC == 1 )); then
 fi
 
 
-rm -f "$DATA_SYMLINK"
-ln -s "$CASE_DIR" "$DATA_SYMLINK"
+rm -f "$CASE_DATA_SYMLINK"
+ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
 
 
-if (( RESUBMIT_COUNT == 0 )); then
+if (( CASE_RESUBMIT_COUNT == 0 )); then
     rm -f "$ID_FILE"
 fi
 
 
 
 EXIT_CODE=$(cat "$EXIT_CODE_FILE")
-if (( RESUBMIT_COUNT == 0 )) && (( EXIT_CODE == 0 )); then
+if (( CASE_RESUBMIT_COUNT == 0 )) && (( EXIT_CODE == 0 )); then
 
     CASE_OUT="$CASE_DIR/OUTPUT"
     rm -rf "$CASE_DIR"/INIT_DATA/R*_INPUT
     mkdir -p "$ARCHIVE_DIR"
 
-    if (( ARCHIVE_DATA == 1 )); then
+    if (( CASE_ARCHIVE == 1 )); then
         cp -rf "$CASE_OUT"/*.nc "$ARCHIVE_DIR/"
         rm -rf "$ARCHIVE_DIR"/atmos_static*
         rm -rf "$ARCHIVE_DIR"/grid_spec*
@@ -156,10 +156,10 @@ if (( RESUBMIT_COUNT == 0 )) && (( EXIT_CODE == 0 )); then
 
 fi
 
-if (( EXIT_CODE == 0 && RESUBMIT_COUNT > 0 )); then
+if (( EXIT_CODE == 0 && CASE_RESUBMIT_COUNT > 0 )); then
     SLURM_OPEN_MODE="append"
-    RESUBMIT=$((RESUBMIT_COUNT - 1))
-    source "$UFS_UTILS/tools/sbatch.sh"
+    CASE_RESUBMIT=$((CASE_RESUBMIT_COUNT - 1))
+    source "$UFS_UTILS_DIR/tools/sbatch.sh"
     scontrol top "$JOB_ID"
 fi
 
@@ -169,7 +169,7 @@ elapsed_hours () {
 }
 
 if (( EXIT_CODE == 0 )); then
-    if (( RESUBMIT_COUNT > 0 )); then
+    if (( CASE_RESUBMIT_COUNT > 0 )); then
         msg="Restart $((CURR_RUN_ID - 1)) completed"
         elapsed=$(elapsed_hours "$RUN_START_TIME" "$RUN_END_TIME")
     else

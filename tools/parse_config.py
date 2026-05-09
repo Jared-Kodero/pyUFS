@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 # parse_config.py
-
 import base64
 import os
 import sys
@@ -14,47 +13,137 @@ except ImportError:
     print("ERROR: PyYAML is not installed in the current Python environment")
     sys.exit(0)
 
-script_dir = Path(__file__).resolve()
-machine_cfg = script_dir.parent.parent / "configs" / "machine_config.yaml"
-user_sbatch_file = Path.cwd() / "run_config.yaml"
 
-if not user_sbatch_file.exists():
-    print(f"ERROR: File not found: {user_sbatch_file}")
-    sys.exit(0)
+SCRIPT_DIR = Path(__file__).resolve()
+MACHINE_CFG_PATH = SCRIPT_DIR.parent.parent / "configs" / "machine_config.yaml"
+RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
 
-
-def read_yaml_as_file(file_path, line_no):
-    with open(file_path, "r") as f:
-        v = f.readlines()[line_no - 1].strip()
-        return v, len(v)
+for f in (MACHINE_CFG_PATH, RUN_CFG_PATH):
+    if not f.exists():
+        print(f"ERROR: File not found: {f}")
+        sys.exit(0)
 
 
-def read_yaml(file_path):
+def get_paths(cfg: dict):
+
+    paths = cfg.get("paths", {})
+
+    for k in (
+        "jobtmp",
+        "scratch",
+        "case_root",
+        "fix_dir",
+        "ufs_utils",
+        "archive_root",
+        "shield",
+        "fregrid",
+        "preprocess",
+        "containers_root",
+        "container_bindpath",
+    ):
+        if k not in paths or not paths[k]:
+            print(f"ERROR: Missing `paths` configuration: {k} in {MACHINE_CFG_PATH}")
+            sys.exit(0)
+
+    for k, v in paths.items():
+        if k == "container_bindpath":
+            if isinstance(paths[k], list):
+                paths[k] = ",".join(paths[k])
+                paths[k] = base64.b64encode(paths[k].encode("utf-8")).decode("utf-8")
+            continue
+        paths[k] = str(Path(os.path.expandvars(v)))
+        if k in ("jobtmp", "scratch", "case_root", "archive_root"):
+            if not Path(paths[k]).exists():
+                Path(paths[k]).mkdir(parents=True, exist_ok=True)
+
+    cfg = {
+        "JOBTMP_DIR": paths["jobtmp"],
+        "SCRATCH_DIR": paths["scratch"],
+        "CASE_ROOT_DIR": paths["case_root"],
+        "FIX_DIR": paths["fix_dir"],
+        "UFS_UTILS_DIR": paths["ufs_utils"],
+        "ARCHIVE_ROOT_DIR": paths["archive_root"],
+        "SHIELD_SIF": paths["shield"],
+        "FREGRID_SIF": paths["fregrid"],
+        "PREPROCESS_SIF": paths["preprocess"],
+        "CONTAINERS_DIR": paths["containers_root"],
+        "CONTAINER_BINDPATH": paths["container_bindpath"],
+    }
+    return cfg
+
+
+def get_sbatch_runtime_flags(cfg: dict) -> dict:
+    nnodes = cfg["SBATCH_NNODES"]
+    ntasks_per_node = cfg["SBATCH_NTASKS_PER_NODE"]
+    mem = cfg["SBATCH_MEM"]
+    mem_per_cpu = cfg["SBATCH_MEM_PER_CPU"]
+    exclusive = cfg["SBATCH_EXCLUSIVE_NODE"]
+    use_constraint = cfg["SBATCH_NODE_CONSTRAINT"]
+
+    if nnodes > 1:
+        memory_flag = f"--mem-per-cpu={mem_per_cpu}g"
+        multi_node = 1
+    else:
+        memory_flag = f"--mem={mem}g"
+        multi_node = 0
+
+    node_constraint_flag = "--constraint="
+    if use_constraint == 1:
+        tasks = (24, 32, 48, 64)
+        constraint = next(
+            (f"{c}core" for c in tasks if ntasks_per_node <= c), "192core"
+        )
+
+        node_constraint_flag = f"--constraint={constraint}"
+
+        if ntasks_per_node <= 64:
+            exclusive = 1
+
+    exclusive_flag = "--exclusive" if exclusive == 1 else ""
+
+    flags = {
+        "SBATCH_EXCLUSIVE_NODE": exclusive,
+        "SBATCH_MULTI_NODE_FLAG": multi_node,
+        "SBATCH_MEMORY_FLAG": memory_flag,
+        "SBATCH_NODE_CONSTRAINT_FLAG": node_constraint_flag,
+        "SBATCH_NODE_EXCLUSIVE_FLAG": exclusive_flag,
+    }
+    return flags
+
+
+def read_yaml(path: Path):
+
+    def _read_yaml_txt(path: Path, line_no: int):
+        with open(path, "r") as f:
+            v = f.readlines()[line_no - 1].strip()
+            return v, len(v)
+
     try:
-        with open(file_path, "r") as f:
+        with open(path, "r") as f:
             data = yaml.safe_load(f)
     except yaml.YAMLError as e:
         if hasattr(e, "problem_mark"):
             mark = e.problem_mark
-            v, n = read_yaml_as_file(file_path, mark.line)
+            v, n = _read_yaml_txt(path, mark.line)
             print(
-                "ERROR: Error in run_config.yaml\n",
-                f"File path: {file_path}\n",
+                " ERROR: in run_config.yaml\n",
+                f"File path: {path}\n",
                 f"Line: {mark.line},  Column: {mark.column}, {e.problem}\n",
                 f"\t-> {v}\n",
                 f"\t   {'^' * n}",
             )
         else:
-            print(f"ERROR: Invalid YAML file: {file_path}")
-        sys.exit(0)
+            print(f"ERROR: Invalid YAML file: {path}")
+        sys.exit(1)
     return data
 
 
-def get_sbatch_cfg():
-    user_data = read_yaml(user_sbatch_file)
-    default_sbatch = read_yaml(machine_cfg)["sbatch"]
-    user_sbatch = user_data.get("sbatch", {})
+def get_config():
+    user_cfg = read_yaml(RUN_CFG_PATH)
+    mach_cfg = read_yaml(MACHINE_CFG_PATH)
 
+    default_sbatch = mach_cfg.get("sbatch", {})
+    user_sbatch = user_cfg.get("sbatch", {})
     cfg = {**default_sbatch, **user_sbatch}
 
     sbatch_time = cfg["time"]
@@ -70,136 +159,55 @@ def get_sbatch_cfg():
     sbatch_mem_per_cpu = sbatch_mem // sbatch_ntasks
     sbatch_ntasks_per_node = sbatch_ntasks // sbatch_nnodes
     sbatch_ntasks_total = sbatch_ntasks_per_node * sbatch_nnodes
-    sbatch_multi_node = 1 if sbatch_nnodes > 1 else 0
 
     if sbatch_time > 48:
         sbatch_time = 48
 
     sbatch_time = f"{sbatch_time}:00:00"
+    n_ensembles = user_cfg.get("n_ensembles", 1)
+    resubmit = user_cfg.get("resubmit", 0)
+    archive_data = int(user_cfg.get("archive_data", False))
+    env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
+    case_name = user_cfg.get("case_name") or env_case_name
+    paths = get_paths(mach_cfg)
 
-    sbatch_cfg = [
-        f"export SBATCH_MEM={sbatch_mem}",
-        f"export SBATCH_TIME={sbatch_time}",
-        f"export SBATCH_NNODES={sbatch_nnodes}",
-        f"export SBATCH_OUTPUT={sbatch_output}",
-        f"export SBATCH_PARTITION={sbatch_partition}",
-        f"export SBATCH_NTASKS={sbatch_ntasks_total}",
-        f"export SBATCH_MULTI_NODE={sbatch_multi_node}",
-        f"export SBATCH_MEM_PER_CPU={sbatch_mem_per_cpu}",
-        f"export SBATCH_EXCLUSIVE_NODE={sbatch_exclusive}",
-        f"export SBATCH_CPUS_PER_TASK={sbatch_cpu_per_task}",
-        f"export SBATCH_NODE_CONSTRAINT={sbatch_constraint}",
-        f"export SBATCH_NTASKS_PER_NODE={sbatch_ntasks_per_node}",
-    ]
-    return sbatch_cfg
+    env = {
+        "SBATCH_MEM": sbatch_mem,
+        "SBATCH_TIME": sbatch_time,
+        "SBATCH_NNODES": sbatch_nnodes,
+        "SBATCH_OUTPUT": sbatch_output,
+        "SBATCH_PARTITION": sbatch_partition,
+        "SBATCH_NTASKS": sbatch_ntasks_total,
+        "SBATCH_MEM_PER_CPU": sbatch_mem_per_cpu,
+        "SBATCH_EXCLUSIVE_NODE": sbatch_exclusive,
+        "SBATCH_CPUS_PER_TASK": sbatch_cpu_per_task,
+        "SBATCH_NODE_CONSTRAINT": sbatch_constraint,
+        "SBATCH_NTASKS_PER_NODE": sbatch_ntasks_per_node,
+        "CASE_ENSEMBLES": n_ensembles,
+        "CASE_RESUBMIT": resubmit,
+        "CASE_ARCHIVE": archive_data,
+        "CASE_NAME": case_name,
+        **paths,
+    }
 
+    env.update(get_sbatch_runtime_flags(env.copy()))
 
-def get_run_cfg():
-    user_data = read_yaml(user_sbatch_file)
-    misc_cfg = [
-        f"export N_ENSEMBLES={user_data.get('n_ensembles', 1)}",
-        f"export RESUBMIT={user_data.get('resubmit', 0)}",
-        f"export ARCHIVE_DATA={int(user_data.get('archive_data', False))}",
-        f"export CASE_NAME={user_data.get('case_name') or os.environ.get('CASE_DIR', f'{Path.cwd().name}')}",
-    ]
-
-    return misc_cfg
-
-
-def get_directories():
-    user_data = read_yaml(machine_cfg)
-    dirs = user_data.get("directories", {})
-
-    for k in {
-        "jobtmp",
-        "scratch",
-        "case_root",
-        "shield_root",
-        "fix_dir",
-        "ufs_utils",
-        "archive_root",
-    }:
-        if k not in dirs:
-            print(f"ERROR: Missing `directories` configuration: {k} in {machine_cfg}")
-            sys.exit(0)
-
-    for key, value in dirs.items():
-        dirs[key] = str(Path(os.path.expandvars(value)))
-        try:
-            Path(dirs[key]).mkdir(parents=True, exist_ok=True)
-        except Exception:
-            print(f"ERROR: Failed to create directory {dirs[key]}")
-            sys.exit(0)
-
-    directories = [
-        f"export JOB_TMP={dirs['jobtmp']}",
-        f"export SCRATCH={dirs['scratch']}",
-        f"export CASE_ROOT={dirs['case_root']}",
-        f"export SHIELD_ROOT={dirs['shield_root']}",
-        f"export FIX_DIR={dirs['fix_dir']}",
-        f"export UFS_UTILS={dirs['ufs_utils']}",
-        f"export ARCHIVE_ROOT={dirs['archive_root']}",
-    ]
-    return directories
+    return env
 
 
-def get_containers():
-    user_data = read_yaml(machine_cfg)
-    containers = user_data.get("containers", {})
-
-    for k in {
-        "shield",
-        "fregrid",
-        "preprocess",
-        "containers_dir",
-        "container_bindpath",
-    }:
-        if k not in containers:
-            print(f"ERROR: Missing `containers` configuration: {k} in {machine_cfg}")
-            sys.exit(0)
-
-    for key, value in containers.items():
-        if key == "container_bindpath":
-            continue
-        containers[key] = str(Path(os.path.expandvars(value)))
-
-    shield_path = containers["shield"]
-    frehrid_path = containers["fregrid"]
-    preprocess_path = containers["preprocess"]
-    containers_dir = containers["containers_dir"]
-    container_bindpath = containers["container_bindpath"]
-
-    if isinstance(container_bindpath, list):
-        container_bindpath = ",".join(container_bindpath)
-        container_bindpath = base64.b64encode(
-            container_bindpath.encode("utf-8")
-        ).decode("utf-8")
-
-    container_cfg = [
-        f"export SHIELD_SIF={shield_path}",
-        f"export FREGRID_SIF={frehrid_path}",
-        f"export PREPROCESS_SIF={preprocess_path}",
-        f"export CONTAINERS_DIR={containers_dir}",
-        f"export CONTAINER_BINDPATH={container_bindpath}",
-    ]
-
-    return container_cfg
-
-
-def write_cfg(sbatch_cfg):
+def write_cfg(cfg: dict):
 
     temp_file = Path("/tmp") / f"{uuid.uuid4()}"
     with open(temp_file, "w") as f:
-        f.write("\n".join(sbatch_cfg))
+        for k, v in cfg.items():
+            f.write(f"export {k}={v}\n")
+
     return temp_file
 
 
 def main():
-    sbatch_cfg = get_sbatch_cfg()
-    misc_cfg = get_run_cfg()
-    directory_cfg = get_directories()
-    container_cfg = get_containers()
-    return write_cfg([*sbatch_cfg, *misc_cfg, *directory_cfg, *container_cfg])
+    cfg = get_config()
+    return write_cfg(cfg)
 
 
 if __name__ == "__main__":

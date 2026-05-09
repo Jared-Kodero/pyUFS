@@ -9,13 +9,11 @@ sbatch:
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
   time: 24 # Maximum wall time
-  mem: 480 # Total memory (GB)
-  nnodes: 3 # Number of nodes
-  ntasks: 48 # Total number of tasks (e.g., MPI ranks)
+  mem: 320 # Total memory (GB)
+  nnodes: 2 # Number of nodes
+  ntasks: 64 # Total number of tasks (e.g., MPI ranks)
   output: "shield.driver.log" # Path for sbatch output log
   partition: "batch" # Partition name 
-
-
 
 # Case name for reproducibility tracking if null, case directory name will be used
 case_name: null
@@ -32,7 +30,6 @@ resubmit: 0
 # If true, archive output data to a specified location after the run completes
 archive_data: true
 
-
 # Short descriptive label (REQUIRED for reproducibility tracking)
 description: #"example_run"
 
@@ -40,10 +37,9 @@ description: #"example_run"
 debug: false
 
 # if false, skip grid and IC generation (assumes existing files)
-ic_gen: true  # false → requires valid IC source path or existing IC files in the expected location
-ic_only: false  # if true, only generate ICs snd Grid files, then exit (useful for testing or when only IC generation is needed)
-ic_source_path: null  # Path to existing case for sourcing ICs (REQUIRED if ic_gen = false)
-
+ic_gen: true # false → requires valid IC source path or existing IC files in the expected location
+ic_only: false # if true, only generate ICs snd Grid files, then exit (useful for testing or when only IC generation is needed)
+ic_source_path: null # Path to existing case for sourcing ICs (REQUIRED if ic_gen = false)
 
 # Path to SHIELD executable (REQUIRED for execution)
 shield_exe: null
@@ -63,7 +59,7 @@ run_nhours: 3
 forecast_hour: 0
 
 # Restart behavior
-continue_run: false  # true → requires valid restart files
+continue_run: false # true → requires valid restart files
 
 # ---------------------------------------------------------------------------
 # MODEL PHYSICS
@@ -74,7 +70,7 @@ continue_run: false  # true → requires valid restart files
 do_deep: false
 
 # Vertical resolution (n_sigma-pressure hybrid levels)
-levels: 64 
+levels: 64
 
 # ---------------------------------------------------------------------------
 # GRID CONFIGURATION
@@ -94,7 +90,7 @@ res: 96
 gtype: uniform
 
 # Grid center (used for stretch/regional grids)
-target_lon: -96.0
+target_lon: -96
 target_lat: 35.0
 
 # Stretch factor (>1 increases local resolution)
@@ -105,19 +101,13 @@ stretch_factor: 1.0
 # ---------------------------------------------------------------------------
 
 # Refinement ratio(s) relative to parent grid
-refine_ratio: [3]
+refine_ratio: [ 3 ]
 
 # Geographic bounds (degrees) for nests (list of dicts for multiple nests)
 lon_min: null
 lon_max: null
 lat_min: null
 lat_max: null
-
-# Index-based nest definition (alternative to lat/lon bounds)
-istart_nest: null
-iend_nest: null
-jstart_nest: null
-jend_nest: null
 
 # Parent cubed-sphere tile (1–6)
 parent_tile: 6
@@ -140,9 +130,9 @@ dely: 0.0585
 # SURFACE AND OROGRAPHY
 # ---------------------------------------------------------------------------
 
-lake_cutoff: 0.2        # land-water threshold
-add_lake: false         # include lake model
-make_gsl_orog: false    # GSL orography generation
+lake_cutoff: 0.2 # land-water threshold
+add_lake: false # include lake model
+make_gsl_orog: false # GSL orography generation
 
 # ---------------------------------------------------------------------------
 # TIME STEPPING (CRITICAL FOR STABILITY)
@@ -167,7 +157,6 @@ n_split: null
 nest_k_split: null
 nest_n_split: null
 
-
 # ---------------------------------------------------------------------------
 # NAMELIST FILES
 # ---------------------------------------------------------------------------
@@ -182,7 +171,7 @@ tileX_nml: null
 chgres_config: null
 
 # if true, ensemble members use the same IC from cntrl corresponding to the ensemble member number
-paired_ensembles: false  # true → generate paired perturbations for ensemble runs
+paired_ensembles: false # true → generate paired perturbations for ensemble runs
 
 # ---------------------------------------------------------------------------
 # LAND SURFACE PERTURBATIONS
