@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from derived_vars import calc_derived_vars
 from fv3gfs_runtime import exit_code
 from fv3gfs_setup import logger
 from fv3gfs_state import load_state
@@ -57,6 +58,7 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
             ds[var] = ds[var].clip(min=0, keep_attrs=True)
             ds[var].attrs["units"] = "mm/hr"
 
+    ds = calc_derived_vars(ds)
     ds = ds[sorted(list(ds.data_vars))]
 
     for dim in ds.dims:
