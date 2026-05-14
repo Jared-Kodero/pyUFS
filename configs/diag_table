@@ -80,7 +80,7 @@
  "dynamics", "v_plev", "v", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 # Moisture and circulation
- "dynamics", "dp_plev", "dp", "HIST/fv3_hist.XX", "all", .false., "none", 2
+ "dynamics", "dp_plev", "dpt", "HIST/fv3_hist.XX", "all", .false., "none", 2
  "dynamics", "q_plev", "q", "HIST/fv3_hist.XX", "all", .false., "none", 2
  "dynamics", "rh_plev", "rh", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
