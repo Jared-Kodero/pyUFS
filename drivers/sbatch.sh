@@ -1,9 +1,8 @@
 
 # sbatch.sh - Script to submit a job to SLURM with the appropriate environment variables
 
-
 EXPORT_VARS="ALL,\
-SBATCH_TIME=${SBATCH_TIME},\
+SBATCH_TIME_LIMIT=${SBATCH_TIME_LIMIT},\
 SBATCH_PARTITION=${SBATCH_PARTITION},\
 SBATCH_NTASKS_PER_NODE=${SBATCH_NTASKS_PER_NODE},\
 SBATCH_NTASKS=${SBATCH_NTASKS},\
@@ -41,7 +40,7 @@ JOB_ID=$(sbatch --parsable \
 $SBATCH_NODE_EXCLUSIVE_FLAG \
 $SBATCH_NODE_CONSTRAINT_FLAG \
 $SBATCH_MEMORY_FLAG \
---time=$SBATCH_TIME \
+--time=$SBATCH_TIME_LIMIT \
 --job-name=$SLURM_JOB_NAME \
 --nodes=$SBATCH_NNODES \
 --ntasks=$SBATCH_NTASKS \
@@ -51,7 +50,7 @@ $SBATCH_MEMORY_FLAG \
 --output=/dev/null \
 --open-mode=$SLURM_OPEN_MODE \
 --export="$EXPORT_VARS" \
-"$UFS_UTILS_DIR/case_run.sh")
+"$UFS_UTILS_DIR/drivers/case_run.sh")
 
 
 EXIT_CODE=$?

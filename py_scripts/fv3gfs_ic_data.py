@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 from typing import Literal
 
@@ -13,6 +15,14 @@ from fv3gfs_stage_data import update_table_files
 from fv3gfs_state import FV3State, load_state, prev_state, save_state, state
 from fv3gfs_utils import run_cmd
 from pyproj import Proj
+
+# Matches ens / ENS / ensemble / ENSEMBLE / mem / MEM / member / MEMBER
+# followed by exactly two digits. Group 1 captures the digits.
+_ENS_DIR_PATTERN = re.compile(
+    r"(?:ens(?:emble)?|mem(?:ber)?)(\d{2})",
+    flags=re.IGNORECASE,
+)
+_ENS_PREFIXES = ("ens", "ENS", "ensemble", "ENSEMBLE", "mem", "MEM", "member", "MEMBER")
 
 
 def merge_states():
@@ -33,7 +43,156 @@ def ic_only():
     save_state()
 
 
-def initialize_ic_from_existing_case() -> None:
+def _unpack_case_tarball(src: Path) -> Path:
+
+    unpack_name = src.parent.name
+    unpack_root = state.home / "case.tar.gz"
+    unpack_dir = unpack_root / unpack_name
+
+    shutil.rmtree(unpack_dir, ignore_errors=True)
+    unpack_dir.mkdir(parents=True, exist_ok=True)
+
+    _tarball = unpack_root / src.name
+    shutil.copy2(src, _tarball)
+
+    log.info(f"IC source tarball: {src}")
+    log.info(f"Unpacking IC source tarball to: {unpack_dir}")
+
+    try:
+        with tarfile.open(_tarball, mode="r:*") as tf:
+            tf.extractall(unpack_dir)
+    finally:
+        _tarball.unlink(missing_ok=True)
+
+    return unpack_dir
+
+
+def _is_unpacked_case(path: Path) -> bool:
+    src_ic = path / "IC" / "INPUT"
+    return path.is_dir() and src_ic.is_dir() and any(src_ic.iterdir())
+
+
+def _validate_ic_case(path: Path) -> None:
+    """
+    Validate that a resolved IC source is an unpacked case containing IC files.
+    """
+
+    src_ic = path / "IC" / "INPUT"
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Specified IC source case path does not exist:\n{path}"
+        )
+
+    if not path.is_dir():
+        raise ValueError(f"Specified IC source case path is not a directory:\n{path}")
+
+    if not src_ic.exists():
+        raise FileNotFoundError(
+            f"Specified IC source case is not a valid unpacked case.\nExpected IC files under:\n\t{src_ic}"
+        )
+
+    if not src_ic.is_dir() or not any(src_ic.iterdir()):
+        raise ValueError(
+            f"Specified IC source case has no initial condition files.\nExpected files under:\n\t{src_ic}"
+        )
+
+
+def _resolve_case_dir_or_tarball(src: Path) -> Path:
+    if not src.exists():
+        raise FileNotFoundError(f"Specified IC source case path does not exist:\n{src}")
+
+    if src.is_file():
+        if not tarfile.is_tarfile(str(src)):
+            raise ValueError(f"Specified IC source file is not a tarball:\n{src}")
+
+        return _unpack_case_tarball(src)
+
+    if not src.is_dir():
+        raise ValueError(f"Specified IC source case path is not a directory:\n{src}")
+
+    if _is_unpacked_case(src):
+        return src
+
+    case_tarball = src / "case.tar.gz"
+
+    if case_tarball.is_file():
+        if not tarfile.is_tarfile(str(case_tarball)):
+            raise ValueError(
+                f"Specified IC source file is not a tarball:\n{case_tarball}"
+            )
+
+        return _unpack_case_tarball(case_tarball)
+
+    raise FileNotFoundError(
+        f"Specified IC source is not a valid unpacked case and does not contain case.tar.gz:\n{src}"
+    )
+
+
+def _resolve_ic_source_path(src: Path) -> tuple[Path, bool]:
+
+    ens_id_str = f"{state.ensemble_id:02d}"
+
+    if not src.exists():
+        raise FileNotFoundError(f"Specified IC source case path does not exist:\n{src}")
+
+    if not state.ensemble_run:
+        resolved = _resolve_case_dir_or_tarball(src)
+        _validate_ic_case(resolved)
+        return resolved
+
+    if src.is_file():
+        match = _ENS_DIR_PATTERN.fullmatch(src.parent.name)
+        if match is None:
+            msg = "Expected IC source tarball for ensemble run to be under a directory named "
+            msg = msg + f"{{{'/'.join(_ENS_PREFIXES)}}} followed by 2 digits, "
+            msg = msg + f"got {src.parent.name}"
+            raise ValueError(msg)
+
+        if state.paired_ensembles and match.group(1) != ens_id_str:
+            raise ValueError(
+                f"Expected IC source tarball under ensemble id {ens_id_str}, got {src.parent.name}"
+            )
+
+        resolved = _resolve_case_dir_or_tarball(src)
+        _validate_ic_case(resolved)
+        return resolved
+
+    if not src.is_dir():
+        raise ValueError(f"Specified IC source case path is not a directory:\n{src}")
+
+    src_match = _ENS_DIR_PATTERN.fullmatch(src.name)
+
+    if src_match is not None:
+        if state.paired_ensembles and src_match.group(1) != ens_id_str:
+            raise ValueError(
+                f"Expected IC source directory ensemble id {ens_id_str}, got {src.name}"
+            )
+        candidate_paths = [src]
+    else:
+        candidate_paths = [src]
+        for child in sorted(src.iterdir()):
+            if not child.is_dir():
+                continue
+            m = _ENS_DIR_PATTERN.fullmatch(child.name)
+            if m is not None and m.group(1) == ens_id_str:
+                candidate_paths.append(child)
+
+    errors: list[str] = []
+    for candidate in candidate_paths:
+        try:
+            resolved = _resolve_case_dir_or_tarball(candidate)
+            _validate_ic_case(resolved)
+            return resolved
+        except (FileNotFoundError, ValueError) as exc:
+            errors.append(f"{candidate}: {exc}")
+
+    raise FileNotFoundError(
+        "No valid IC source case found. Tried:\n" + "\n".join(errors)
+    )
+
+
+def init_external_ic() -> None:
     """
     Copy IC data from an existing case into the working directory,
     preserving symlinks and mimicking `cp -rf` semantics.
@@ -41,26 +200,31 @@ def initialize_ic_from_existing_case() -> None:
 
     src = state.get("ic_source_path", None)
     src = Path(src) if src is not None else None
+    ic_src_type = state.get("ic_source_type", "case").lower()
+    if ic_src_type not in ["case", "external"]:
+        raise ValueError(
+            f"Invalid IC source type: {ic_src_type}. Expected 'case' or 'external'."
+        )
 
     if not src:
         merge_states()
         return
 
-    if state.paired_ensembles:
-        if not re.fullmatch(r"ENS\d{2}", src.name):
-            src = src / f"ENS{state.ensemble_id:02d}"
-
-    if not src.exists():
-        raise FileNotFoundError(f"Specified IC source case path does not exist:\n{src}")
-
     log.info("Skipping Grid and IC generation; using existing files")
-    log.info(f"Using IC data from case: {src}")
-    log.info(f"IC source path: {src}/INIT_DATA/INIT_INPUT")
+    log.info(f"Using IC data from case: {state.get('ic_source_path')}")
+
+    if ic_src_type == "case":
+        src = _resolve_ic_source_path(src)
+        src_ic = src / "IC" / "INPUT"
+    else:
+        src_ic = Path(src)
+
+    log.info(f"Resolved IC source directory: {src_ic}")
 
     if not src.exists() or not any(src.iterdir()):
         msg = f"Directory is empty: {src.resolve()}\n"
         msg = msg + "No initial condition files detected"
-        msg = msg + f"Ensure files are placed in:\n\t{src}/INIT_DATA/INIT_INPUT"
+        msg = msg + f"Ensure files are placed in:\n\t{src_ic}"
         raise ValueError(msg)
 
     subprocess.run(["cp", "-rf", f"{src}/.", f"{state.home}/"], check=True)
@@ -70,12 +234,10 @@ def initialize_ic_from_existing_case() -> None:
         subprocess.run(["rm", "-rf", str(p)], check=True)
         p.mkdir(parents=True, exist_ok=True)
 
-    src_ic = state.home / "INIT_DATA" / "INIT_INPUT"
-
     subprocess.run(["cp", "-rf", f"{src_ic}/.", f"{state.home}/INPUT/"], check=True)
 
-    dirs_to_rm = list((state.home / "INIT_DATA").glob("R*"))
-    dirs_to_rm = dirs_to_rm + [src_ic]
+    dirs_to_rm = list((state.home / "IC").glob("R*"))
+    dirs_to_rm = dirs_to_rm + [state.home / "IC" / "INPUT"]
 
     files_to_rm = []
     for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
@@ -83,6 +245,7 @@ def initialize_ic_from_existing_case() -> None:
 
     subprocess.run(["rm", "-rf", *map(str, dirs_to_rm)], check=True)
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
+    subprocess.run(["rm", "-rf", str(state.home / "case.tar.gz")], check=True)
 
     run_id = os.environ.get("CURR_RUN_ID", "0")
     (state.home / "run.id").write_text(str(run_id))
@@ -122,7 +285,7 @@ def _download_data(
     )
 
 
-def get_init_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
+def get_IC(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
     """
     Get initialization data for the specified external model
 
@@ -147,7 +310,7 @@ def get_init_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
     date = datetime.strftime("%Y%m%d")
     year = datetime.strftime("%Y")
     hour = datetime.strftime("%H")
-    root_dir = state.home / "INIT_DATA" / external_model
+    root_dir = state.home / "IC" / external_model
     root_dir.mkdir(parents=True, exist_ok=True)
 
     if external_model == "GFS":

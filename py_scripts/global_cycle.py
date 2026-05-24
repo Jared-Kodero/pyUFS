@@ -11,14 +11,14 @@ def run_global_cycle(
     datetime: str,
     c_res: str,
     fhour: str = "00",
-    exec_dir: Path | None = None,
-    fix_am: Path | None = None,
-    tmp_dir: Path | None = None,
-    tmp_ic_dir: Path | None = None,
-    global_cycle: Path | None = None,
-    jcap: int | None = None,
-    lonb: int | None = None,
-    latb: int | None = None,
+    exec_dir: Path = None,
+    fix_am: Path = None,
+    tmp_dir: Path = None,
+    tmp_ic_dir: Path = None,
+    global_cycle: Path = None,
+    jcap: int = None,
+    lonb: int = None,
+    latb: int = None,
     lsoil: int = 4,
     fsmcl2: int = 60,
     fslpl: float = 99999.0,
@@ -38,9 +38,9 @@ def run_global_cycle(
     max_tasks: int = 99999,
     nst_file: str = "NULL",
     lnd_soi_file: str = "NULL",
-    cycle_vars: dict | None = None,
+    cycle_vars: dict = None,
     n_nests: int = 0,  # NEW: number of nests for multinest support
-    nest_idx: int | None = None,  # NEW: current nest index being processed
+    nest_idx: int = None,  # NEW: current nest index being processed
 ):
     """
     Python wrapper for global_cycle.sh.

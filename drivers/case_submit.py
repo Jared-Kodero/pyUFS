@@ -1,17 +1,21 @@
 #!/usr/bin/python
 
-# parse_config.py
+# case_submit.py
 import base64
+import logging
 import os
+import subprocess
 import sys
-import uuid
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("CASE.SUBMIT")
 
 try:
     import yaml
 except ImportError:
-    print("ERROR: PyYAML is not installed in the current Python environment")
-    sys.exit(0)
+    logger.error("PyYAML is not installed in the current Python environment")
+    sys.exit(1)
 
 
 SCRIPT_DIR = Path(__file__).resolve()
@@ -20,8 +24,8 @@ RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
 
 for f in (MACHINE_CFG_PATH, RUN_CFG_PATH):
     if not f.exists():
-        print(f"ERROR: File not found: {f}")
-        sys.exit(0)
+        logger.error(f"File not found: {f}")
+        sys.exit(1)
 
 
 def get_paths(cfg: dict):
@@ -42,8 +46,8 @@ def get_paths(cfg: dict):
         "container_bindpath",
     ):
         if k not in paths or not paths[k]:
-            print(f"ERROR: Missing `paths` configuration: {k} in {MACHINE_CFG_PATH}")
-            sys.exit(0)
+            logger.error(f"Missing `paths` configuration: {k} in {MACHINE_CFG_PATH}")
+            sys.exit(1)
 
     for k, v in paths.items():
         if k == "container_bindpath":
@@ -75,19 +79,32 @@ def get_paths(cfg: dict):
 def get_sbatch_runtime_flags(cfg: dict) -> dict:
     nnodes = cfg["SBATCH_NNODES"]
     ntasks_per_node = cfg["SBATCH_NTASKS_PER_NODE"]
-    mem = cfg["SBATCH_MEM"]
-    mem_per_cpu = cfg["SBATCH_MEM_PER_CPU"]
     exclusive = cfg["SBATCH_EXCLUSIVE_NODE"]
     use_constraint = cfg["SBATCH_NODE_CONSTRAINT"]
+    sbatch_ntasks = cfg["SBATCH_NTASKS"]
+
+    mem = cfg["SBATCH_MEM"]
+
+    if mem > sbatch_ntasks * 2:  # at least 2GB per task
+        mem_per_cpu = mem // sbatch_ntasks
+    else:
+        mem_per_cpu = None
+        mem = None
 
     if nnodes > 1:
-        memory_flag = f"--mem-per-cpu={mem_per_cpu}g"
+        if mem_per_cpu is not None:
+            memory_flag = f"--mem-per-cpu={mem_per_cpu}g"
+        else:
+            memory_flag = ""
         multi_node = 1
     else:
-        memory_flag = f"--mem={mem}g"
+        if mem is not None:
+            memory_flag = f"--mem={mem}g"
+        else:
+            memory_flag = ""
         multi_node = 0
 
-    node_constraint_flag = "--constraint="
+    node_constraint_flag = ""  # --constraint="
     if use_constraint == 1:
         tasks = (24, 32, 48, 64)
         constraint = next(
@@ -102,9 +119,9 @@ def get_sbatch_runtime_flags(cfg: dict) -> dict:
     exclusive_flag = "--exclusive" if exclusive == 1 else ""
 
     flags = {
+        "SBATCH_MEMORY_FLAG": memory_flag,
         "SBATCH_EXCLUSIVE_NODE": exclusive,
         "SBATCH_MULTI_NODE_FLAG": multi_node,
-        "SBATCH_MEMORY_FLAG": memory_flag,
         "SBATCH_NODE_CONSTRAINT_FLAG": node_constraint_flag,
         "SBATCH_NODE_EXCLUSIVE_FLAG": exclusive_flag,
     }
@@ -126,14 +143,14 @@ def read_yaml(path: Path):
             mark = e.problem_mark
             v, n = _read_yaml_txt(path, mark.line)
             print(
-                " ERROR: in run_config.yaml\n",
+                "ERROR: Bad Yaml file ! \n",
                 f"File path: {path}\n",
                 f"Line: {mark.line},  Column: {mark.column}, {e.problem}\n",
                 f"\t-> {v}\n",
                 f"\t   {'^' * n}",
             )
         else:
-            print(f"ERROR: Invalid YAML file: {path}")
+            logger.error(f"Invalid YAML file: {path}")
         sys.exit(1)
     return data
 
@@ -153,10 +170,9 @@ def get_config():
     sbatch_partition = cfg["partition"]
     sbatch_exclusive = int(cfg["exclusive"])
     sbatch_constraint = int(cfg["constraint"])
-    sbatch_mem = max(cfg["mem"], sbatch_ntasks * 2)
     sbatch_cpu_per_task = max(cfg["cpus_per_task"], 1)
+    sbatch_mem = cfg.get("mem", 0)
 
-    sbatch_mem_per_cpu = sbatch_mem // sbatch_ntasks
     sbatch_ntasks_per_node = sbatch_ntasks // sbatch_nnodes
     sbatch_ntasks_total = sbatch_ntasks_per_node * sbatch_nnodes
 
@@ -169,21 +185,26 @@ def get_config():
     archive_data = int(user_cfg.get("archive_data", False))
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
     case_name = user_cfg.get("case_name") or env_case_name
+    skip_ensembles = user_cfg.get("skip_ensembles", None)
+
+    if not isinstance(skip_ensembles, list):
+        skip_ensembles = [skip_ensembles] if skip_ensembles is not None else []
+
     paths = get_paths(mach_cfg)
 
     env = {
         "SBATCH_MEM": sbatch_mem,
-        "SBATCH_TIME": sbatch_time,
+        "SBATCH_TIME_LIMIT": sbatch_time,
         "SBATCH_NNODES": sbatch_nnodes,
         "SBATCH_OUTPUT": sbatch_output,
         "SBATCH_PARTITION": sbatch_partition,
         "SBATCH_NTASKS": sbatch_ntasks_total,
-        "SBATCH_MEM_PER_CPU": sbatch_mem_per_cpu,
         "SBATCH_EXCLUSIVE_NODE": sbatch_exclusive,
         "SBATCH_CPUS_PER_TASK": sbatch_cpu_per_task,
         "SBATCH_NODE_CONSTRAINT": sbatch_constraint,
         "SBATCH_NTASKS_PER_NODE": sbatch_ntasks_per_node,
         "CASE_ENSEMBLES": n_ensembles,
+        "CASE_SKIP_ENSEMBLES": skip_ensembles,
         "CASE_RESUBMIT": resubmit,
         "CASE_ARCHIVE": archive_data,
         "CASE_NAME": case_name,
@@ -195,21 +216,80 @@ def get_config():
     return env
 
 
-def write_cfg(cfg: dict):
+def run(sbatch_script: Path, proc_env: dict, cwd: Path) -> int:
+    try:
+        subprocess.run(
+            ["bash", str(sbatch_script)],
+            env=proc_env,
+            cwd=str(cwd),
+            check=False,
+        )
 
-    temp_file = Path("/tmp") / f"{uuid.uuid4()}"
-    with open(temp_file, "w") as f:
-        for k, v in cfg.items():
-            f.write(f"export {k}={v}\n")
-
-    return temp_file
+    except subprocess.SubprocessError as e:
+        logger.error(f"Job submission failed! {e}")
+        sys.exit(1)
 
 
 def main():
-    cfg = get_config()
-    return write_cfg(cfg)
+    env = get_config()
+    case_pwd = Path.cwd()
+    case_dir = case_pwd.name
+    case_parent_dir = case_pwd.parent.name
+    ufs_utils_dir = SCRIPT_DIR.parent.parent  # case_submit.py lives in drivers/
+
+    env["CASE_PWD"] = str(case_pwd)
+    env["CASE_DIR"] = case_dir
+    env["CASE_PARENT_DIR"] = case_parent_dir
+    env["UFS_UTILS_DIR"] = str(ufs_utils_dir)
+    env["CASE_NAME"] = env["CASE_NAME"] or case_dir
+
+    n_ensembles = int(env["CASE_ENSEMBLES"])
+    sbatch_output = Path(env["SBATCH_OUTPUT"])
+    sbatch_script = ufs_utils_dir / "drivers" / "sbatch.sh"
+    skipped_ensembles = env["CASE_SKIP_ENSEMBLES"]
+
+    for i in range(n_ensembles):
+        ensemble_id = i + 1
+
+        if ensemble_id in skipped_ensembles:
+            logger.info(f"Skipped ensemble: {ensemble_id}")
+            continue
+
+        if n_ensembles == 1:
+            ensemble_id = 0
+            slurm_job_name = f"{case_parent_dir}.{case_dir}"
+            case_name = env["CASE_NAME"]
+            case_data_symlink = case_pwd / "run"
+            case_log_file = sbatch_output.with_suffix(".log")
+        else:
+            run_link = case_pwd / "run"
+            if run_link.is_symlink() or run_link.exists():
+                run_link.unlink()
+            mem_id = f"{ensemble_id:02d}"
+            slurm_job_name = f"{case_parent_dir}.{case_dir}.MEM{mem_id}"
+            case_name = f"{env['CASE_NAME']}/mem{mem_id}"
+            case_data_symlink = case_pwd / f"mem{mem_id}"
+            case_log_file = sbatch_output.with_suffix(f".{mem_id}.log")
+
+        iter_env = {
+            **env,
+            "CASE_ENSEMBLE_ID": ensemble_id,
+            "SLURM_JOB_NAME": slurm_job_name,
+            "SLURM_OPEN_MODE": "truncate",
+            "CASE_NAME": case_name,
+            "CASE_DATA_SYMLINK": str(case_data_symlink),
+            "CASE_LOG_FILE": str(case_log_file),
+        }
+
+        proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
+        run(sbatch_script, proc_env, case_pwd)
+
+    logger.info("Success! Case Submitted")
 
 
 if __name__ == "__main__":
-    file = main()
-    print(file, flush=True)
+    try:
+        sys.exit(main())
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        sys.exit(1)
