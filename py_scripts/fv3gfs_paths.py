@@ -6,7 +6,7 @@ env_paths = {}
 env_paths["fix"] = Path(os.getenv("FIX_DIR"))
 env_paths["home"] = Path(os.getenv("WORK_DIR"))
 env_paths["fix_am"] = env_paths["fix"] / "am"
-env_paths["ufs_exe"] = Path("/UFS_UTILS_DIR/exec")
+env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
 env_paths["rundir"] = Path(os.getenv("CASE_PWD"))
 env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
 env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
@@ -21,7 +21,7 @@ case_paths["fixed"] = env_paths["home"] / "FIXED"
 case_paths["input"] = env_paths["home"] / "INPUT"
 case_paths["output"] = env_paths["home"] / "OUTPUT"
 case_paths["restarts"] = env_paths["home"] / "RESTART"
-case_paths["init_data"] = env_paths["home"] / "INIT_DATA"
+case_paths["IC"] = env_paths["home"] / "IC"
 
 paths = {**env_paths, **case_paths}
 
@@ -62,15 +62,15 @@ def config_restart_dir(paths: dict, params: dict) -> None:
     for warm-start continuation runs.
 
     Archive naming convention:
-    - restart_no == 1  -> INIT_DATA/INIT_INPUT
-    - restart_no >= 2  -> INIT_DATA/RXX_INPUT, where XXX = restart_no - 1
+    - restart_no == 1  -> IC/INPUT
+    - restart_no >= 2  -> IC/RXX_INPUT, where XXX = restart_no - 1
     """
 
     if not params.get("warm_start") or int(params.get("restart_no", 0)) == 0:
         return
 
     home = Path(paths["home"])
-    archive_dir = home / "INIT_DATA"
+    archive_dir = home / "IC"
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     prev_input_data = Path(paths["input"])
@@ -81,18 +81,18 @@ def config_restart_dir(paths: dict, params: dict) -> None:
     archive_index = restart_no - 1
 
     if archive_index == 0:
-        prev_init_data = archive_dir / "INIT_INPUT"
+        prev_IC = archive_dir / "INPUT"
     else:
-        prev_init_data = archive_dir / f"R{archive_index:03d}_INPUT"
+        prev_IC = archive_dir / f"R{archive_index:03d}_INPUT"
 
     if not prev_model_restart.exists() or not any(prev_model_restart.iterdir()):
         raise FileNotFoundError(
             f"Restart directory missing or empty: {prev_model_restart}"
         )
 
-    if prev_init_data.exists():
+    if prev_IC.exists():
         raise FileExistsError(
-            f"{prev_init_data} already exists; restart counter inconsistent."
+            f"{prev_IC} already exists; restart counter inconsistent."
         )
 
     if not prev_input_data.exists():
@@ -101,13 +101,13 @@ def config_restart_dir(paths: dict, params: dict) -> None:
         )
 
     # Archive previous INPUT
-    prev_input_data.rename(prev_init_data)
+    prev_input_data.rename(prev_IC)
 
     # Promote RESTART -> INPUT
     prev_model_restart.rename(curr_input_data)
 
     # Re-link static (non-netCDF) files from initial archived INPUT if present
-    initial_input = archive_dir / "INIT_INPUT"
+    initial_input = archive_dir / "INPUT"
     if initial_input.exists():
         for f in initial_input.iterdir():
             if f.is_file() and f.suffix != ".nc":

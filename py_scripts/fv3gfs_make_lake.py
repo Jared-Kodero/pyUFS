@@ -60,7 +60,7 @@ def run_add_lakefrac(
     grid_dir: Path,
     topo: Path,
     lake_cutoff: float,
-    tmp: Path | None = None,
+    tmp: Path = None,
 ):
     """
     Python wrapper for fv3gfs_lakefrac.sh.

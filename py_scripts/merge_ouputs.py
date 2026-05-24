@@ -13,7 +13,7 @@ def stream_family(stream: str) -> tuple:
     return fam
 
 
-def get_group_name(p: Path) -> str | None:
+def get_group_name(p: Path) -> str:
     name = p.name
     if ".global.nc" in name:
         return "global"

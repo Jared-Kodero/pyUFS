@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from fv3gfs_utils import (
     parse_resolution,
 )
 
+py_ncpus = len(os.sched_getaffinity(0))
 run_logs = []  # Global list to accumulate log messages for the current run
 
 
@@ -132,6 +134,11 @@ def preprocess_input():
 
     load_state()
     params = FV3State(parse_input())  # Get parsed arguments
+
+    if py_ncpus < 32:
+        raise RuntimeError(
+            f"Insufficient CPUs for this run. Detected {py_ncpus} available, but at least 32 is required."
+        )
 
     params.n_cpus = state.n_cpus  # Update n_cpus based on available CPUs
     params.global_res_km = cres_to_deg(params.res).km

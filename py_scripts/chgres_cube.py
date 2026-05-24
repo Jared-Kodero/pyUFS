@@ -9,7 +9,7 @@ from typing import Literal
 
 import f90nml
 import yaml
-from fv3gfs_ic_data import get_init_data, validate_hrrr_bounds
+from fv3gfs_ic_data import get_IC, validate_hrrr_bounds
 from fv3gfs_runtime import get_launcher
 from fv3gfs_stage_data import stage_files
 from fv3gfs_state import FV3State, state
@@ -21,35 +21,35 @@ log = logging.getLogger("PREPROCESSING")
 @dataclass
 class ChgresCubeConfig:
     # === Target grid ===
-    mosaic_file_target_grid: Path | None = None
-    fix_dir_target_grid: Path | None = None
-    orog_dir_target_grid: Path | None = None
-    orog_files_target_grid: list[str] | None = None
-    vcoord_file_target_grid: Path | None = None
+    mosaic_file_target_grid: Path = None
+    fix_dir_target_grid: Path = None
+    orog_dir_target_grid: Path = None
+    orog_files_target_grid: list[str] = None
+    vcoord_file_target_grid: Path = None
 
     # === Input grid ===
-    data_dir_input_grid: Path | None = None
-    atm_files_input_grid: list[str] | None = None
-    sfc_files_input_grid: list[str] | None = None
-    nst_files_input_grid: list[str] | None = None
-    atm_core_files_input_grid: list[str] | None = None
-    atm_tracer_files_input_grid: list[str] | None = None
-    orog_dir_input_grid: Path | None = None
-    orog_files_input_grid: list[str] | None = None
-    grib2_file_input_grid: Path | None = None
-    geogrid_file_input_grid: Path | None = None
-    mosaic_file_input_grid: Path | None = None
+    data_dir_input_grid: Path = None
+    atm_files_input_grid: list[str] = None
+    sfc_files_input_grid: list[str] = None
+    nst_files_input_grid: list[str] = None
+    atm_core_files_input_grid: list[str] = None
+    atm_tracer_files_input_grid: list[str] = None
+    orog_dir_input_grid: Path = None
+    orog_files_input_grid: list[str] = None
+    grib2_file_input_grid: Path = None
+    geogrid_file_input_grid: Path = None
+    mosaic_file_input_grid: Path = None
 
     # === Physics / mapping ===
-    varmap_file: Path | None = None
-    thomp_mp_climo_file: Path | None = None
-    wam_parm_file: Path | None = None
+    varmap_file: Path = None
+    thomp_mp_climo_file: Path = None
+    wam_parm_file: Path = None
 
     # === Cycle ===
-    cycle_year: int | None = None
-    cycle_mon: int | None = None
-    cycle_day: int | None = None
-    cycle_hour: int | None = None
+    cycle_year: int = None
+    cycle_mon: int = None
+    cycle_day: int = None
+    cycle_hour: int = None
 
     # === Conversion flags ===
     convert_atm: bool = True
@@ -298,7 +298,7 @@ def apply_config_settings(
     else:
         raise NotImplementedError("Only GFS and HRRR external models are supported")
 
-    data_dir, data_file = get_init_data(ext_model)
+    data_dir, data_file = get_IC(ext_model)
     domain_f41.data_dir_input_grid = data_dir
     domain_f41.grib2_file_input_grid = data_file
 

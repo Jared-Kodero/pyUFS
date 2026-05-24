@@ -16,7 +16,7 @@ def _run_make_orog_gsl(
     out_dir: Path,
     topo_dir: Path,
     exec_dir: Path,
-    tmp: Path | None = None,
+    tmp: Path = None,
     local_state: dict = None,
 ):
 
@@ -90,7 +90,7 @@ def run_make_orog_gsl(
     out_dir: Path,
     topo_dir: Path,
     exec_dir: Path,
-    tmp: Path | None = None,
+    tmp: Path = None,
 ):
     """
     Python wrapper for fv3gfs_orog_gsl.sh functionality.
