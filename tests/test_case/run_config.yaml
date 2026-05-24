@@ -14,9 +14,9 @@ sbatch:
   constraint: false
   cpus_per_task: 1
   time: 1
-  mem: 100
-  nnodes: 1
-  ntasks: 36
+  #mem: 100
+  nnodes: 2
+  ntasks: 64
   output: "shield.driver.log"
   partition: "batch"
 

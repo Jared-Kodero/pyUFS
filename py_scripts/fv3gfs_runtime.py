@@ -46,7 +46,7 @@ def handle_errors(type, value, tb):
     frame = [
         f
         for f in frames
-        if "site-packages" not in str(Path(f.filename).resolve())
+        if "py_scripts" in str(Path(f.filename).resolve())
         and f.filename.endswith(".py")
     ][-1]
 

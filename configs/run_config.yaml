@@ -1,224 +1,186 @@
 # =============================================================================
-# SHIELD RUN CONFIGURATION
-# Structured configuration for FV3-based simulations.
+# SHIELD Run Configuration
+# FV3-based atmospheric model simulation parameters.
+# =============================================================================
+# Sections (functional order):
+#   1. Job submission (SLURM)
+#   2. Case metadata
+#   3. Execution control
+#   4. Ensemble configuration
+#   5. Initial conditions and preprocessing
+#   6. Horizontal grid (uniform, stretch, nest, regional)
+#   7. Vertical grid and physics
+#   8. Time stepping
+#   9. Surface and orography
+#  10. Namelist files
+#  11. Land surface perturbations
 # =============================================================================
 
-# sbatch job submission parameters (REQUIRED) Modify the deafults as needed for your job
+# -----------------------------------------------------------------------------
+# 1. JOB SUBMISSION (SLURM)
+# -----------------------------------------------------------------------------
+# Parameters forwarded to sbatch. Override defaults as required by the host.
+
 sbatch:
-  exclusive: false # Run with exclusive node access (true/false)
-  constraint: false # Node constraints (e.g., "24-core", "32-core")
-  cpus_per_task: 1 # Number of CPU cores per task
-  time: 24 # Maximum wall time
-  mem: 320 # Total memory (GB)
-  nnodes: 2 # Number of nodes
-  ntasks: 64 # Total number of tasks (e.g., MPI ranks)
-  output: "shield.driver.log" # Path for sbatch output log
-  partition: "batch" # Partition name 
+  partition: "batch" # SLURM partition
+  nnodes: 2 # Number of compute nodes
+  ntasks: 64 # Total MPI ranks
+  cpus_per_task: 1 # OpenMP threads per rank
+  mem: 320 # Total memory per node [GB]
+  time: 24 # Wall-clock limit [hours]
+  exclusive: false # Reserve full nodes (true / false)
+  constraint: false # Node feature constraints (e.g., "32-core")
+  output: "shield.driver" # Driver log path
 
-# Case name for reproducibility tracking if null, case directory name will be used
-case_name: null
+# -----------------------------------------------------------------------------
+# 2. CASE METADATA
+# -----------------------------------------------------------------------------
 
-# Ensemble configuration if true Ensemble run with n_ensembles members. If false, run a single simulation.
-ensemble_run: true
+case_name: null # Case identifier; null falls back to directory name
+description: # Short experiment label (REQUIRED for tracking)
+debug: false # Verbose diagnostics
+archive_data: true # Archive outputs after completion
 
-# Number of ensemble members (only relevant if ensemble_run = true)
-n_ensembles: 1
+# -----------------------------------------------------------------------------
+# 3. EXECUTION CONTROL
+# -----------------------------------------------------------------------------
 
-# Number of times to resubmit the job for additional runs (e.g., for sequential forecasts or extended integrations)
-resubmit: 0
+shield_exe: null # Path to SHIELD executable (REQUIRED)
+init_datetime: null # Initialization time YYYYMMDDHH, UTC (REQUIRED)
+run_nhours: 3 # Integration length [hours]
+forecast_hour: 0 # Offset from initialization [hours]
+continue_run: false # Restart from existing files (requires valid restarts)
+resubmit: 0 # Number of sequential job resubmissions
 
-# If true, archive output data to a specified location after the run completes
-archive_data: true
+# -----------------------------------------------------------------------------
+# 4. ENSEMBLE CONFIGURATION
+# -----------------------------------------------------------------------------
 
-# Short descriptive label (REQUIRED for reproducibility tracking)
-description: #"example_run"
+ensemble_run: true # Multi-member ensemble; false runs a single simulation
+n_ensembles: 1 # Number of members (used when ensemble_run = true)
+paired_ensembles: false # Generate paired perturbations across members
+skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
 
-# Enable verbose diagnostic output
-debug: false
+# -----------------------------------------------------------------------------
+# 5. INITIAL CONDITIONS AND PREPROCESSING
+# -----------------------------------------------------------------------------
 
-# if false, skip grid and IC generation (assumes existing files)
-ic_gen: true # false → requires valid IC source path or existing IC files in the expected location
-ic_only: false # if true, only generate ICs snd Grid files, then exit (useful for testing or when only IC generation is needed)
-ic_source_path: null # Path to existing case for sourcing ICs (REQUIRED if ic_gen = false)
+ic_gen: true # Generate grid and IC files
+ic_only: false # Generate ICs and grid only, then exit
+ic_source_path: null # Source case path (REQUIRED if ic_gen = false)
+ic_source_type: "case" # Options: case | external | chgres
+chgres_config: null # CHGRES configuration (REQUIRED for initialization)
 
-# Path to SHIELD executable (REQUIRED for execution)
-shield_exe: null
+# -----------------------------------------------------------------------------
+# 6. HORIZONTAL GRID
+# -----------------------------------------------------------------------------
+# Cubed-sphere resolution reference:
+#   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
+#   C768  ~ 13 km      C3072 ~ 3 km
 
-# Model initialization time (REQUIRED)
-# Format: YYYYMMDDHH (UTC, e.g., 2025040700)
-init_datetime: null
+res: 96 # Cubed-sphere face resolution
+gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
+target_lon: -96 # Grid center longitude [degrees]; used for stretch / regional
+target_lat: 35.0 # Grid center latitude  [degrees]; used for stretch / regional
+stretch_factor: 1.0 # Schmidt stretching coefficient; values > 1 refine the target region
 
-# ---------------------------------------------------------------------------
-# TIME CONTROL
-# ---------------------------------------------------------------------------
-
-# Total integration length [hours]
-run_nhours: 3
-
-# Forecast offset from initialization [hours]
-forecast_hour: 0
-
-# Restart behavior
-continue_run: false # true → requires valid restart files
-
-# ---------------------------------------------------------------------------
-# MODEL PHYSICS
-# ---------------------------------------------------------------------------
-
-# Deep convection parameterization
-# NOTE: Disable for grid spacing < 4 km
-do_deep: false
-
-# Vertical resolution (n_sigma-pressure hybrid levels)
-levels: 64
-
-# ---------------------------------------------------------------------------
-# GRID CONFIGURATION
-# ---------------------------------------------------------------------------
-
-# Horizontal resolution (cubed-sphere)
-# Examples:
-#   C96   ~100 km
-#   C192  ~50 km
-#   C384  ~25 km
-#   C768  ~13 km
-#   C3072 ~3 km
-res: 96
-
-# Grid type
-# Options: uniform | stretch | nest | regional_gfdl | regional_esg
-gtype: uniform
-
-# Grid center (used for stretch/regional grids)
-target_lon: -96
-target_lat: 35.0
-
-# Stretch factor (>1 increases local resolution)
-stretch_factor: 1.0
-
-# ---------------------------------------------------------------------------
-# NESTING CONFIGURATION (only if gtype = nest)
-# ---------------------------------------------------------------------------
-
-# Refinement ratio(s) relative to parent grid
-refine_ratio: [ 3 ]
-
-# Geographic bounds (degrees) for nests (list of dicts for multiple nests)
-lon_min: null
+# 6a. Nested grids (active when gtype = nest)
+refine_ratio: [ 3 ] # Refinement ratio(s) relative to parent grid
+parent_tile: 6 # Parent cubed-sphere tile (1 to 6)
+halo: 3 # Halo width for MPI exchange
+lon_min: null # Nest bounds [degrees]; lists permitted for multiple nests
 lon_max: null
 lat_min: null
 lat_max: null
 
-# Parent cubed-sphere tile (1–6)
-parent_tile: 6
+# 6b. Regional ESG grids (active when gtype = regional_esg)
+idim: 200 # Zonal grid points
+jdim: 200 # Meridional grid points
+delx: 0.0585 # Supergrid spacing, zonal      [degrees]
+dely: 0.0585 # Supergrid spacing, meridional [degrees]
 
-# Halo width for MPI communication
-halo: 3
+# -----------------------------------------------------------------------------
+# 7. VERTICAL GRID AND PHYSICS
+# -----------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# REGIONAL GRID (ESG ONLY)
-# ---------------------------------------------------------------------------
+levels: 64 # Hybrid sigma-pressure levels
+do_deep: false # Deep convection parameterization (disable for dx < 4 km)
 
-idim: 200
-jdim: 200
+# -----------------------------------------------------------------------------
+# 8. TIME STEPPING (CFL CONSTRAINED)
+# -----------------------------------------------------------------------------
+# Relationships:
+#   dt_dyn      = dt_atmos / k_split          (vertical Lagrangian remap step)
+#   dt_acoustic = dt_atmos / (k_split * n_split)
+# Guideline: dt_atmos in the range 300 to 600 s for C96; scale with grid spacing.
 
-# Supergrid spacing [degrees]
-delx: 0.0585
-dely: 0.0585
+dt_atmos: null # Atmospheric physics timestep [s]
+dt_ocean: null # Ocean coupling timestep      [s] (if coupled)
+k_split: null # Lagrangian-to-Eulerian remap splits per dt_atmos
+n_split: null # Acoustic substeps per remap step
+nest_k_split: null # Remap splits for nested domain
+nest_n_split: null # Acoustic substeps for nested domain
 
-# ---------------------------------------------------------------------------
-# SURFACE AND OROGRAPHY
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 9. SURFACE AND OROGRAPHY
+# -----------------------------------------------------------------------------
 
-lake_cutoff: 0.2 # land-water threshold
-add_lake: false # include lake model
-make_gsl_orog: false # GSL orography generation
+lake_cutoff: 0.2 # Land / water fractional threshold
+add_lake: false # Activate lake model
+make_gsl_orog: false # Generate GSL orography fields
 
-# ---------------------------------------------------------------------------
-# TIME STEPPING (CRITICAL FOR STABILITY)
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 10. NAMELIST FILES
+# -----------------------------------------------------------------------------
 
-# Atmospheric timestep [seconds]
-# GUIDELINE:
-#   dt_atmos ≈ 300–600 s for C96
-#   dt ∝ grid spacing (CFL constraint)
-dt_atmos: null
+nml: null # Parent model namelist (REQUIRED)
+tileX_nml: null # Per-nest namelist overrides
 
-# Ocean coupling timestep [seconds] (if coupled)
-dt_ocean: null
-
-# Acoustic timestep splitting (gravity wave stability)
-k_split: null
-
-# Physics timestep splitting
-n_split: null
-
-# Nested domain timestep controls
-nest_k_split: null
-nest_n_split: null
-
-# ---------------------------------------------------------------------------
-# NAMELIST FILES
-# ---------------------------------------------------------------------------
-
-# Parent model namelist (REQUIRED)
-nml: null
-
-# Nest-specific namelists
-tileX_nml: null
-
-# CHGRES configuration (REQUIRED for initialization)
-chgres_config: null
-
-# if true, ensemble members use the same IC from cntrl corresponding to the ensemble member number
-paired_ensembles: false # true → generate paired perturbations for ensemble runs
-
-# ---------------------------------------------------------------------------
-# LAND SURFACE PERTURBATIONS
-# ---------------------------------------------------------------------------
-
-sm_perturbations: null
-
-# ---------------------------------------------------------------------------
-# NOTES ON SM_PERTURBATIONS
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 11. LAND SURFACE PERTURBATIONS
+# -----------------------------------------------------------------------------
+# Apply controlled perturbations to soil-state variables for ensemble spread
+# or sensitivity experiments.
 #
-# Structure:
+# Schema
+# ------
+# sm_perturbations:
+#   perturbations:
+#     - target_var:  <str>                 # e.g., smc, slc, stc
+#       soil_layers: <int | list[int]>
+#       tiles:       <list[int]>
+#       method:      <str | list[str]>
 #
-# perturbations:
-#   - target_var: <str>
-#     soil_layers: <int | list[int]>
-#     tiles: <list[int]>
-#     method: <str | list[str]>
+# Methods
+# -------
+#   std_shift       X = X + k * sigma
+#   mean_shift      X = mu * factor
+#   anom_shift      X = mu + alpha * (X - mu)
+#   constant_fill   X = constant (or mu)
 #
-# Methods:
-#   std_shift       → X = X + kσ
-#   mean_shift     → X = μ * factor
-#   anom_shift  → X = μ + α(X − μ)
-#   constant_fill → X = constant or μ
-#
-# Constraints:
-# - Physical bounds enforced (e.g., soil moisture ∈ [0.01, 0.99])
-# - Ice-water consistency preserved (smc/slc coupling)
-# - Sequential application if multiple methods specified
-#
-# Optional controls:
-#   n_sigma: float
-#   mean_scale: float
-#   anom_scale: float
-#   fill_value: float | "mean"
-#   use_climo: bool
-#   do_nudge: bool
-#   climo_file: str
-#   tau_hours: float (default 24)
-#   do_hold: bool
+# Optional controls
+# -----------------
+#   n_sigma:           float
+#   mean_scale:        float
+#   anom_scale:        float
+#   fill_value:        float | "mean"
+#   use_climo:         bool
+#   do_nudge:          bool
+#   climo_file:        str          # global file; must contain target_var and
+#                                   # match soil_layers
+#   tau_hours:         float        # default 24
+#   do_hold:           bool
 #   apply_on_restarts: int | list[int]
 #
-# WARNING:
-# - "do_nudge" and "do_hold" are mutually exclusive
-# - Improper perturbations may violate energy or water conservation
-# - If climo_file is provided, the file will be used
-# - The climo_file must be global and must have the same variable as target_var
-# - The climo_file must have the same number of soil layers as specified in soil_layers. 
+# Constraints
+# -----------
+#   Physical bounds enforced (e.g., soil moisture in [0.01, 0.99]).
+#   Ice / water consistency preserved (smc, slc coupling).
+#   Multiple methods applied sequentially in the listed order.
 #
-# ---------------------------------------------------------------------------
+# Warnings
+# --------
+#   do_nudge and do_hold are mutually exclusive.
+#   Improper perturbations may violate energy or water conservation.
+
+sm_perturbations: null

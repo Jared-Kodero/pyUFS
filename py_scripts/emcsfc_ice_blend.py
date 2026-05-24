@@ -18,12 +18,12 @@ def run_ice_blend(
     cnvgrib: str = "cnvgrib",
     copygb: str = "copygb",
     copygb2: str = "copygb2",
-    f: Path | None = None,
+    f: Path = None,
     sendcom: bool = False,
-    tmp_ic_dir: Path | None = None,
+    tmp_ic_dir: Path = None,
     verbose: bool = True,
     n_nests: int = 0,  # NEW: number of nests for multinest support
-    nest_idx: int | None = None,  # NEW: current nest index being processed
+    nest_idx: int = None,  # NEW: current nest index being processed
 ):
     """
     Wrapper for the emcsfc_ice_blend program.

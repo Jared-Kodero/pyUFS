@@ -8,16 +8,16 @@ from fv3gfs_utils import cp, run_cmd
 
 
 def _run_make_orog(
-    res: int | None,
-    tile: int | None,
-    grid_dir: Path | None,
+    res: int,
+    tile: int,
+    grid_dir: Path,
     out_dir: Path,
     orog_dir: Path,
     exec_dir: Path,
-    lonb: int | None = None,
-    latb: int | None = None,
-    inputorog: Path | None = None,
-    tmp: Path | None = None,
+    lonb: int = None,
+    latb: int = None,
+    inputorog: Path = None,
+    tmp: Path = None,
     local_state: dict = None,
 ):
     state.update(local_state)
@@ -96,16 +96,16 @@ def _run_make_orog(
 
 
 def run_make_orog(
-    res: int | None,
-    tiles: list[int] | None,
-    grid_dir: Path | None,
+    res: int,
+    tiles: list[int],
+    grid_dir: Path,
     out_dir: Path,
     orog_dir: Path,
     exec_dir: Path,
-    lonb: int | None = None,
-    latb: int | None = None,
-    inputorog: Path | None = None,
-    tmp: Path | None = None,
+    lonb: int = None,
+    latb: int = None,
+    inputorog: Path = None,
+    tmp: Path = None,
 ):
     """
     Generate orography NetCDF files for FV3 cubed-sphere or lat-lon grids.

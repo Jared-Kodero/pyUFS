@@ -287,10 +287,16 @@ def regrid():
         )
         log.info("Run Completed Successfully!")
 
-    for f in state.hist.glob("*"):
+    static_path = Path(state.home) / "STATIC"
+    static_path.mkdir(parents=True, exist_ok=True)
+
+    for f in Path(state.hist).glob("*"):
         if "spec" in f.name or "static" in f.name:
-            continue
-        f.unlink(missing_ok=True)
+            dest = static_path / f.name
+            if dest.exists():
+                continue
+            f.rename(dest)
+
     shutil.rmtree(state.tmp)
 
 

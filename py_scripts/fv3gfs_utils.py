@@ -22,7 +22,7 @@ def run_cmd(
     try:
         result = subprocess.run(
             cmd,
-            check=False,
+            check=True,
             text=True,
             stdin=stdin,
             cwd=cwd,
@@ -31,13 +31,16 @@ def run_cmd(
             stderr=out_file,
         )
 
-        if result.returncode != 0:
-            error = f"Error running command:\n\t{' '.join(cmd)}\n"
-            error = f"{error}\n\t{msgs}"
-        else:
-            error = ""
+        return result.returncode, ""
 
-        return result.returncode, error
+    except subprocess.CalledProcessError as exc:
+        log.warning("Command failed: %s", " ".join(cmd))
+        return exc.returncode, f"{type(exc).__name__}: {exc}\n{msgs}"
+
+    except Exception as exc:
+        log.warning("Exception running command: %s", " ".join(cmd))
+        return 1, f"{type(exc).__name__}: {exc}\n{msgs}"
+
     finally:
         if out_file:
             out_file.close()

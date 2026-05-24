@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 import f90nml
-
 from fv3gfs_runtime import log
 from fv3gfs_state import state
 from fv3gfs_utils import cp, run_cmd
@@ -15,7 +14,7 @@ def run_filter_topo(
     grid_dir: Path,
     orog_dir: Path,
     tmp_dir: Path,
-    stretch_factor: float | None = None,
+    stretch_factor: float = None,
 ):
     """
     Apply topographic filtering to FV3 orography fields.

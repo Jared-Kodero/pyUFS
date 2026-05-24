@@ -1,7 +1,7 @@
 from chgres_cube import run_chgres_cube
 from fv3gfs_driver_grid import run_driver
 from fv3gfs_ensemble_driver import ensemble_config
-from fv3gfs_ic_data import ic_only, initialize_ic_from_existing_case
+from fv3gfs_ic_data import ic_only, init_external_ic
 from fv3gfs_namelists import update_nml_configs
 from fv3gfs_runscripts import gen_shield_run_sh
 from fv3gfs_runtime import log
@@ -12,7 +12,7 @@ from sm_pertubutions import apply_perturbations
 def init_driver():
 
     if not state.ic_gen:
-        initialize_ic_from_existing_case()
+        init_external_ic()
 
     else:
         log.info("Starting FV3 Grid and IC generation driver")

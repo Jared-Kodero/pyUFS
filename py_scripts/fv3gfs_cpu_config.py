@@ -1,5 +1,9 @@
+# new version
+
+from math import isqrt
 from pathlib import Path
 
+import numpy as np
 import xarray as xr
 from fv3gfs_runtime import sort_paths
 from fv3gfs_state import save_state, state
@@ -10,327 +14,139 @@ grid_dir: Path = None
 def calc_cpu_alloc(dir: Path) -> None:
     global grid_dir
     grid_dir = dir
-    get_n_grid_cells()
+    get_grid_info()
     if state.gtype == "nest":
         calc_nest_pes()
     else:
         calc_uniform_pes()
 
 
-def get_n_grid_cells() -> None:
+def get_grid_info() -> None:
     state["nest_ngrid_cells"] = []
     state["global_ngrid_cells"] = 0
+    state["ntiles"] = []
+    state["npx"] = []
+    state["npy"] = []
 
     files = sorted(list(grid_dir.glob("C*_grid.tile*.nc")), key=sort_paths)
+
     for f in files:
         tile_num = int(f.stem.split(".")[-1].replace("tile", ""))
+
         if tile_num < 6:
             continue
 
         with xr.open_dataset(f) as ds:
-            cells = ds.nx.size * ds.ny.size
+            nx = ds.nx.size
+            ny = ds.ny.size
+            cells = nx * ny
+
+            npx = int((nx // 2) + 1)
+            npy = int((ny // 2) + 1)
 
         if tile_num == 6:
-            state["global_ngrid_cells"] = cells * 6
+            n = 6
+            state["global_ngrid_cells"] = cells * n
         else:
+            n = 1
             state["nest_ngrid_cells"].append(cells)
+
+        state.ntiles.append(n)
+        state.npx.append(npx)
+        state.npy.append(npy)
 
 
 def calc_uniform_pes() -> None:
-    grid_path = grid_dir / f"C{state.res}_grid.tile{6}.nc"
-    with xr.open_dataset(grid_path) as ds:
-        npx = int((ds.nx.size // 2) + 1)
-        npy = int((ds.ny.size // 2) + 1)
 
-    nx = npx - 1
-    ny = npy - 1
-    target = state.n_cpus // 6
-
-    valid = sorted(
-        set(
-            x * y
-            for x in range(1, nx + 1)
-            if nx % x == 0
-            for y in range(1, ny + 1)
-            if ny % y == 0
-        )
-    )
-
-    pes_per_tile = max((v for v in valid if v <= target), default=1)
-    total_pes = 6 * pes_per_tile
-
+    total_pes = 6 * (state.n_cpus // 6)
     state["grid_pes"] = [total_pes]
     state["total_pes"] = total_pes
     state["global_pes"] = total_pes
 
-    set_layouts([total_pes], [6])
+    set_layouts([total_pes // 6])
 
 
 def calc_nest_pes() -> None:
-    points = []
+    global_base_pes = 6 * max(1, state.res // 96)
     nest_base_pes = []
-    npx_list = []
-    npy_list = []
 
-    for t in range(6, 7 + state.n_nests):
-        grid_path = grid_dir / f"C{state.res}_grid.tile{t}.nc"
-        with xr.open_dataset(grid_path) as ds:
-            npx = int((ds.nx.size // 2) + 1)
-            npy = int((ds.ny.size // 2) + 1)
-            nx = npx - 1
-            ny = npy - 1
+    for n_cells in state.nest_ngrid_cells:
+        nest_i_base_pe = int((n_cells * global_base_pes) / state.global_ngrid_cells)
+        nest_base_pes.append(nest_i_base_pe)
 
-        npx_list.append(npx)
-        npy_list.append(npy)
-        points.append(nx * ny)
+    weights = [global_base_pes] + nest_base_pes
+    valid = np.array([4, 8, 16, 32, 64, 128, 256], dtype=np.int64)
 
-        if t > 6:
-            nest_base_pes.append(_calc_nest_base_pes(nx, ny))
+    final_pes = allocate_pes(
+        weights=weights,
+        ncpus=state.n_cpus,
+        valid_nest_pes=valid,
+    )
 
-    # 2 PEs per 96x96 tile, scaled by resolution factor
-    g_tile_pe = max(1, state.res // 96)
-    g_base_pes = g_tile_pe * 6
-
-    min_pes = g_base_pes + sum(nest_base_pes)
-    if min_pes > state.n_cpus:
-        raise ValueError(
-            f"Insufficient CPUs: need at least {min_pes} ({g_base_pes} global + {sum(nest_base_pes)} per nest), got {state.n_cpus}."
-        )
-
-    nest_pes = []
-    for p, nb in zip(points[1:], nest_base_pes):
-        w = max(nb, int(p / points[0]))
-        if w % nb != 0:
-            w += (nb - w % nb) % nb
-        nest_pes.append(w)
-
-    base_pes = [g_base_pes] + nest_pes
     ntiles_list = [6] + [1] * state.n_nests
 
-    snapped = []
-    for p, npx, npy, ntiles in zip(
-        nest_pes, npx_list[1:], npy_list[1:], ntiles_list[1:]
-    ):
-        valid = _valid_pes(npx - 1, npy - 1, ntiles=ntiles)
-        snapped.append(_nearest_valid(p, valid, min(valid)))
-
-    grid_pes = [base_pes[0]] + snapped
-
-    if sum(grid_pes) > state.n_cpus:
-        nest_pes = [
-            min(_valid_pes(npx - 1, npy - 1, ntiles=ntiles))
-            for npx, npy, ntiles in zip(npx_list[1:], npy_list[1:], ntiles_list[1:])
-        ]
-        grid_pes = [base_pes[0]] + nest_pes
-
-    ratios = [max(1, round(p / points[0])) for p in points]
-    grid_pes = _distribute_remaining_cpus(
-        grid_pes=grid_pes,
-        ratios=ratios,
-        npx_list=npx_list,
-        npy_list=npy_list,
-        ntiles_list=ntiles_list,
-        total_available=state.n_cpus,
-    )
-
-    total_pes = sum(grid_pes)
-    state["grid_pes"] = grid_pes
+    total_pes = sum(final_pes)
+    state["grid_pes"] = final_pes
     state["total_pes"] = total_pes
-    state["global_pes"] = grid_pes[0]
+    state["global_pes"] = final_pes[0]
 
-    set_layouts(grid_pes, ntiles_list)
-
-
-def _valid_pes(
-    nx: int,
-    ny: int,
-    ntiles: int = 1,
-    max_div: int | None = None,
-) -> list[int]:
-    if max_div is None:
-        max_div = max(nx, ny)
-    valid = set(
-        ntiles * x * y
-        for x in range(1, min(nx, max_div) + 1)
-        if nx % x == 0
-        for y in range(1, min(ny, max_div) + 1)
-        if ny % y == 0
-    )
-    return sorted(valid)
+    set_layouts([p // n for p, n in zip(final_pes, ntiles_list)])
 
 
-def _calc_nest_base_pes(nx: int, ny: int, min_div: int = 1, max_div: int = 32) -> int:
-    """
-    Return a small valid base PE count for a nested FV3 tile.
-    Selects the factor pair (x, y) with the most square subdomain layout,
-    breaking ties by preferring smaller total PE count.
-    Falls back to 1 if no valid factor pair is found.
-    """
-    best = None
-    best_key = None
-
-    for x in range(min_div, max_div + 1):
-        if nx % x != 0:
-            continue
-        for y in range(min_div, max_div + 1):
-            if ny % y != 0:
-                continue
-            pes = x * y
-            key = (abs(x - y), pes)
-            if best_key is None or key < best_key:
-                best_key = key
-                best = pes
-
-    return best if best is not None else 1
-
-
-def _nearest_valid(target: int, valid: list[int], minimum: int) -> int:
-    """
-    Return the largest valid value <= target, but never below minimum.
-    Falls back to the smallest valid value >= minimum.
-    """
-    candidates = [v for v in valid if minimum <= v <= target]
-    if candidates:
-        return candidates[-1]
-    candidates = [v for v in valid if v >= minimum]
-    if candidates:
-        return candidates[0]
-    return minimum
-
-
-def _distribute_remaining_cpus(
-    grid_pes: list[int],
-    ratios: list[int],
-    npx_list: list[int],
-    npy_list: list[int],
-    ntiles_list: list[int],
-    total_available: int,
+def allocate_pes(
+    weights: list[int],
+    ncpus: int,
+    valid_nest_pes: list[int] | np.ndarray,
 ) -> list[int]:
     """
-    Distribute remaining CPUs across parent and nest grids proportionally,
-    ensuring each allocation remains geometrically decomposable.
+    Vectorized PE allocation.
+
+    weights[0]  = global PE weight
+    weights[1:] = nest PE weights
+
+    Rules:
+        - global PE count must be a multiple of 6
+        - each nest PE count must be in valid_nest_pes
+        - total PE count must equal ncpus if possible
+        - selected layout stays closest to the weighted PE ratios
     """
 
-    # reverse each list to prioritize nests
-    current = grid_pes[::-1]
-    ratios = ratios[::-1]
-    npx_list = npx_list[::-1]
-    npy_list = npy_list[::-1]
-    ntiles_list = ntiles_list[::-1]
+    weights = np.asarray(weights, dtype=np.float64)
+    valid = np.asarray(valid_nest_pes, dtype=np.int64)
 
-    def _best_increment(current: int, remaining: int, valid: list[int]) -> int | None:
-        for v in valid:
-            inc = v - current
-            if 0 < inc <= remaining:
-                return inc
-        return None
+    global_valid = np.arange(6, ncpus + 1, 6, dtype=np.int64)
 
-    valid_sets = []
-    minimums = []
-    for i in range(len(current)):
-        nx = npx_list[i] - 1
-        ny = npy_list[i] - 1
-        valid = _valid_pes(nx, ny, ntiles=ntiles_list[i])
-        valid_sets.append(valid)
-        minimums.append(min(valid))
-        if current[i] not in valid:
-            current[i] = _nearest_valid(current[i], valid, minimums[i])
+    choices = [global_valid] + [valid] * (len(weights) - 1)
+    mesh = np.meshgrid(*choices, indexing="ij")
+    candidates = np.stack([m.ravel() for m in mesh], axis=1)
 
-    if sum(current) >= total_available:
-        return current
+    exact = candidates[candidates.sum(axis=1) == ncpus]
 
-    remaining = total_available - sum(current)
-    total_ratio = sum(ratios)
+    if exact.size == 0:
+        candidates = candidates[candidates.sum(axis=1) <= ncpus]
+        candidates = candidates[candidates.sum(axis=1) == candidates.sum(axis=1).max()]
+    else:
+        candidates = exact
 
-    for i in range(len(current)):
-        share = (ratios[i] / total_ratio) * remaining
-        target = current[i] + int(share)
-        current[i] = _nearest_valid(target, valid_sets[i], current[i])
+    target = ncpus * weights / weights.sum()
 
-    used = sum(current)
-    while used > total_available:
-        reduced = False
-        for i in reversed(range(len(current))):  # Now checks Global (last index) first
-            candidates = [v for v in valid_sets[i] if minimums[i] <= v < current[i]]
-            if candidates:
-                current[i] = candidates[-1]
-                used = sum(current)
-                reduced = True
-                if used <= total_available:
-                    break
-        if not reduced:
-            break
+    score = np.sum(((candidates - target) / target) ** 2, axis=1)
 
-    remaining = total_available - sum(current)
-    while remaining > 0:
-        best_i, best_inc, best_score = None, None, None
-        for i in range(len(current)):
-            inc = _best_increment(current[i], remaining, valid_sets[i])
-            if inc is None:
-                continue
-            score = (inc, -ratios[i])
-            if best_score is None or score < best_score:
-                best_score = score
-                best_inc = inc
-                best_i = i
-        if best_i is None:
-            break
-        current[best_i] += best_inc
-        remaining -= best_inc
-
-    return current[::-1]  # reverse back to original order
+    return candidates[np.argmin(score)].astype(int).tolist()
 
 
-def _best_layout(pes_per_tile: int, nx: int, ny: int) -> list[int]:
-    """
-    Return [layout_x, layout_y] such that layout_x * layout_y == pes_per_tile,
-    nx % layout_x == 0, ny % layout_y == 0, and subdomain aspect ratio is
-    closest to 1.0 (minimizes halo exchange imbalance).
-    Falls back to [1, 1] if no valid factorization exists.
-    """
-    best_layout = None
-    best_score = float("inf")
-
-    for x in range(1, pes_per_tile + 1):
-        if pes_per_tile % x != 0:
-            continue
-        y = pes_per_tile // x
-        if nx % x != 0 or ny % y != 0:
-            continue
-        score = abs((nx // x) / (ny // y) - 1.0)
-        if score < best_score:
-            best_score = score
-            best_layout = [x, y]
-
-    return best_layout if best_layout is not None else [1, 1]
-
-
-def set_layouts(pes: list, ntiles: list) -> None:
-    for k in {"layout", "io_layout", "blocksize", "ntiles", "npx", "npy"}:
+def set_layouts(pes: list) -> None:
+    for k in {"layout", "io_layout", "blocksize"}:
         state[k] = []
 
-    tile_ids = list(range(6, 7 + state.n_nests))
+    for p in pes:
+        for layout_x in range(isqrt(p), 0, -1):
+            if p % layout_x == 0:
+                layouts = [layout_x, p // layout_x]
+                break
 
-    for p, t, n in zip(pes, tile_ids, ntiles):
-        if p % n != 0:
-            raise ValueError(f"pes ({p}) must be divisible by ntiles ({n})")
-
-        grid_file = grid_dir / f"C{state.res}_grid.tile{t}.nc"
-        with xr.open_dataset(grid_file) as ds:
-            npx = int((ds.nx.size // 2) + 1)
-            npy = int((ds.ny.size // 2) + 1)
-
-        nx = npx - 1
-        ny = npy - 1
-        pes_per_tile = p // n
-
-        layout = _best_layout(pes_per_tile, nx, ny)
-
-        state.layout.append(layout)
+        state.layout.append(layouts)
         state.io_layout.append([1, 1])
-        state.ntiles.append(n)
-        state.npx.append(npx)
-        state.npy.append(npy)
         state.blocksize.append(32)
 
     save_state()

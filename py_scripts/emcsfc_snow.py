@@ -2,7 +2,6 @@ import subprocess
 from pathlib import Path
 
 import f90nml
-
 from fv3gfs_runtime import log
 from fv3gfs_state import state
 from fv3gfs_utils import run_cmd
@@ -20,14 +19,14 @@ def run_emcsfc_snow(
     model_lat_file: str = "global_latitudes.t1534.3072.1536.grb",
     model_lon_file: str = "global_longitudes.t1534.3072.1536.grb",
     gfs_lpl_file: str = "global_lonsperlat.t1534.3072.1536.txt",
-    climo_qc: str | None = None,
+    climo_qc: str = None,
     model_snow_file: str = "snogrb_model",
     output_grib2: bool = False,
     wgrib2: str = "/wgrib2",
     wgrib: str = "wgrib",
     sendcom: bool = False,
     n_nests: int = 0,  # NEW: number of nests for multinest support
-    nest_idx: int | None = None,  # NEW: current nest index being processed
+    nest_idx: int = None,  # NEW: current nest index being processed
 ):
     """
     Python wrapper for emcsfc_snow.sh.

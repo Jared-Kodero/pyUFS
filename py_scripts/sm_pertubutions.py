@@ -24,9 +24,9 @@ def load_climo(path: Path) -> xr.Dataset:
 
 
 def load_coords_ds(filename: Path, tile: int) -> xr.Dataset:
-    grid_file = Path(state.init_data) / "PERTURBATIONS" / f"tile.{tile}.grid.nc"
+    grid_file = Path(state.IC) / "PERTURBATIONS" / f"tile.{tile}.grid.nc"
     if not grid_file.exists():
-        path = Path(state.init_data) / "INIT_INPUT" / filename
+        path = Path(state.IC) / "INPUT" / filename
         ds = xr.open_dataset(path, decode_cf=False, engine="netcdf4")
         ds = ds[["geolat", "geolon"] + list(ds.coords) + list(ds.dims)]
         ds.to_netcdf(grid_file, engine="netcdf4")
@@ -63,6 +63,9 @@ def to_fv3cube_grid(
         method="bilinear",
     )
 
+    # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
+    # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
+
     out = regridder(grid_in)
     if "Time" not in out.coords:
         out = out.expand_dims("Time", axis=0)
@@ -73,7 +76,7 @@ def to_fv3cube_grid(
         if c in grid_out.coords:
             out[c].attrs = grid_out[c].attrs
         else:
-            out = out.drop(c)
+            out = out.drop_vars(c)
 
     out["Time"] = grid_out["Time"]
 
@@ -191,7 +194,6 @@ def do_nudge_soil_moisture(p, backup_dir, restart_no):
 
 
 def adjust_soil_moisture(p, backup_dir, methods, restart_no):
-
     mean_scale = p.get("mean_scale")
     anom_scale = p.get("anom_scale")
     n_sigma = p.get("n_sigma")
@@ -257,6 +259,18 @@ def adjust_soil_moisture(p, backup_dir, methods, restart_no):
                         updated = updated.clip(0.01, 0.99)
                         layer_new = xr.where(is_valid, updated, layer_new)
 
+                    elif method == "climo_mean":
+                        if climo_path is None:
+                            raise ValueError(
+                                "`climo_file` must be provided when using `climo_mean` method"
+                            )
+
+                        climo_ds = load_climo(climo_path)
+                        climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False).load()
+                        climo = climo_layer.mean(dim="time", skipna=True)
+                        climo = to_fv3cube_grid(climo, load_coords_ds(filename, tile))
+                        layer_new = xr.where(is_valid, climo, layer_new)
+
                     elif method == "anom_shift":
                         data = layer_new.where(is_valid)
                         mu = data.mean(skipna=True)
@@ -312,11 +326,6 @@ def apply_perturbations():
     if not perts:
         return
 
-    if state.n_nests == 0 or state.restart_no == 0:
-        return
-
-    log.info("sm_perturbations detected; applying perturbations")
-
     restart_no = state.restart_no
     total_restarts = state["total_restarts"]
     max_restart_index = total_restarts - 1
@@ -324,9 +333,31 @@ def apply_perturbations():
     if not isinstance(perts, list):
         perts = [perts]
 
-    allowed = ("std_shift", "mean_shift", "anom_shift", "constant_fill")
+    allowed = ("std_shift", "mean_shift", "anom_shift", "constant_fill", "climo_mean")
 
     for i, p in enumerate(perts):
+        apply_on_restarts = p.get("apply_on_restarts", None)
+
+        if apply_on_restarts is None:
+            return
+        elif apply_on_restarts == "all":
+            apply_on_restarts = list(range(restart_no, max_restart_index + 1))
+        elif isinstance(apply_on_restarts, int):
+            apply_on_restarts = [apply_on_restarts]
+        elif isinstance(apply_on_restarts, list):
+            apply_on_restarts = [int(r) for r in apply_on_restarts]
+        else:
+            raise TypeError(
+                "`apply_on_restarts` be one of None, 'all', int, or list of ints"
+            )
+
+        if restart_no not in apply_on_restarts:
+            continue
+
+        log.info(
+            f"sm_perturbations detected for restart {restart_no}; applying perturbations"
+        )
+
         required = ("target_var", "soil_layers", "tiles", "method")
         missing = [k for k in required if k not in p]
         if missing:
@@ -386,24 +417,10 @@ def apply_perturbations():
         if hold and do_nudge:
             raise ValueError("only one of `do_hold` and `do_nudge` can be true")
 
-        apply_on_restarts = p.get("apply_on_restarts", None)
-
-        if apply_on_restarts is None:
-            apply_on_restarts = list(range(restart_no, max_restart_index + 1))
-        elif isinstance(apply_on_restarts, int):
-            apply_on_restarts = [apply_on_restarts]
-        elif isinstance(apply_on_restarts, list):
-            apply_on_restarts = [int(r) for r in apply_on_restarts]
-        else:
-            raise TypeError("`apply_on_restarts` must be None, int, or list[int]")
-
-        if restart_no not in apply_on_restarts:
-            continue
-
         if isinstance(p["soil_layers"], (int, float)):
             p["soil_layers"] = [int(p["soil_layers"])]
 
-        backup_dir = Path(state.init_data) / "PERTURBATIONS" / f"{i}"
+        backup_dir = Path(state.IC) / "PERTURBATIONS" / f"idx{i:02d}"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         if restart_no > 1:

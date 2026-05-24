@@ -4,10 +4,10 @@ sbatch:
   constraint: false
   cpus_per_task: 1
   time: 48
-  mem: 320
   nnodes: 2
   ntasks: 64
   partition: "batch"
+  output: "shield.driver.log"
 
 paths:
   jobtmp: /jobtmp/$USER/gfdl_shield

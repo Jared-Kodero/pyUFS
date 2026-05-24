@@ -213,7 +213,7 @@ see `<path_to_dir>/gfdl_shield/ufs_py/py_scripts/era5_to_fv3.py` for example cod
 - FIXED
 - GRID
 - HIST
-- INIT_DATA
+- IC
 - INPUT
 - LOGS
 - OUTPUT
