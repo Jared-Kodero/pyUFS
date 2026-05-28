@@ -19,7 +19,7 @@ def _check_dtype(da: xr.DataArray, dtype: str):
 
 
 def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
-    required_vars = ["q", "u", "v", "ps"]
+    required_vars = ("q", "u", "v", "ps")
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
             f"Missing variables {required_vars} for moisture transport calculation. Skipping!"
@@ -110,7 +110,7 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
 
 
 def calc_bulk_richardson(ds: xr.Dataset) -> xr.Dataset:
-    required_vars = ["cape", "shear06"]
+    required_vars = ("cape", "shear06")
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
             f"Missing variables {required_vars} for bulk Richardson number calculation. Skipping!"
@@ -127,7 +127,7 @@ def calc_bulk_richardson(ds: xr.Dataset) -> xr.Dataset:
 
 
 def calc_mse(ds: xr.Dataset) -> xr.Dataset:
-    required_vars = ["t", "q", "z"]
+    required_vars = ("t", "q", "z")
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
             f"Missing variables {required_vars} for moist static energy calculation. Skipping!"

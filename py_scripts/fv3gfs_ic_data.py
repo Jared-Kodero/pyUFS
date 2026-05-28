@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Literal
 
 import xarray as xr
-from fv3gfs_cpu_config import calc_cpu_alloc
+from fv3gfs_namelists import update_table_files
+from fv3gfs_pes_config import calc_cpu_alloc
 from fv3gfs_runtime import log
-from fv3gfs_stage_data import update_table_files
 from fv3gfs_state import FV3State, load_state, prev_state, save_state, state
 from fv3gfs_utils import run_cmd
 from pyproj import Proj
@@ -26,7 +26,7 @@ _ENS_PREFIXES = ("ens", "ENS", "ensemble", "ENSEMBLE", "mem", "MEM", "member", "
 
 
 def merge_states():
-    """Merge current and previos states"""
+    """Merge current and previous states"""
 
     load_state()
     new_state = FV3State({**prev_state, **state})
@@ -68,16 +68,33 @@ def _unpack_case_tarball(src: Path) -> Path:
 
 
 def _is_unpacked_case(path: Path) -> bool:
-    src_ic = path / "IC" / "INPUT"
-    return path.is_dir() and src_ic.is_dir() and any(src_ic.iterdir())
+    if not path.is_dir():
+        return False
+
+    fixed = path / "FIXED"
+    grid = path / "GRID"
+
+    if not fixed.is_dir() or not any(fixed.iterdir()):
+        return False
+
+    if not grid.is_dir() or not any(grid.iterdir()):
+        return False
+
+    candidate = path / "IC" / "INPUT"
+
+    if candidate.is_dir() and any(candidate.iterdir()):
+        return True
+
+    return False
 
 
-def _validate_ic_case(path: Path) -> None:
+def _validate_ic_case(path: Path, src_type: str = "case") -> None:
     """
-    Validate that a resolved IC source is an unpacked case containing IC files.
+    Validate that a resolved IC source is an unpacked case containing:
+        - non-empty FIXED
+        - non-empty GRID
+        - non-empty INPUT or IC/INPUT
     """
-
-    src_ic = path / "IC" / "INPUT"
 
     if not path.exists():
         raise FileNotFoundError(
@@ -87,15 +104,34 @@ def _validate_ic_case(path: Path) -> None:
     if not path.is_dir():
         raise ValueError(f"Specified IC source case path is not a directory:\n{path}")
 
-    if not src_ic.exists():
+    fixed = path / "FIXED"
+    grid = path / "GRID"
+
+    if not fixed.is_dir() or not any(fixed.iterdir()):
         raise FileNotFoundError(
-            f"Specified IC source case is not a valid unpacked case.\nExpected IC files under:\n\t{src_ic}"
+            f"Specified IC source case is not a valid unpacked case.\nExpected non-empty FIXED directory under:\n\t{fixed}"
         )
 
-    if not src_ic.is_dir() or not any(src_ic.iterdir()):
-        raise ValueError(
-            f"Specified IC source case has no initial condition files.\nExpected files under:\n\t{src_ic}"
+    if not grid.is_dir() or not any(grid.iterdir()):
+        raise FileNotFoundError(
+            f"Specified IC source case is not a valid unpacked case.\nExpected non-empty GRID directory under:\n\t{grid}"
         )
+
+    if src_type == "case":
+        input_dir = "IC/INPUT"
+    elif src_type == "external":
+        input_dir = "INPUT"
+
+    input_candidate = path / input_dir
+
+    if input_candidate.is_dir() and any(input_candidate.iterdir()):
+        return
+
+    expected = "\n".join(f"\t{p}" for p in [input_candidate])
+
+    raise FileNotFoundError(
+        f"Specified IC source case has no initial condition files.\nExpected non-empty files under one of:\n{expected}"
+    )
 
 
 def _resolve_case_dir_or_tarball(src: Path) -> Path:
@@ -124,9 +160,20 @@ def _resolve_case_dir_or_tarball(src: Path) -> Path:
 
         return _unpack_case_tarball(case_tarball)
 
-    raise FileNotFoundError(
-        f"Specified IC source is not a valid unpacked case and does not contain case.tar.gz:\n{src}"
+    msg = "\n".join(
+        [
+            "Invalid IC source case.",
+            f"Source path:\n\t{src}",
+            "Expected one of the following:",
+            f"\t1. An unpacked case directory containing:\n\t   {src / 'FIXED'}\n\t   {src / 'GRID'}\n\t   {src / 'IC' / 'INPUT'}",
+            f"\t2. A tarball at:\n\t   {src / 'case.tar.gz'}",
+            "Root-level INPUT is not valid for ic_source_type='case' because it may contain staged runtime or restart files.",
+            f"If the IC files are intentionally stored directly under:\n\t{src}\n",
+            "\tset ic_source_type: external",
+        ]
     )
+
+    raise FileNotFoundError(msg)
 
 
 def _resolve_ic_source_path(src: Path) -> tuple[Path, bool]:
@@ -218,6 +265,7 @@ def init_external_ic() -> None:
         src_ic = src / "IC" / "INPUT"
     else:
         src_ic = Path(src)
+        _validate_ic_case(src_ic, src_type="external")
 
     log.info(f"Resolved IC source directory: {src_ic}")
 
@@ -234,7 +282,8 @@ def init_external_ic() -> None:
         subprocess.run(["rm", "-rf", str(p)], check=True)
         p.mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(["cp", "-rf", f"{src_ic}/.", f"{state.home}/INPUT/"], check=True)
+    if ic_src_type == "case":
+        subprocess.run(["cp", "-rf", f"{src_ic}/.", f"{state.home}/INPUT/"], check=True)
 
     dirs_to_rm = list((state.home / "IC").glob("R*"))
     dirs_to_rm = dirs_to_rm + [state.home / "IC" / "INPUT"]
@@ -262,7 +311,7 @@ def _wget(url: str, output_path: Path) -> bool:
     Does not raise; caller is responsible for fallback logic.
     """
     cmd = ["/wget", "-q", "--no-check-certificate", url, "-O", str(output_path)]
-    result, _ = run_cmd(cmd)
+    result, _ = run_cmd(cmd, warn_on_error=False)
     if result != 0:
         if output_path.exists():
             output_path.unlink()
@@ -274,11 +323,14 @@ def _download_data(
     urls: list[str],
     output_path: Path,
     external_model: str,
-    datetime,
+    datetime: str,
+    sources: list[str],
 ) -> None:
-    for url in urls:
+    for url, source in zip(urls, sources):
         if _wget(url, output_path):
+            log.info(f"Successfully retrieved {external_model} IC data from {source}")
             return
+        log.warning(f"Failed to retrieve {external_model} IC data from {source}")
 
     raise RuntimeError(
         f"All download sources failed for {external_model} at {datetime}.\nAttempted URLs:\n{urls}"
@@ -332,6 +384,7 @@ def get_IC(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
         if not output_path.exists():
             _download_data(
                 urls=[noaa_url, ncar_url],
+                sources=["NOAA AWS S3", "NCAR GDEX"],
                 output_path=output_path,
                 external_model=external_model,
                 datetime=datetime,
@@ -358,6 +411,7 @@ def get_IC(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
         if not output_path.exists():
             _download_data(
                 urls=[noaa_url, gcs_url],
+                sources=["NOAA AWS S3", "Google Cloud Storage"],
                 output_path=output_path,
                 external_model=external_model,
                 datetime=datetime,

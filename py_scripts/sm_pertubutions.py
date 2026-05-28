@@ -6,6 +6,11 @@ from fv3gfs_runtime import log
 from fv3gfs_state import state
 from fv3gfs_utils import cp
 
+# Physical bounds for valid volumetric soil moisture (m3 m-3). Used for both
+# the validity mask and the clip so the two are guaranteed consistent.
+SM_MIN = 0.01
+SM_MAX = 0.99
+
 
 def load_climo(path: Path) -> xr.Dataset:
     if not path.exists():
@@ -24,11 +29,15 @@ def load_climo(path: Path) -> xr.Dataset:
 
 
 def load_coords_ds(filename: Path, tile: int) -> xr.Dataset:
-    grid_file = Path(state.IC) / "PERTURBATIONS" / f"tile.{tile}.grid.nc"
+    grid_file = Path(state.IC) / "perturbations" / f"tile.{tile}.grid.nc"
     if not grid_file.exists():
         path = Path(state.IC) / "INPUT" / filename
         ds = xr.open_dataset(path, decode_cf=False, engine="netcdf4")
-        ds = ds[["geolat", "geolon"] + list(ds.coords) + list(ds.dims)]
+        # Select coordinate variables only. `ds.dims` returns dimension names,
+        # which are not necessarily variables and raise KeyError on selection.
+        keep = ["geolat", "geolon"] + list(ds.coords)
+        keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
+        ds = ds[keep]
         ds.to_netcdf(grid_file, engine="netcdf4")
     else:
         ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4")
@@ -40,7 +49,8 @@ def to_fv3cube_grid(
     grid_out: xr.Dataset | xr.DataArray,
 ) -> xr.Dataset:
     """
-    Remap source dataset to the grid of the destination dataset using bilinear interpolation.
+    Remap source dataset to the grid of the destination dataset using bilinear
+    interpolation. Regridding weights are recomputed on every call.
     """
 
     ll_grid = xr.Dataset(
@@ -121,13 +131,17 @@ def do_hold(p: dict, backup_dir: Path, restart_no: int):
             ds.to_netcdf(in_path)
 
 
-def do_nudge_soil_moisture(p, backup_dir, restart_no):
+def do_nudge_soil_moisture(p: dict, backup_dir: Path, restart_no: int):
 
     tau_hours = p.get("tau_hours", 24)
     dt_hours = state.run_nhours
     use_climo = p.get("use_climo", False)
 
     alpha = dt_hours / tau_hours
+    if alpha > 1.0:
+        log.info(
+            f"dt_hours ({dt_hours}) >= tau_hours ({tau_hours}): alpha clipped to 1.0; nudge reduces to full replacement"
+        )
     alpha = min(max(alpha, 0.0), 1.0)
 
     for tile in p["tiles"]:
@@ -135,25 +149,37 @@ def do_nudge_soil_moisture(p, backup_dir, restart_no):
         filename = Path(f"sfc_data.{nest_idx}tile{tile}.nc")
 
         in_path = Path(state.input) / filename
+        backup_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.perturbed.nc"
+        orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
 
-        ds = xr.open_dataset(in_path, decode_cf=False, engine="netcdf4")
+        if not in_path.exists():
+            raise FileNotFoundError(f"Input file not found: {in_path}")
+
+        cp(in_path, orig_path)
+
+        # Read fully into memory and release the handle before writing back.
+        with xr.open_dataset(in_path, decode_cf=False, engine="netcdf4") as ds:
+            ds = ds.load()
 
         if use_climo:
             log.info("Nudging soil moisture towards climatological mean")
-
             ref_path = Path(state.fix) / "era5" / "sm_monthly_1980_2020.nc"
             ds_ref = load_climo(ref_path)
             ds_ref = ds_ref.mean(dim="time", skipna=True)
             ds_ref = ds_ref.squeeze(drop=True)
             ds_ref = to_fv3cube_grid(ds_ref, load_coords_ds(filename, tile))
-
+            ds_ref = ds_ref.load()
         else:
             log.info("Nudging soil moisture towards state from last restart")
-            ref_path = backup_dir / f"{filename.stem}.r00{restart_no - 1}.perturbed.nc"
-            ds_ref = xr.open_dataset(ref_path, decode_cf=False, engine="netcdf4")
-
-        ds = ds.load()
-        ds_ref = ds_ref.load()
+            ref_path = (
+                backup_dir / f"{filename.stem}.r{restart_no - 1:03d}.perturbed.nc"
+            )
+            if not ref_path.exists():
+                raise FileNotFoundError(
+                    f"Previous perturbed file not found: {ref_path}"
+                )
+            with xr.open_dataset(ref_path, decode_cf=False, engine="netcdf4") as ds_ref:
+                ds_ref = ds_ref.load()
 
         ice = None
         if "smc" in ds and "slc" in ds:
@@ -167,16 +193,16 @@ def do_nudge_soil_moisture(p, backup_dir, restart_no):
             layer = ds[v].isel(zaxis_1=z)
             ref_layer = ds_ref[v].isel(zaxis_1=z)
 
-            is_valid = (layer > 0.01) & (layer < 0.99)
+            is_valid = (layer > SM_MIN) & (layer < SM_MAX)
 
             updated = (1.0 - alpha) * layer + alpha * ref_layer
-            updated = updated.clip(min=0.01, max=0.99)
+            updated = updated.clip(min=SM_MIN, max=SM_MAX)
 
             coord_val = ds.zaxis_1.values[z]
             ds[v].loc[{"zaxis_1": coord_val}] = xr.where(is_valid, updated, layer)
 
         # reconstruct slc from updated smc
-        if ice is not None and "smc" in p["target_var"]:
+        if ice is not None and "smc" == p["target_var"]:
             smc_new = ds["smc"]
             slc_new = smc_new - ice
             slc_new = xr.where(slc_new < 0, 0, slc_new)
@@ -187,13 +213,14 @@ def do_nudge_soil_moisture(p, backup_dir, restart_no):
         for v in ds.data_vars:
             ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
 
-        ds.to_netcdf(in_path)
+        # Persist the nudged state so that a subsequent restart can use it as
+        # its reference, then overwrite the live input.
+        ds.to_netcdf(backup_path)
+        in_path.unlink()
+        cp(backup_path, in_path)
 
-        ds_ref.close()
-        ds.close()
 
-
-def adjust_soil_moisture(p, backup_dir, methods, restart_no):
+def adjust_soil_moisture(p: dict, backup_dir: Path, methods, restart_no: int):
     mean_scale = p.get("mean_scale")
     anom_scale = p.get("anom_scale")
     n_sigma = p.get("n_sigma")
@@ -238,25 +265,23 @@ def adjust_soil_moisture(p, backup_dir, methods, restart_no):
                     continue
 
                 layer = ds[v].isel(zaxis_1=z)
-                is_valid = (layer > 0) & (layer < 1)
+                is_valid = (layer > SM_MIN) & (layer < SM_MAX)
 
                 layer_new = layer
 
                 for method in methods:
                     if method == "std_shift":
-                        data = layer_new.where(is_valid)
                         if climo_path is not None:
                             climo_ds = load_climo(climo_path)
                             climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False).load()
                             std = climo_layer.std(dim="time", skipna=True)
                             std = to_fv3cube_grid(std, load_coords_ds(filename, tile))
-
                         else:
-                            std = data.std(skipna=True)
-                            std = float(std)
+                            data = layer_new.where(is_valid)
+                            std = float(data.std(skipna=True))
 
                         updated = layer_new + (std * n_sigma)
-                        updated = updated.clip(0.01, 0.99)
+                        updated = updated.clip(SM_MIN, SM_MAX)
                         layer_new = xr.where(is_valid, updated, layer_new)
 
                     elif method == "climo_mean":
@@ -277,13 +302,13 @@ def adjust_soil_moisture(p, backup_dir, methods, restart_no):
                         anomaly = layer_new - mu
 
                         updated = mu + (1.0 + anom_scale) * anomaly
-                        updated = updated.clip(0.01, 0.99)
+                        updated = updated.clip(SM_MIN, SM_MAX)
                         layer_new = xr.where(is_valid, updated, layer_new)
 
                     elif method == "mean_shift":
                         data = layer_new.where(is_valid)
                         updated = data * (1.0 + mean_scale)
-                        updated = updated.clip(0.01, 0.99)
+                        updated = updated.clip(SM_MIN, SM_MAX)
                         layer_new = xr.where(is_valid, updated, layer_new)
 
                     elif method == "constant_fill":
@@ -299,11 +324,12 @@ def adjust_soil_moisture(p, backup_dir, methods, restart_no):
                     else:
                         raise ValueError(f"Unknown method: {method}")
 
-                    coord_val = ds.zaxis_1.values[z]
-                    ds[v].loc[{"zaxis_1": coord_val}] = layer_new
+                # Write the layer once, after all methods have been chained.
+                coord_val = ds.zaxis_1.values[z]
+                ds[v].loc[{"zaxis_1": coord_val}] = layer_new
 
             # reconstruct slc from updated smc
-            if ice is not None and "smc" in p["target_var"]:
+            if ice is not None and "smc" == p["target_var"]:
                 smc_new = ds["smc"]
                 slc_new = smc_new - ice
                 slc_new = xr.where(slc_new < 0, 0, slc_new)
@@ -322,113 +348,112 @@ def adjust_soil_moisture(p, backup_dir, methods, restart_no):
 
 def apply_perturbations():
 
-    perts = state.get("sm_perturbations", None)
-    if not perts:
+    perturbations = state.get("sm_perturbations", None)
+    if not perturbations:
         return
 
     restart_no = state.restart_no
     total_restarts = state["total_restarts"]
     max_restart_index = total_restarts - 1
 
-    if not isinstance(perts, list):
-        perts = [perts]
+    if not isinstance(perturbations, dict):
+        raise TypeError("`sm_perturbations` config must be a mapping")
+
+    p = perturbations
 
     allowed = ("std_shift", "mean_shift", "anom_shift", "constant_fill", "climo_mean")
+    required = ("target_var", "soil_layers", "tiles", "method")
+    missing = [k for k in required if k not in p]
+    if missing:
+        raise KeyError(f"Missing perturbation keys: {missing}")
+    soft_keys = (
+        "mean_scale",
+        "anom_scale",
+        "n_sigma",
+        "tau_hours",
+        "use_climo",
+        "do_hold",
+        "do_nudge",
+        "climo_file",
+        "apply_on_restarts",
+        "fill_value",
+    )
 
-    for i, p in enumerate(perts):
-        apply_on_restarts = p.get("apply_on_restarts", None)
+    for k in p.keys():
+        if k not in required and k not in soft_keys:
+            raise ValueError(f"Unknown key in perturbation config: {k}")
 
-        if apply_on_restarts is None:
-            return
-        elif apply_on_restarts == "all":
-            apply_on_restarts = list(range(restart_no, max_restart_index + 1))
-        elif isinstance(apply_on_restarts, int):
-            apply_on_restarts = [apply_on_restarts]
-        elif isinstance(apply_on_restarts, list):
-            apply_on_restarts = [int(r) for r in apply_on_restarts]
-        else:
-            raise TypeError(
-                "`apply_on_restarts` be one of None, 'all', int, or list of ints"
-            )
+    methods = p.get("method")
 
-        if restart_no not in apply_on_restarts:
-            continue
+    if isinstance(methods, str):
+        check_methods = [methods]
+    else:
+        check_methods = methods
 
-        log.info(
-            f"sm_perturbations detected for restart {restart_no}; applying perturbations"
+    for m in check_methods:
+        if m not in allowed:
+            raise ValueError(f"`method` must be one of {allowed}. Got `{m}`")
+
+    # Conditional parameter checks
+
+    if "std_shift" in check_methods and "n_sigma" not in p:
+        raise KeyError("If method includes 'std_shift', you must provide key 'n_sigma'")
+
+    if "mean_shift" in check_methods and "mean_scale" not in p:
+        raise KeyError(
+            "If method includes 'mean_shift', you must provide key 'mean_scale'"
         )
 
-        required = ("target_var", "soil_layers", "tiles", "method")
-        missing = [k for k in required if k not in p]
-        if missing:
-            raise KeyError(f"Missing perturbation keys: {missing}")
-        soft_keys = (
-            "mean_scale",
-            "anom_scale",
-            "n_sigma",
-            "tau_hours",
-            "use_climo",
-            "do_hold",
-            "do_nudge",
-            "climo_file",
-            "apply_on_restarts",
-            "fill_value",
+    if "anom_shift" in check_methods and "anom_scale" not in p:
+        raise KeyError(
+            "If method includes 'anom_shift', you must provide key 'anom_scale'"
+        )
+    if "constant_fill" in check_methods and "fill_value" not in p:
+        raise KeyError(
+            "If method includes 'constant_fill', you must provide key 'fill_value'"
         )
 
-        for k in p.keys():
-            if k not in required and k not in soft_keys:
-                raise ValueError(f"Unknown key in perturbation config: {k}")
+    hold = p.get("do_hold", False)
+    do_nudge = p.get("do_nudge", False)
 
-        methods = p.get("method")
+    if hold and do_nudge:
+        raise ValueError("only one of `do_hold` and `do_nudge` can be true")
 
-        if isinstance(methods, str):
-            check_methods = [methods]
-        else:
-            check_methods = methods
+    if isinstance(p["soil_layers"], (int, float)):
+        p["soil_layers"] = [int(p["soil_layers"])]
 
-        for m in check_methods:
-            if m not in allowed:
-                raise ValueError(f"`method` must be one of {allowed}. Got `{m}`")
+    # Determine whether this perturbation applies to the current restart.
+    apply_on_restarts = p.get("apply_on_restarts", None)
 
-        # Conditional parameter checks
+    if apply_on_restarts is None:
+        return
+    elif apply_on_restarts == "all":
+        apply_on_restarts = list(range(restart_no, max_restart_index + 1))
+    elif isinstance(apply_on_restarts, int):
+        apply_on_restarts = [apply_on_restarts]
+    elif isinstance(apply_on_restarts, list):
+        apply_on_restarts = [int(r) for r in apply_on_restarts]
+    else:
+        raise TypeError(
+            "`apply_on_restarts` be one of None, 'all', int, or list of ints"
+        )
 
-        if "std_shift" in check_methods and "n_sigma" not in p:
-            raise KeyError(
-                "If method includes 'std_shift', you must provide key 'n_sigma'"
-            )
+    if restart_no not in apply_on_restarts:
+        return
 
-        if "mean_shift" in check_methods and "mean_scale" not in p:
-            raise KeyError(
-                "If method includes 'mean_shift', you must provide key 'mean_scale'"
-            )
+    log.info(
+        f"sm_perturbations detected for restart {restart_no}; applying perturbations"
+    )
 
-        if "anom_shift" in check_methods and "anom_scale" not in p:
-            raise KeyError(
-                "If method includes 'anom_shift', you must provide key 'anom_scale'"
-            )
-        if "constant_fill" in check_methods and "fill_value" not in p:
-            raise KeyError(
-                "If method includes 'constant_fill', you must provide key 'fill_value'"
-            )
+    backup_dir = Path(state.IC) / "perts"
+    backup_dir.mkdir(parents=True, exist_ok=True)
 
-        hold = p.get("do_hold", False)
-        do_nudge = p.get("do_nudge", False)
-
-        if hold and do_nudge:
-            raise ValueError("only one of `do_hold` and `do_nudge` can be true")
-
-        if isinstance(p["soil_layers"], (int, float)):
-            p["soil_layers"] = [int(p["soil_layers"])]
-
-        backup_dir = Path(state.IC) / "PERTURBATIONS" / f"idx{i:02d}"
-        backup_dir.mkdir(parents=True, exist_ok=True)
-
-        if restart_no > 1:
-            if do_nudge:
-                do_nudge_soil_moisture(p, backup_dir, restart_no)
-            elif hold:
-                do_hold(p, backup_dir, restart_no)
-            else:
-                adjust_soil_moisture(p, backup_dir, methods, restart_no)
+    if restart_no > 1:
+        if do_nudge:
+            do_nudge_soil_moisture(p, backup_dir, restart_no)
+        elif hold:
+            do_hold(p, backup_dir, restart_no)
         else:
             adjust_soil_moisture(p, backup_dir, methods, restart_no)
+    else:
+        adjust_soil_moisture(p, backup_dir, methods, restart_no)

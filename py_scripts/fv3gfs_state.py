@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -5,6 +6,16 @@ from pathlib import Path
 import yaml
 from fv3gfs_paths import paths
 from fv3gfs_utils import parse_datetime
+
+log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+logging.basicConfig(
+    format=log_format,
+    datefmt="%Y-%m-%d %H:%M",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler()],
+    force=True,
+)
 
 
 class FV3State(dict):
@@ -15,6 +26,29 @@ class FV3State(dict):
 
 state = FV3State({})
 prev_state = FV3State({})
+
+
+def compute_checksum(data: dict) -> str:
+    _hash_keys = (
+        "res",
+        "gtype",
+        "levels",
+        "target_lon",
+        "target_lat",
+        "stretch_factor",
+        "refine_ratio",
+        "lon_min",
+        "lon_max",
+        "lat_min",
+        "lat_max",
+        "init_datetime",
+        "chgres_config",
+    )
+
+    _hash_data_str = ",".join(str(data.get(k)) for k in _hash_keys)
+    checksum = hashlib.sha256(_hash_data_str.encode("utf-8")).hexdigest()
+
+    return checksum
 
 
 def save_state():
@@ -60,19 +94,6 @@ def load_state():
         state.update(paths)
 
 
-def logger(debug=False):
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    level = logging.DEBUG if debug else logging.INFO
-
-    logging.basicConfig(
-        format=log_format,
-        datefmt="%Y-%m-%d %H:%M",
-        level=level,
-        handlers=[logging.StreamHandler()],
-        force=True,
-    )
-
-
 env_vars = {
     "case_name": os.getenv("CASE_NAME"),
     "n_cpus": int(os.environ.get("SBATCH_NTASKS")),
@@ -87,5 +108,4 @@ env_vars = {
 }
 
 state.update(env_vars)
-logger()
 log = logging.getLogger("PREPROCESSING")

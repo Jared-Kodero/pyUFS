@@ -8,9 +8,8 @@ from pathlib import Path
 from typing import Literal
 
 import f90nml
-import yaml
 from fv3gfs_ic_data import get_IC, validate_hrrr_bounds
-from fv3gfs_runtime import get_launcher
+from fv3gfs_runtime import get_launcher, log, read_namelist
 from fv3gfs_stage_data import stage_files
 from fv3gfs_state import FV3State, state
 from fv3gfs_utils import cp, env_setup, run_cmd
@@ -54,7 +53,7 @@ class ChgresCubeConfig:
     # === Conversion flags ===
     convert_atm: bool = True
     convert_sfc: bool = True
-    convert_nst: bool = True
+    convert_nst: bool = False
 
     # === Input type ===
     input_type: Literal[
@@ -113,9 +112,10 @@ def load_yml(n_tiles: int, chgres_config: str) -> dict:
     if not chgres_config:
         log.info("No chgres_cube configuration provided. Using default settings.")
         chgres_config = state.configs / "chgres_cube_default.yaml"
+    else:
+        log.info(f"Using provided chgres_cube configuration: {chgres_config}")
 
-    with open(chgres_config, "r") as f:
-        yc = dict(yaml.safe_load(f))
+    yc = read_namelist(chgres_config)
 
     # -------------------------
     # Valid keys
@@ -337,7 +337,6 @@ def chgres_exe(input_dict: dict, n_cpus: int, id_name: str, ext_model: str) -> N
         converts.append("nst")
     converts = " and ".join(converts)
 
-    log.debug(f"Running chgres_cube with {ext_model} data for {str(name)} {converts}")
     chgres_cube = state.ufs_exe / "chgres_cube"
 
     tmp_dir = state.tmp / "chgres_cube" / id_name

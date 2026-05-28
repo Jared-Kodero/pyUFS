@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 from fv3gfs_runtime import log, sort_paths
-from fv3gfs_state import state
+from fv3gfs_state import compute_checksum, state
 from fv3gfs_utils import cp, rename
 
 
@@ -58,8 +58,9 @@ def stage_files() -> None:
 
     fix_sfc_files = (state.tmp / "ic" / "fix_sfc").glob("*")
     for f in fix_sfc_files:
-        if Path(f).is_symlink():
-            Path(f).unlink()
+        f = Path(f)
+        if f.is_symlink() and f.name.startswith("."):
+            f.unlink()
 
     tmp_ic_dir_files = (state.tmp / "ic").glob("*")
     for f in tmp_ic_dir_files:
@@ -106,101 +107,38 @@ def stage_files() -> None:
     shutil.rmtree(state.tmp, ignore_errors=True)
     Path(state.tmp).mkdir(parents=True, exist_ok=True)
 
-    update_table_files()
-    update_fixed_files()
+    cache_ic_files()
 
 
-def update_fixed_files():
-    dt = state.init_datetime
-    year = dt.year
-    fix_dirs = [state.fix_am, state.fix / "lut"]
+def cache_ic_files():
+    # save GRID and INPUT files
+    cache_dir = state.scratch_dir / ".cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
-    required_files = [
-        "aerosol.dat",
-        f"co2historicaldata_{year}.txt",
-        "co2historicaldata_glob.txt",
-        "co2monthlycyc.txt",
-        "sfc_emissivity_idx.txt",
-        "solarconstant_noaa_an.txt",
-        "volcanic_aerosols_1990-1999.txt",
-        "global_h2oprdlos.f77",
-        "global_o3prdlos.f77",
-    ]
-
-    missing_files = []
-
-    for name in required_files:
-        found = None
-        for fix_dir in fix_dirs:
-            candidate = fix_dir / name
-            if candidate.exists():
-                found = candidate
-                break
-            else:
-                # Attempt fuzzy match if file not found
-                matches = list(fix_dir.glob(f"*{name}"))
-                if matches:
-                    found = matches[0]
-                    break
-
-        if found:
-            dest = state.fixed / name
-            if not dest.exists():
-                cp(found, dest)
-            link = Path(state.input) / name
-            link.unlink(missing_ok=True)
-            rel_target = os.path.relpath(dest, start=state.input)
-            link.symlink_to(rel_target)
-
-        else:
-            missing_files.append(name)
-
-    if missing_files:
-        log.warning("Missing required files:")
-        for f in missing_files:
-            log.warning(f"   - {f}")
-        raise FileNotFoundError(
-            "One or more required fixed files are missing. See log for details."
-        )
+    checksum = compute_checksum(state)
+    cache_subdir = cache_dir / checksum
+    cache_subdir.mkdir(parents=True, exist_ok=True)
+    for dir in [state.grid, state.input]:
+        dest = cache_subdir / dir.name
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(dir, dest)
 
 
-def update_table_files():
+def cached_ic_files():
+    cache_dir = state.scratch_dir / ".cache"
+    checksum = compute_checksum(state)
+    cache_subdir = cache_dir / checksum
 
-    dt = state.init_datetime
-    update_fixed_files()
+    if not cache_subdir.exists():
+        return False
 
-    restart_no = state.get("restart_no", 0)
+    for dir_name in ["grid", "input"]:
+        src = cache_subdir / dir_name
+        dest = getattr(state, dir_name)
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(src, dest)
 
-    diag_table_path = state.home / "diag_table"
-    field_table_path = state.home / "field_table.yaml"
-
-    user_diag = state.rundir / "diag_table"
-    user_field = state.rundir / "field_table"
-
-    template_diag = state.configs / "diag_table"
-    template_field = state.configs / "field_table.yaml"
-
-    if user_diag.exists():
-        diag_file = user_diag
-    else:
-        diag_file = template_diag
-
-    if user_field.exists():
-        field_file = user_field
-    else:
-        field_file = template_field
-
-    cp(diag_file, diag_table_path)
-    cp(field_file, field_table_path)
-
-    with open(diag_table_path) as f:
-        lines = f.readlines()
-        lines = [line for line in lines if not line.strip().startswith("#")]
-
-    dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
-    desc_str = f"{state.description}\n"
-    lines = [desc_str, dt_str] + [
-        line.replace("XX", f"{restart_no:02d}") for line in lines
-    ]
-    with open(diag_table_path, "w") as f:
-        f.writelines(lines)
+    log.info("Loaded cached IC files for current configuration.")
+    return True

@@ -1,0 +1,213 @@
+amip_interp_nml:
+  data_set: reynolds_oi
+  date_out_of_range: climo
+  interp_oi_sst: true
+  no_anom_sst: false
+  use_ncep_ice: false
+  use_ncep_sst: true
+
+atmos_model_nml:
+  blocksize: null
+  chksum_debug: false
+  dycore_only: false
+  fdiag: 1.0
+
+diag_manager_nml:
+  prepend_date: false
+  # use_modern_diag: true
+  # diag_manager_forecast_mode: true
+
+external_ic_nml:
+  checker_tr: false
+  filtered_terrain: true
+  gfs_dwinds: true
+  levp: 64
+  nt_checker: 0
+
+field_manager_nml:
+  use_field_table_yaml: true
+
+fms_io_nml:
+  checksum_required: false
+  max_files_r: 100
+  max_files_w: 100
+
+fms_nml:
+  clock_grain: ROUTINE
+  domains_stack_size: null
+  print_memory_usage: false
+
+fv_core_nml:
+  a_imp: 1.0
+  adjust_dry_mass: false
+  beta: 0.0
+  consv_am: false
+  consv_te: 0.0
+  d2_bg: 0.0
+  d2_bg_k1: 0.2
+  d2_bg_k2: 0.15
+  d4_bg: 0.14
+  d_con: 1.0
+  d_ext: 0.0
+  dddmp: 0.5
+  delt_max: 0.002
+  dnats: 1
+  do_vort_damp: true
+  dwind_2d: false
+  external_ic: true
+  fill: true
+  fill_dp: true
+  fill_gfs: false
+  fv_debug: false
+  fv_sg_adj: 600
+  hord_dp: -5 # 5
+  hord_mt: 5
+  hord_tm: 5
+  hord_tr: -5 # 5
+  hord_vt: 5
+  hydrostatic: false
+  io_layout: [ 1, 1 ]
+  k_split: null
+  kord_mt: 9
+  kord_tm: -9
+  kord_tr: 9
+  kord_wz: 9
+  layout: null
+  make_nh: true # false
+  mountain: false
+  n_split: null
+  na_init: 1
+  ncep_ic: false
+  nestupdate: 7
+  nggps_ic: true
+  no_dycore: false
+  nord: 3
+  npx: null
+  npy: null
+  npz: 63
+  ntiles: 1
+  nudge_qv: true
+  nwat: 6
+  p_fac: 0.1
+  phys_hydrostatic: false
+  print_freq: -6
+  range_warn: true
+  reset_eta: false
+  rf_fast: false
+  twowaynest: true
+  use_hydro_pressure: false
+  vtdm4: 0.06
+  warm_start: false
+
+gfdl_mp_nml: {}
+
+gfs_physics_nml:
+  cal_pre: false
+  cdmbgwd: [ 3.5, 0.25 ]
+  cloud_gfdl: true
+  cnvcld: false
+  cnvgwd: false
+  debug: false
+  do_deep: true
+  do_ocean: true
+  do_z0_hwrf17_hwonly: true
+  dspheat: true
+  fhcyc: 24.0
+  fhlwr: 1800.0 # 3600.0
+  fhswr: 1800.0 # 3600.0
+  fhzero: 3.0 # 1.0
+  hybedmf: true # false
+  iaer: 111
+  ialb: 1
+  ico2: 2
+  iems: 1
+  imfdeepcnv: 2
+  imfshalcnv: 2
+  isol: 2
+  isot: 1
+  isubc_lw: 2
+  isubc_sw: 2
+  ivegsrc: 1
+  ldiag3d: true
+  lwhtr: true
+  ncld: 5
+  nst_anl: true
+  pdfcld: true
+  pre_rad: false
+  prslrd0: 0.0
+  random_clds: false
+  redrag: true
+  shal_cnv: true
+  swhtr: true
+  trans_trac: true
+  use_ufo: true
+  xkzm_h: 0.02
+  xkzm_m: 0.02
+  xkzminv: 1.0
+  ysupbl: true
+  zhao_mic: false
+  lsm: 1 #2
+  sfc_coupled: true
+
+integ_phys_nml:
+  do_inline_mp: true
+  do_sat_adj: false
+
+interpolator_nml:
+  interp_method: conserve_great_circle
+
+namsfc:
+  fabsl: 99999
+  faisl: 99999
+  faiss: 99999
+  fnabsc: FIXED/global_mxsnoalb.uariz.t1534.3072.1536.rg.grb
+  fnacna: ""
+  fnaisc: FIXED/CFSR.SEAICE.1982.2012.monthly.clim.grb
+  fnalbc: FIXED/global_snowfree_albedo.bosu.t1534.3072.1536.rg.grb
+  fnalbc2: FIXED/global_albedo4.1x1.grb
+  fnglac: FIXED/global_glacier.2x2.grb
+  fnmldc: FIXED/mld_DR003_c1m_reg2.0.grb
+  fnmskh: FIXED/seaice_newland.grb
+  fnmxic: FIXED/global_maxice.2x2.grb
+  fnslpc: FIXED/global_slope.1x1.grb
+  fnsmcc: FIXED/global_soilmgldas.t1534.3072.1536.grb
+  fnsnoa: ""
+  fnsnoc: FIXED/global_snoclim.1.875.grb
+  fnsotc: FIXED/global_soiltype.statsgo.t1534.3072.1536.rg.grb
+  fntg3c: FIXED/global_tg3clim.2.6x1.5.grb
+  fntsfa: ""
+  fntsfc: FIXED/RTGSST.1982.2012.monthly.clim.grb
+  fnvegc: FIXED/global_vegfrac.0.144.decpercent.grb
+  fnvetc: FIXED/global_vegtype.igbp.t1534.3072.1536.rg.grb
+  fnvmnc: FIXED/global_shdmin.0.144x0.144.grb
+  fnvmxc: FIXED/global_shdmax.0.144x0.144.grb
+  fnzorc: igbp
+  fsicl: 99999
+  fsics: 99999
+  fslpl: 99999
+  fsmcl: [ 99999, 99999, 99999 ]
+  fsnol: 99999
+  fsnos: 99999
+  fsotl: 99999
+  ftsfl: 99999
+  ftsfs: 90
+  fvetl: 99999
+  fvmnl: 99999
+  fvmxl: 99999
+  ldebug: false
+
+ocean_nml:
+  do_mld_restore: true
+  end_lat: 45.0
+  eps_day: 10.0
+  gam: 0.2
+  mld_obs_ratio: 1.0
+  mld_option: obs
+  mld_restore_tscale: 2.0
+  ocean_option: MLM
+  restore_method: 2
+  sst_restore_tscale: 2.0
+  start_lat: -45
+  stress_ratio: 1.0
+  use_old_mlm: true
+  use_rain_flux: true

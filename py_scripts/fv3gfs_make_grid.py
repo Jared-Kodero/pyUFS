@@ -4,26 +4,26 @@ from pathlib import Path
 
 import f90nml
 import numpy as np
-from fv3gfs_cpu_config import calc_cpu_alloc
 from fv3gfs_nesting import (
     gen_global_nest_parent,
     get_nest_indices,
     get_nest_tele_indices,
 )
+from fv3gfs_pes_config import calc_cpu_alloc
 from fv3gfs_runtime import log, to_list
 from fv3gfs_state import save_state, state
 from fv3gfs_utils import cp, rename, run_cmd
 
 
 def make_nested_grid(
-    make_hgrid,
-    nlon,
-    res,
-    stretch_factor,
-    parent_tile,
-    out_dir,
-    halo,
-    gtype,
+    make_hgrid: str,
+    nlon: int,
+    res: int,
+    stretch_factor: float,
+    parent_tile: list,
+    out_dir: Path,
+    halo: int,
+    gtype: str,
 ):
     log_file = state.logs / "make_nested_grid.log"
 
@@ -182,7 +182,7 @@ def make_nested_grid(
         telescope_dir.rename(out_dir)
 
 
-def make_uniform_grid(make_hgrid, nlon, res):
+def make_uniform_grid(make_hgrid: str, nlon: int, res: int):
     log_file = state.logs / "make_uniform_grid.log"
     cmd = [
         f"{make_hgrid}",
@@ -209,7 +209,14 @@ def make_uniform_grid(make_hgrid, nlon, res):
         raise RuntimeError("Failed to generate uniform grid")
 
 
-def make_stretched_grid(make_hgrid, nlon, res, stretch_factor, target_lon, target_lat):
+def make_stretched_grid(
+    make_hgrid: str,
+    nlon: int,
+    res: int,
+    stretch_factor: float,
+    target_lon: float,
+    target_lat: float,
+):
     log_file = state.logs / "make_stretched_grid.log"
 
     if stretch_factor == 1:
@@ -240,22 +247,23 @@ def make_stretched_grid(make_hgrid, nlon, res, stretch_factor, target_lon, targe
 
 
 def make_regional_gfdl_grid(
-    make_hgrid,
-    nlon,
-    res,
-    stretch_factor,
-    target_lon,
-    target_lat,
-    parent_tile,
-    refine_ratio,
-    istart_nest,
-    jstart_nest,
-    iend_nest,
-    jend_nest,
-    halo,
-    out_dir,
-    global_equiv_resol,
+    make_hgrid: str,
+    nlon: int,
+    res: int,
+    stretch_factor: float,
+    target_lon: float,
+    target_lat: float,
+    parent_tile: list,
+    refine_ratio: list,
+    istart_nest: list,
+    jstart_nest: list,
+    iend_nest: list,
+    jend_nest: list,
+    halo: int,
+    out_dir: Path,
+    global_equiv_resol: str,
 ):
+
     log_file = state.logs / "make_regional_gfdl_grid.log"
 
     cmd = [
@@ -307,16 +315,16 @@ def make_regional_gfdl_grid(
 
 
 def make_regional_esg_grid(
-    regional_esg_grid,
-    target_lon,
-    target_lat,
-    idim,
-    jdim,
-    delx,
-    dely,
-    halo,
-    out_dir,
-    global_equiv_resol,
+    regional_esg_grid: str,
+    target_lon: float,
+    target_lat: float,
+    idim: int,
+    jdim: int,
+    delx: float,
+    dely: float,
+    halo: int,
+    out_dir: Path,
+    global_equiv_resol: str,
 ):
     log_file = state.logs / "make_regional_esg_grid.log"
 

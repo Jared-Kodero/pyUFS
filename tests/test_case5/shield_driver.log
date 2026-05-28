@@ -1,0 +1,55 @@
+2026-05-27 23:00 - PREPROCESSING - INFO - Current directory: /oscar/data/deeps/shared/gfdl_shield/ufs_py/tests/test_case5
+2026-05-27 23:00 - PREPROCESSING - INFO - Working directory: /jobtmp/jkodero/gfdl_shield/tests/test_case5
+2026-05-27 23:00 - PREPROCESSING - INFO - Case directory: /oscar/scratch/jkodero/models/gfdl_shield/runs/tests/test_case5
+2026-05-27 23:00 - PREPROCESSING - INFO - Archive directory: /users/jkodero/data/jkodero/data/models/gfdl_shield/archive/tests/test_case5
+2026-05-27 23:00 - PREPROCESSING - INFO - Fixed/static directory: /oscar/data/deeps/shared/gfdl_shield/fix
+2026-05-27 23:00 - PREPROCESSING - INFO - Configuration file: /oscar/data/deeps/shared/gfdl_shield/ufs_py/tests/test_case5/run_config.yaml
+2026-05-27 23:00 - PREPROCESSING - INFO - Model executable: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
+2026-05-27 23:00 - PREPROCESSING - INFO - Description: TEST_CASE5
+2026-05-27 23:00 - PREPROCESSING - INFO - Initial run mode selected
+2026-05-27 23:00 - PREPROCESSING - INFO - Full Grid/IC regeneration will be performed.
+2026-05-27 23:00 - PREPROCESSING - INFO - Model initialization time: 2025-09-22 06:00:00 UTC
+2026-05-27 23:00 - PREPROCESSING - INFO - Forecast length: 2 hours
+2026-05-27 23:00 - PREPROCESSING - INFO - Vertical levels: 64
+2026-05-27 23:00 - PREPROCESSING - INFO - Grid type: nest
+2026-05-27 23:00 - PREPROCESSING - INFO - Global cubed-sphere resolution: C96
+2026-05-27 23:00 - PREPROCESSING - INFO - Global tile 1 resolution: 104.36 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Global tile 2 resolution: 104.36 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Global tile 3 resolution: 104.36 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Global tile 4 resolution: 104.36 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Global tile 5 resolution: 104.36 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Global tile 6 resolution: 104.36 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Nested tile 7 resolution: 26.09 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Nested tile 8 resolution: 6.52 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Nested tile 9 resolution: 3.26 km
+2026-05-27 23:00 - PREPROCESSING - INFO - Nest layout type: telescoping
+2026-05-27 23:00 - PREPROCESSING - INFO - Number of nests: 3
+2026-05-27 23:00 - PREPROCESSING - INFO - Refinement ratio: [4, 4, 2]
+2026-05-27 23:00 - PREPROCESSING - INFO - Target longitude: -86.0
+2026-05-27 23:00 - PREPROCESSING - INFO - Target latitude: 42.5
+2026-05-27 23:00 - PREPROCESSING - INFO - Starting FV3 Grid and IC generation driver
+2026-05-27 23:00 - PREPROCESSING - INFO - Generating Grid and Orography files
+2026-05-27 23:00 - PREPROCESSING - INFO - Generating telescoped nested grids
+2026-05-27 23:00 - PREPROCESSING - INFO - Generating grid mosaics
+2026-05-27 23:02 - PREPROCESSING - INFO - Filtering topography for global tiles
+2026-05-27 23:02 - PREPROCESSING - INFO - Generating surface climatology
+2026-05-27 23:06 - PREPROCESSING - INFO - No chgres_cube configuration provided. Using default settings.
+2026-05-27 23:06 - PREPROCESSING - INFO - Running chgres_cube to generate initial conditions
+2026-05-27 23:06 - PREPROCESSING - INFO - Successfully retrieved GFS IC data from NOAA AWS S3
+2026-05-27 23:08 - PREPROCESSING - INFO - Successfully retrieved HRRR IC data from NOAA AWS S3
+2026-05-27 23:08 - PREPROCESSING - INFO - Staging requred files and data
+2026-05-27 23:08 - PREPROCESSING - INFO - Staged diag files: /jobtmp/jkodero/gfdl_shield/tests/test_case5
+2026-05-27 23:08 - PREPROCESSING - INFO - Staged grid files: /jobtmp/jkodero/gfdl_shield/tests/test_case5/GRID
+2026-05-27 23:08 - PREPROCESSING - INFO - Staged ic files: /jobtmp/jkodero/gfdl_shield/tests/test_case5/INPUT
+2026-05-27 23:08 - PREPROCESSING - INFO - Staged fixed files: /jobtmp/jkodero/gfdl_shield/tests/test_case5/FIXED
+2026-05-27 23:08 - PREPROCESSING - INFO - Staged mosaic files: /jobtmp/jkodero/gfdl_shield/tests/test_case5/GRID
+2026-05-27 23:08 - PREPROCESSING - INFO - Init Run
+2026-05-27 23:08 - PREPROCESSING - INFO - Generating namelist files
+2026-05-27 23:08 - PREPROCESSING - INFO - nest04 deep convection disabled (3.26 km)
+2026-05-27 23:08 - PREPROCESSING - INFO - Total PEs needed for run: 256
+2026-05-27 23:08 - SHIELD - INFO - Starting Model Execution
+2026-05-27 23:14 - SHIELD - INFO - Finished Model Execution
+2026-05-27 23:14 - SHIELD - INFO - Total model runtime: 0.10 hours
+2026-05-27 23:14 - REGRIDDING - INFO - Regridding FV3 hist files to regular lat-lon grid
+2026-05-27 23:16 - REGRIDDING - INFO - Run Completed Successfully!
+2026-05-27 23:16 - UFS_UTILS - INFO - Case tests.test_case5 completed in 0.27 hours.

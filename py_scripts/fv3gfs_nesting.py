@@ -1,21 +1,23 @@
+# nesting.py
+
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 from fv3gfs_runtime import log
-from fv3gfs_state import save_state, state
+from fv3gfs_state import FV3State, save_state, state
 from fv3gfs_utils import cres_to_deg, run_cmd
 
 nest_info = []
 
 
-def get_centers(params):
+def get_centers(params: FV3State) -> FV3State:
     params.target_lon = (params.lon_min[0] + params.lon_max[0]) * 0.5
     params.target_lat = (params.lat_min[0] + params.lat_max[0]) * 0.5
     return params
 
 
-def validate_nests(params) -> dict:
+def validate_nests(params: FV3State) -> list:
     x_min = params.lon_min
     x_max = params.lon_max
     y_min = params.lat_min
@@ -58,7 +60,7 @@ def validate_nests(params) -> dict:
     return nest_info
 
 
-def classify_nesting(params: dict) -> dict:
+def classify_nesting(params: FV3State) -> FV3State:
     lon_min = params.lon_min
     lon_max = params.lon_max
     lat_min = params.lat_min
@@ -112,7 +114,7 @@ def classify_nesting(params: dict) -> dict:
     return params
 
 
-def gen_global_nest_parent(res, grid_dir=None) -> Path:
+def gen_global_nest_parent(res: int, grid_dir: Path = None) -> Path:
     log_file = state.logs / "make_global_grid.log"
     make_hgrid = state.ufs_exe / "make_hgrid"
 
@@ -148,40 +150,84 @@ def gen_global_nest_parent(res, grid_dir=None) -> Path:
 
 
 def calc_parent_grid_index(
-    grid_fname, lon_min, lon_max, lat_min, lat_max, i_refine_ratio
+    grid_fname: Path,
+    lon_min: float,
+    lon_max: float,
+    lat_min: float,
+    lat_max: float,
+    i_refine_ratio: int,
+    alignment: int = 16,
 ):
-    ds = xr.open_dataset(grid_fname)
-    # 1. Normalize longitudes to [0, 360]
-    lon_min = lon_min % 360
-    lon_max = lon_max % 360
+    """
+    Compute supergrid index bounds for an FV3 two-way nest.
 
-    # 2. On the chosen parent tile, find the indices for each corner of the bounding box
-    lons, lats = ds.x.values, ds.y.values
-    nxp, nyp = lons.shape[0], lons.shape[1]
+    The returned indices satisfy three conditions:
+      1. Parity. Start indices are odd, end indices are even, so the
+         supergrid-to-cell conversion n = (end - start + 1) // 2 is exact.
+      2. Alignment. The nest cell count along each axis times
+         i_refine_ratio is a multiple of `alignment`, as required by
+         the FV3 layout decomposition and physics block loop.
+      3. Containment. Indices lie inside [1, nxp] and [1, nyp].
+
+    Parameters
+    ----------
+    grid_fname : str
+        Path to the parent supergrid file with variables x and y of
+        shape (nyp, nxp).
+    lon_min, lon_max : float
+        Longitude bounds in degrees east; reduced modulo 360.
+    lat_min, lat_max : float
+        Latitude bounds in degrees north.
+    i_refine_ratio : int
+        Nest refinement ratio.
+    alignment : int
+        Required divisor of the nest cell count along each axis.
+    """
+    with xr.open_dataset(grid_fname) as ds:
+        lons = ds.x.values
+        lats = ds.y.values
+    nyp, nxp = lons.shape
+
+    lon_min %= 360
+    lon_max %= 360
     mask = (lons >= lon_min) & (lons <= lon_max) & (lats >= lat_min) & (lats <= lat_max)
-
     j_idx, i_idx = np.where(mask)
 
-    i_s = i_idx.min() - 1
-    i_e = i_idx.max() + 1
-    j_s = j_idx.min() - 1
-    j_e = j_idx.max() + 1
+    # Initial bracket with one-cell padding, packed as [i, j] vectors.
+    starts = np.array([i_idx.min() - 1, j_idx.min() - 1])
+    ends = np.array([i_idx.max() + 1, j_idx.max() + 1])
+    limits = np.array([nxp, nyp])
 
-    # Make sure start indices are odd for FV3 nest start/end
-    istart_nest = i_s if i_s % 2 == 1 else i_s - 1
-    jstart_nest = j_s if j_s % 2 == 1 else j_s - 1
+    # Parity: odd starts, even ends.
+    starts = np.where(starts & 1, starts, starts - 1)
+    ends = np.where(ends & 1, ends - 1, ends)
 
-    # Ensure even indices for FV3 nest start/end
-    iend_nest = i_e if i_e % 2 == 0 else i_e - 1
-    jend_nest = j_e if j_e % 2 == 0 else j_e - 1
+    # Symmetric expansion so parent_cells is a multiple of
+    # needed = alignment / gcd(alignment, i_refine_ratio).
+    needed = alignment // int(np.gcd(alignment, i_refine_ratio))
+    parent_cells = (ends - starts + 1) // 2
+    deficit = (needed - parent_cells % needed) % needed
+    left = deficit // 2
+    right = deficit - left
+    starts -= 2 * left
+    ends += 2 * right
 
-    ds.close()
+    # Containment. Any required shift is rounded up to even to keep parity.
+    under = np.maximum(0, 1 - starts)
+    under += under & 1
+    starts += under
+    ends += under
+
+    over = np.maximum(0, ends - limits)
+    over += over & 1
+    starts -= over
+    ends -= over
 
     return dict(
-        istart_nest=int(istart_nest),
-        iend_nest=int(iend_nest),
-        jstart_nest=int(jstart_nest),
-        jend_nest=int(jend_nest),
+        istart_nest=int(starts[0]),
+        iend_nest=int(ends[0]),
+        jstart_nest=int(starts[1]),
+        jend_nest=int(ends[1]),
     )
 
 
@@ -241,7 +287,9 @@ def get_nest_indices(
     save_state()
 
 
-def get_nest_tele_indices(res, n_nests, refine_ratio, grid_dir) -> None:
+def get_nest_tele_indices(
+    res: int, n_nests: int, refine_ratio: list, grid_dir: Path
+) -> None:
 
     # Reset previous same_level indices if they exist
     nk = "nesting"

@@ -12,7 +12,14 @@ log = logging.getLogger("PREPROCESSING")
 
 
 def run_cmd(
-    cmd: list, *, stdin=None, cwd=None, env=None, log_file=None, msgs=None
+    cmd: list,
+    *,
+    stdin: object = None,
+    cwd: Path = None,
+    env: dict = None,
+    log_file: Path = None,
+    msgs: str = None,
+    **kwargs,
 ) -> tuple[int, str]:
 
     out_file = open(log_file, "a") if log_file else None
@@ -34,7 +41,8 @@ def run_cmd(
         return result.returncode, ""
 
     except subprocess.CalledProcessError as exc:
-        log.warning("Command failed: %s", " ".join(cmd))
+        if kwargs.get("warn_on_error", True):
+            log.warning("Command failed: %s", " ".join(cmd))
         return exc.returncode, f"{type(exc).__name__}: {exc}\n{msgs}"
 
     except Exception as exc:
@@ -46,7 +54,7 @@ def run_cmd(
             out_file.close()
 
 
-def rename(src, dest):
+def rename(src: str | Path, dest: str | Path):
     log_file = paths["logs"] / "rename_files.log"
 
     src = Path(src).resolve()
@@ -59,7 +67,7 @@ def rename(src, dest):
         raise RuntimeError(f"Failed to rename file: {src} to {dest}")
 
 
-def cp(src, dest):
+def cp(src: str | Path, dest: str | Path):
     if isinstance(src, list):
         raise TypeError("src must be a single path, not a list.")
 

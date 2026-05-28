@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 import yaml
 from fv3gfs_nesting import nest_info, validate_nests
 from fv3gfs_paths import configure_directories, paths
 from fv3gfs_restart_driver import check_prev_state
-from fv3gfs_state import FV3State, load_state, log, logger, state
+from fv3gfs_state import FV3State, load_state, log, state
 from fv3gfs_utils import (
     cres_to_deg,
     parse_datetime,
@@ -47,24 +46,27 @@ def parse_input():
         raise FileNotFoundError(f"Configuration file not found at: {yml_path}")
 
     # --- Parse runtime YAML ---
-    _nml_match = re.compile(r"^tile(7|[8-9]\d*)_nml$")
+
+    def _nml_match(k):
+        return k.endswith("_input_nml") or k.endswith("_nml")
 
     with open(yml_path, "r") as file:
         config = yaml.safe_load(file)
 
+    if "sbatch" in params_keys or "sbatch" in config:
+        del params_keys["sbatch"]
+        del config["sbatch"]
+
     for k, v in config.items():
-        if k not in params_keys and not _nml_match.match(k):
-            msg = f"Unknown configuration key in run_config.yaml: `{k}`"
-            msg += f"\nSee {default_config_path} for valid keys."
+        if k not in params_keys and not _nml_match(k):
+            msg = f"Unknown configuration key in run_config.yaml: `{k}` "
+            msg = msg + f"\nKey must be one of: {list(params_keys.keys())}"
             raise KeyError(msg)
         input_params[k] = v
 
     input_params["run_config"] = Path(yml_path)
     if "res" in input_params and input_params["res"] is not None:
         input_params["res"] = parse_resolution(input_params["res"])
-
-    if "sbatch" in input_params:
-        del input_params["sbatch"]  # Remove sbatch config from model params
 
     for k, v in params_keys.items():
         if v is None:
@@ -73,10 +75,20 @@ def parse_input():
         if input_params.get(k) is None and v is not None:
             input_params[k] = v
 
+    k_split = input_params.get("k_split", None)
+    n_split = input_params.get("n_split", None)
+
+    if not isinstance(k_split, list) and k_split is not None:
+        k_split = [k_split]
+    if not isinstance(n_split, list) and n_split is not None:
+        n_split = [n_split]
+
+    input_params["k_split"] = k_split
+    input_params["n_split"] = n_split
+
     input_params["case_description"] = input_params.get("description", "")
 
     input_params["warm_start"] = input_params.get("continue_run", False)
-    logger(input_params.get("debug"))
     check_prev_state(input_params)
     input_params = parse_datetime(input_params)
 
@@ -153,6 +165,8 @@ def preprocess_input():
     else:
         params.n_nests = 0
         params.refine_ratio = 1
+
+    # validate the length of k_split and n_split
 
     description = [params.datetime, state.case_name]
 

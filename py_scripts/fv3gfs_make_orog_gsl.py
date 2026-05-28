@@ -62,9 +62,6 @@ def _run_make_orog_gsl(
     with open("grid_info.dat", "w") as f:
         f.write(f"{tile}\n{res}\n{halo}\n")
 
-    log.debug("Running orog_gsl with grid_info.dat:")
-    log.debug(Path("grid_info.dat").read_text())
-
     with open("grid_info.dat", "r") as fin:
         cmd = [f"{orog_gsl}"]
         result, msgs = run_cmd(cmd, stdin=fin, log_file=log_file)

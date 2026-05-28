@@ -9,6 +9,7 @@ echo "$(date '+%Y-%m-%d %H:%M') - SHIELD - INFO - Starting Model Execution"
 
 start_time=$(date +%s)
 
+
 __LAUNCHER__ __TOTAL_PES__ __EXECUTABLE__ > __LOG_FILE__ 2>&1
 exit_code=$?
 echo $exit_code > __EXIT_CODE_FILE__
