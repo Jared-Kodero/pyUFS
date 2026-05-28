@@ -1,0 +1,95 @@
+sbatch:
+  exclusive: false
+  constraint: false
+  cpus_per_task: 1
+  time: 6
+  nnodes: 1
+  ntasks: 36
+
+fv3_debug: false
+do_deep: false
+levels: 64
+gtype: nest
+res: C96
+continue_run: true
+init_datetime: 2025092206Z
+run_nhours: 0
+k_split: [ 1, 2, 2, 2 ]
+n_split: [ 3, 6, 6, 10 ]
+
+dt_atmos: 90
+dt_ocean: 90
+refine_ratio: [ 4, 4, 2 ]
+lon_min: [ -125, -95, -85 ]
+lon_max: [ -47, -57, -67 ]
+lat_min: [ 25, 32, 38 ]
+lat_max: [ 60, 55, 47 ]
+
+global_input_nml:
+  coupler_nml:
+    months: 0
+    days: 0
+    hours: 0
+    minutes: 0
+    seconds: 0
+    dt_atmos: 90
+    dt_ocean: 90
+
+  fv_nest_nml:
+    grid_pes: [ 6, 6, 12, 12 ]
+
+  fv_core_nml:
+    layout: [ 1, 1 ]
+    write_3d_diags: false
+
+  atmos_model_nml:
+    blocksize: 6
+    chksum_debug: false
+    dycore_only: false
+    fdiag: 0.0
+
+  gfs_physics_nml:
+    ldiag3d: false
+
+nest02_input_nml:
+  fv_core_nml:
+    layout: [ 3, 2 ]
+    write_3d_diags: false
+  atmos_model_nml:
+    blocksize: 6
+    chksum_debug: false
+    dycore_only: false
+    fdiag: 0.0
+  gfs_physics_nml:
+    ldiag3d: false
+
+nest03_input_nml:
+  fv_core_nml:
+    layout: [ 4, 3 ]
+    write_3d_diags: false
+  atmos_model_nml:
+
+    blocksize: 6
+    chksum_debug: false
+    dycore_only: false
+    fdiag: 0.0
+  gfs_physics_nml:
+    ldiag3d: false
+
+nest04_input_nml:
+  fv_core_nml:
+    write_3d_diags: false
+    layout: [ 4, 3 ]
+
+  atmos_model_nml:
+    blocksize: 6
+    chksum_debug: false
+    dycore_only: false
+    fdiag: 0.0
+
+  gfs_physics_nml:
+    ldiag3d: false
+
+archive_data: false
+#chgres_config: /oscar/data/deeps/shared/gfdl_shield/ufs_py/tests/test_case2/chgres_cube.yaml
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x

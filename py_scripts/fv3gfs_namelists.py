@@ -1,15 +1,38 @@
-import re
+import os
 from pathlib import Path
 
 import f90nml
 import numpy as np
-import yaml
-from fv3gfs_runtime import log, nml_to_dict
+from fv3gfs_runtime import log, read_namelist
 from fv3gfs_state import state
 from fv3gfs_timings import apply_user_timings, get_first_guess_timings
 from fv3gfs_utils import cp, cres_to_deg, env_setup
 
-time_int_log = []
+
+def restart_config():
+
+    log.info(f"Generating namelist for restart {state.restart_no}")
+
+    for f in list(state.home.glob("*.nml")):
+        nml = read_namelist(f)
+
+        nml["fv_core_nml"]["warm_start"] = True
+        nml["fv_core_nml"]["external_ic"] = False
+        nml["fv_core_nml"]["nggps_ic"] = False
+        nml["fv_core_nml"]["ncep_ic"] = False
+
+        nml["fv_core_nml"]["mountain"] = True
+        nml["fv_core_nml"]["n_zs_filter"] = 0
+        nml["fv_core_nml"]["na_init"] = 0
+        nml["fv_core_nml"]["make_nh"] = False
+
+        nml["fms_io_nml"]["checksum_required"] = False
+        nml.setdefault("fms2_io_nml", {})["checksum_required"] = False
+        nml["fms_io_nml"]["restart_checksums_required"] = False
+        nml["fms2_io_nml"]["restart_checksums_required"] = False
+
+        with open(f, "w") as nml_out:
+            f90nml.write(nml, nml_out)
 
 
 def update_nml_configs():
@@ -22,6 +45,8 @@ def update_nml_configs():
 
     # Do nest namelists
     first_guess_timings = get_first_guess_timings()
+
+    log.info("Generating namelist files")
 
     update_global_nml(
         res=state.res,
@@ -44,76 +69,49 @@ def update_nml_configs():
         first_guess_timings=first_guess_timings,
     )
 
-    if state.debug:
-        for i in time_int_log:
-            log.info(i)
+    update_table_files()
+    update_fixed_files()
 
 
-# --- Enable/disable deep convection for CP runs ---
-def do_deep_false(nml, tile):
-    i = tile - 7  # index for nests
-    refine_ratio = state.refine_ratio
+def disable_deep_convection(nml: dict, tile: int, name: str):
+    if name.startswith("nest"):
+        i = tile - 7  # index for nests
+        refine_ratio = state.refine_ratio
+
+        res = state.res * refine_ratio[i]
+        if state.nest_type == "telescoping":
+            res = state.res * int(np.prod(refine_ratio[: i + 1]))
+    else:
+        res = state.res
+
     do_deep = state.do_deep
-
-    res = state.res * refine_ratio[i]
-    if state.nest_type == "telescoping":
-        res = state.res * int(np.prod(refine_ratio[: i + 1]))
 
     res_km = cres_to_deg(res).km
     if do_deep or res_km > 4:
         return nml
 
-    log.info(f"Nested tile {tile}: deep convection disabled ({res_km:.2f} km)")
-
-    # disable deep convection
     nml["gfs_physics_nml"]["do_deep"] = False
-    nml["gfs_physics_nml"]["imfdeepcnv"] = -1
+    nml["gfs_physics_nml"]["imfdeepcnv"] = 2  # -1
+    nml["gfs_physics_nml"]["shal_cnv"] = True
+    nml["gfs_physics_nml"]["imfshalcnv"] = 2  # -1
 
-    # disable shallow convection as well
-    nml["gfs_physics_nml"]["shal_cnv"] = False
-    nml["gfs_physics_nml"]["imfshalcnv"] = -1
+    log.info(f"{name} deep convection disabled ({res_km:.2f} km)")
 
     return nml
 
 
-def common_configs(nml):
+# for all nests
+def common_configs(nml: dict):
     nml["fms_nml"]["domains_stack_size"] = 2**30  # 1 GiB
     nml["fv_core_nml"]["npz"] = state.levels - 1
     nml["external_ic_nml"]["levp"] = state.levels
-    nml["gfs_physics_nml"]["lsm"] = 2  # Use the new noah land surface model
-    nml["fv_core_nml"]["hord_tr"] = -5
+    nml["fv_core_nml"]["warm_start"] = False
 
-    # enable coupled sfc for all runs
-    nml["gfs_physics_nml"]["sfc_coupled"] = True
+    if state.fv3_debug:
+        nml["fv_core_nml"]["fv_debug"] = True
+        nml["fv_core_nml"]["print_freq"] = -1
 
     return nml
-
-
-def restart_config():
-
-    log.info(f"Generating namelist for restart {state.restart_no}")
-
-    for f in list(state.home.glob("*.nml")):
-        with open(f, "r") as nml_in:
-            nml = nml_to_dict(f90nml.read(nml_in))
-
-        nml["fv_core_nml"]["warm_start"] = True
-        nml["fv_core_nml"]["external_ic"] = False
-        nml["fv_core_nml"]["nggps_ic"] = False
-        nml["fv_core_nml"]["ncep_ic"] = False
-
-        nml["fv_core_nml"]["mountain"] = True
-        nml["fv_core_nml"]["n_zs_filter"] = 0
-        nml["fv_core_nml"]["na_init"] = 0
-        nml["fv_core_nml"]["make_nh"] = False
-
-        nml["fms_io_nml"]["checksum_required"] = False
-        nml.setdefault("fms2_io_nml", {})["checksum_required"] = False
-        nml["fms_io_nml"]["restart_checksums_required"] = False
-        nml["fms2_io_nml"]["restart_checksums_required"] = False
-
-        with open(f, "w") as nml_out:
-            f90nml.write(nml, nml_out)
 
 
 def update_global_nml(
@@ -127,12 +125,10 @@ def update_global_nml(
     first_guess_timings: dict,
 ):
 
-    log.info("Generating global namelist")
-
-    main_nml_path = state.configs / "input.nml"
+    nml_template_path = state.configs / "input_nml.yaml"
     parent_save_path = state.home / "input.nml"
 
-    nml = nml_to_dict(f90nml.read(main_nml_path))
+    nml = read_namelist(nml_template_path)
     nml = common_configs(nml)
 
     nml["fv_core_nml"]["target_lat"] = state.target_lat
@@ -168,18 +164,13 @@ def update_global_nml(
     else:
         del nml["fv_nest_nml"]
 
-    # check for nml overrides if user provided external nml
-    nml = namelist_overrides(state.nml, nml, "global")
+    nml = disable_deep_convection(nml, 1, "global")
+
     nml = apply_user_timings(nml, "global")
     nml = update_namsfc(nml, res)
 
-    # fmt:off
-    time_int_log.append(f"FV3 time step: dt_atmos = {nml['coupler_nml']['dt_atmos']}")
-    time_int_log.append(f"FV3 time step: dt_ocean = {nml['coupler_nml']['dt_ocean']}")
-    time_int_log.append(f"FV3 splitting: global k_split = {nml['fv_core_nml']['k_split']}")
-    time_int_log.append(f"FV3 splitting: global n_split = {nml['fv_core_nml']['n_split']}")
-
-    # fmt:on
+    # check for nml overrides if user provided external nml
+    nml = namelist_overrides(state.global_input_nml, nml, "global")
 
     with open(parent_save_path, "w") as f:
         f90nml.write(nml, f)
@@ -200,9 +191,7 @@ def update_nest_nml(
     if n_nests == 0:
         return
 
-    log.info("Generating nest tiles namelists")
-
-    nest_nml_path = state.configs / "input_nestXX.nml"
+    nest_nml_template_path = state.configs / "input_nestXX_nml.yaml"
     save_paths = [state.home / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)]
     tiles = [7 + i for i in range(n_nests)]
 
@@ -219,9 +208,9 @@ def update_nest_nml(
         )
 
     for i, (out_file, tile) in enumerate(zip(save_paths, tiles), start=1):
-        nml = nml_to_dict(f90nml.read(nest_nml_path))
+        nml = read_namelist(nest_nml_template_path)
         nml = common_configs(nml)
-        nml = do_deep_false(nml, tile)
+        nml = disable_deep_convection(nml, tile, f"nest{i + 1:02d}")
 
         # Use first-guess timings unless overridden by user
 
@@ -236,18 +225,12 @@ def update_nest_nml(
         nml["fv_core_nml"]["io_layout"] = state.io_layout[i]
         nml["atmos_model_nml"]["blocksize"] = state.blocksize[i]
 
-        overide_file = state.get(f"tile{tile}_nml") or state.tileX_nml
-        nml = namelist_overrides(overide_file, nml, f"nest{i + 1:02d}")
         nml = apply_user_timings(nml, "nest", nest=i)
 
         nml = update_namsfc(nml, res)
 
-        time_int_log.append(
-            f"FV3 splitting (tile {tile}): k_split = {nml['fv_core_nml']['k_split']}"
-        )
-        time_int_log.append(
-            f"FV3 splitting (tile {tile}): n_split = {nml['fv_core_nml']['n_split']}"
-        )
+        overide_obj = state.get(f"nest{i + 1:02d}_input_nml") or state.nestXX_input_nml
+        nml = namelist_overrides(overide_obj, nml, f"nest{i + 1:02d}")
 
         with open(out_file, "w") as f:
             f90nml.write(nml, f)
@@ -255,117 +238,168 @@ def update_nest_nml(
     return 0
 
 
-def namelist_overrides(overide_file, nml, name):
+def namelist_overrides(overide_obj: str | dict, nml: dict, name: str):
 
-    if not overide_file:
+    if not overide_obj:
         return nml
 
-    if not Path(overide_file).exists(follow_symlinks=True):
-        log.info(f"Override file: {overide_file} does not exist !")
-        return nml
+    if isinstance(overide_obj, (dict)):
+        override_nml = overide_obj
+        src = f"run_config.yaml : {name}_input_nml"
 
-    if str(overide_file).endswith(".nml"):
-        override_nml = nml_to_dict(f90nml.read(overide_file))
-    elif str(overide_file).endswith((".yaml", ".yaml")):
-        with open(overide_file, "r") as f:
-            override_nml = yaml.safe_load(f)
-    else:
-        raise ValueError("Unsupported override file format. Use .nml or .yaml/.yaml")
+    elif isinstance(overide_obj, (str, Path)):
+        overide_file = Path(overide_obj)
+        src = str(overide_file)
 
-    if not override_nml:
-        log.info(f"Override file: {overide_file} is empty !")
-        return nml
+        if not Path(overide_file).exists(follow_symlinks=True):
+            log.info(f"Namelist file: {overide_file} does not exist !")
+            return nml
 
-    log.info(f"Applying {name} tile(s) nml overrides from: {overide_file}")
+        override_nml = read_namelist(overide_file)
+
+        if not override_nml:
+            log.info(f"Namelist file: {overide_file} is empty !")
+            return nml
+
+    log.info(f"Applying {name} nml overrides from: {src}")
+
     for section, entries in override_nml.items():
         if not entries:
             continue
 
-        if section not in nml:
-            nml[section] = {}
-
-        for key, value in entries.items():
-            old_value = nml[section].get(key, "")
-
-            if old_value == value:
-                continue
-
-            else:
-                if section == "fv_nest_nml" and key == "grid_pes":
-                    continue  # skip grid_pes overrides
-
-                nml[section][key] = value
-                log.debug(f"{name}[{section}][{key}]: {old_value} -> {value}")
+        nml.setdefault(section, {}).update(entries)
 
     return nml
 
 
+def update_fixed_files():
+    dt = state.init_datetime
+    year = dt.year
+    fix_dirs = [state.fix_am, state.fix / "lut"]
+
+    required_files = [
+        "aerosol.dat",
+        f"co2historicaldata_{year}.txt",
+        "co2historicaldata_glob.txt",
+        "co2monthlycyc.txt",
+        "sfc_emissivity_idx.txt",
+        "solarconstant_noaa_an.txt",
+        "volcanic_aerosols_1990-1999.txt",
+        "global_h2oprdlos.f77",
+        "global_o3prdlos.f77",
+    ]
+
+    missing_files = []
+
+    for name in required_files:
+        found = None
+        for fix_dir in fix_dirs:
+            candidate = fix_dir / name
+            if candidate.exists():
+                found = candidate
+                break
+            else:
+                # Attempt fuzzy match if file not found
+                matches = list(fix_dir.glob(f"*{name}"))
+                if matches:
+                    found = matches[0]
+                    break
+
+        if found:
+            dest = state.fixed / name
+            if not dest.exists():
+                cp(found, dest)
+            link = Path(state.input) / name
+            link.unlink(missing_ok=True)
+            rel_target = os.path.relpath(dest, start=state.input)
+            link.symlink_to(rel_target)
+
+        else:
+            missing_files.append(name)
+
+    if missing_files:
+        raise FileNotFoundError(
+            "The following files were not found: " + ", ".join(missing_files)
+        )
+
+
+def update_table_files():
+
+    dt = state.init_datetime
+    update_fixed_files()
+
+    restart_no = state.get("restart_no", 0)
+
+    diag_table_path = state.home / "diag_table"
+    field_table_path = state.home / "field_table.yaml"
+
+    user_diag = state.rundir / "diag_table"
+    user_field = state.rundir / "field_table"
+
+    template_diag = state.configs / "diag_table"
+    template_field = state.configs / "field_table.yaml"
+
+    if user_diag.exists():
+        diag_file = user_diag
+    else:
+        diag_file = template_diag
+
+    if user_field.exists():
+        field_file = user_field
+    else:
+        field_file = template_field
+
+    cp(diag_file, diag_table_path)
+    cp(field_file, field_table_path)
+
+    with open(diag_table_path) as f:
+        lines = f.readlines()
+        lines = [line for line in lines if not line.strip().startswith("#")]
+
+    dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
+    desc_str = f"{state.description}\n"
+    lines = [desc_str, dt_str] + [
+        line.replace("XX", f"{restart_no:02d}") for line in lines
+    ]
+    with open(diag_table_path, "w") as f:
+        f.writelines(lines)
+
+
 def update_namsfc(nml, res):
-    for k, v in nml["namsfc"].items():
-        if isinstance(v, str):
-            nml["namsfc"][k] = str(v).replace("CXXX", f"C{res}")
 
     am_dir = Path(state.fix) / "am"
 
-    constant_files = {
-        "FNGLAC": "global_glacier",
-        "FNMXIC": "global_maxice",
-        "FNTSFC": "RTGSST",
-        "FNSNOC": "global_snoclim",
-        "FNAISC": "CFSR.SEAICE",
-        "FNMLDC": "mld_DR003_c1m_reg",
+    namsfc_files = {
+        "fnabsc": "global_mxsnoalb.uariz.t1534.3072.1536.rg.grb",
+        "fnaisc": "CFSR.SEAICE.1982.2012.monthly.clim.grb",
+        "fnalbc": "global_snowfree_albedo.bosu.t1534.3072.1536.rg.grb",
+        "fnalbc2": "global_albedo4.1x1.grb",
+        "fnglac": "global_glacier.2x2.grb",
+        "fnmldc": "mld_DR003_c1m_reg2.0.grb",
+        "fnmskh": "seaice_newland.grb",
+        "fnmxic": "global_maxice.2x2.grb",
+        "fnslpc": "global_slope.1x1.grb",
+        "fnsmcc": "global_soilmgldas.t1534.3072.1536.grb",
+        "fnsnoc": "global_snoclim.1.875.grb",
+        "fnsotc": "global_soiltype.statsgo.t1534.3072.1536.rg.grb",
+        "fntg3c": "global_tg3clim.2.6x1.5.grb",
+        "fntsfc": "RTGSST.1982.2012.monthly.clim.grb",
+        "fnvegc": "global_vegfrac.0.144.decpercent.grb",
+        "fnvetc": "global_vegtype.igbp.t1534.3072.1536.rg.grb",
+        "fnvmnc": "global_shdmin.0.144x0.144.grb",
+        "fnvmxc": "global_shdmax.0.144x0.144.grb",
     }
 
-    variable_files = {
-        "FNMSKH": "global_slmask",
-        "FNSMCC": "global_soilmgldas",
-    }
+    for key, fname in namsfc_files.items():
+        src = am_dir / fname
+        dst = state.fixed / fname
 
-    # === Helper: extract resolution info from filename ===
-    def parse_grid_info(fname):
-        """
-        Extract (Tres, NX, NY) from a file name like global_slmask.t574.1152.576.grb
-        """
-        m = re.search(r"t(\d+)\.(\d+)\.(\d+)", fname)
-        if m:
-            return int(m.group(1)), int(m.group(2)), int(m.group(3))
-        return None, None, None
+        if not src.exists():
+            raise FileNotFoundError(src)
 
-    for k, v in constant_files.items():
-        files = list(am_dir.glob(f"{v}*"))
-        files = [f for f in files if f.name.endswith((".grb", ".grb2"))]
-        if not files or len(files) > 1:
-            print(f"Files found for {k}: {[f.name for f in files]}")
-            raise FileNotFoundError(f"Missing or ambiguous constant file for {k}")
+        cp(src, dst)
+        nml["namsfc"][key] = f"FIXED/{fname}"
 
-        cp(files[0], state.fixed / files[0].name)
-        nml["namsfc"][k] = f"FIXED/{files[0].name}"
-
-    for k, v in variable_files.items():
-        files = list(am_dir.glob(f"{v}*"))
-        if not files:
-            raise FileNotFoundError(f"Missing variable file for {k}")
-
-        best_match = None
-
-        matches = {}
-
-        for f in files:
-            if f.name.endswith(".grb") and ".rg." not in f.name:
-                tres, nx, ny = parse_grid_info(f.name)
-                matches[tres] = f
-
-        # sort res dict by key (tres)
-        sorted_res = dict(sorted(matches.items()))
-
-        # take the last key less
-        best_match = sorted_res[list(sorted_res.keys())[-1]]
-
-        if best_match:
-            cp(best_match, state.fixed / best_match.name)
-
-            nml["namsfc"][k] = f"FIXED/{best_match.name}"
-        else:
-            raise FileNotFoundError(f"Could not find suitable match for {k}")
+    nml["namsfc"]["FNZORC"] = "igbp"
 
     return nml

@@ -248,21 +248,15 @@ res: C96
 gtype: uniform
 levels: 64
 continue_run: false
-debug: false
-chgres_config: null
-nml: null
-tileX_nml: null
+fv3_debug: false
 shield_exe: null
 sbatch:
   exclusive: false # Run with exclusive node access (true/false)
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
   time: 12 # Maximum wall time (HH)
-  mem: 480 # Total memory (GB)
   nnodes: 3 # Number of nodes
   ntasks: 48 # Total number of tasks (e.g., MPI ranks)
-  output: "shield.driver.log" # Path for sbatch output log
-  partition: "batch" # Partition name 
 
 ```
 
@@ -280,23 +274,13 @@ lon_min: [-125,-95]
 lon_max: [-47,-57]
 lat_min: [25,32]
 lat_max: [60,55]
-nml: parent.yml # or .nml
-tileX_nml: nest_all.yml # or .nml
-tile7_nml: nest_tile7.yml # or .nml
-k_splt:
-n_split:
-nest_k_split:
-nest_n_split:
 sbatch:
   exclusive: false # Run with exclusive node access (true/false)
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
   time: 12 # Maximum wall time (HH)
-  mem: 480 # Total memory (GB)
   nnodes: 3 # Number of nodes
   ntasks: 48 # Total number of tasks (e.g., MPI ranks)
-  output: "shield.driver.log" # Path for sbatch output log
-  partition: "batch" # Partition name 
 ```
 
 
@@ -376,10 +360,8 @@ sbatch:
   constraint: false # Node constraints (e.g., "24-core", "32-core")
   cpus_per_task: 1 # Number of CPU cores per task
   time: 12 # Maximum wall time (HH)
-  mem: 480 # Total memory (GB)
   nnodes: 3 # Number of nodes
   ntasks: 48 # Total number of tasks (e.g., MPI ranks)
-  output: "shield.driver.log" # Path for sbatch output log
   partition: "batch" # Partition name 
 
 
@@ -413,4 +395,240 @@ echo "Submitting job from $CASE_DIR..."
 # Un-comment the line below to actually submit to the Slurm queue when running:
 # ./submit.sh
 
+```
+
+
+### RUN CONFIG.YAML OPTIONS
+
+```yaml
+# =============================================================================
+# SHIELD Run Configuration
+# FV3-based atmospheric model simulation parameters.
+# =============================================================================
+# Sections (functional order):
+#   1. Job submission (SLURM)
+#   2. Case metadata
+#   3. Execution control
+#   4. Ensemble configuration
+#   5. Initial conditions and preprocessing
+#   6. Horizontal grid (uniform, stretch, nest, regional)
+#   7. Vertical grid and physics
+#   8. Time stepping
+#   9. Surface and orography
+#  10. Namelist files
+#  11. Land surface perturbations
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. JOB SUBMISSION (SLURM)
+# -----------------------------------------------------------------------------
+# Parameters forwarded to sbatch. Override defaults as required by the host.
+
+sbatch:
+  partition: "batch" # SLURM partition
+  nnodes: null # Number of compute nodes
+  ntasks: null # Total MPI ranks
+  time: null # Wall-clock limit [hours]
+  exclusive: false # Reserve full nodes (true / false)
+  constraint: false # Node feature constraints (e.g., "32core")
+
+# -----------------------------------------------------------------------------
+# 2. CASE METADATA
+# -----------------------------------------------------------------------------
+
+case_name: null # Case identifier; null falls back to directory name
+description: # Short experiment label (REQUIRED for tracking)
+fv3_debug: false # Verbose diagnostics during model run
+archive_data: true # Archive outputs after completion
+
+# -----------------------------------------------------------------------------
+# 3. EXECUTION CONTROL
+# -----------------------------------------------------------------------------
+
+shield_exe: null # Path to SHIELD executable (REQUIRED)
+init_datetime: null # Initialization time YYYYMMDDHH, UTC (REQUIRED)
+run_nhours: null # Integration length [hours]
+forecast_hour: 0 # Offset from initialization [hours]
+continue_run: false # Restart from existing files (requires valid restarts)
+resubmit: 0 # Number of sequential job resubmissions
+
+# -----------------------------------------------------------------------------
+# 4. ENSEMBLE CONFIGURATION
+# -----------------------------------------------------------------------------
+
+ensemble_run: false # Multi-member ensemble; false runs a single simulation
+n_ensembles: 1 # Number of members (used when ensemble_run = true)
+paired_ensembles: false # Generate paired perturbations across members
+skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
+
+# -----------------------------------------------------------------------------
+# 5. INITIAL CONDITIONS AND PREPROCESSING
+# -----------------------------------------------------------------------------
+
+ic_gen: true # Generate grid and IC files
+ic_only: false # Generate ICs and grid only, then exit
+ic_source_path: null # Source case path (REQUIRED if ic_gen = false)
+ic_source_type: "case" # Options: case | external 
+chgres_config: null # CHGRES configuration (.yaml) path to chgress config
+
+# -----------------------------------------------------------------------------
+# 6. HORIZONTAL GRID
+# -----------------------------------------------------------------------------
+# Cubed-sphere resolution reference:
+#   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
+#   C768  ~ 13 km      C3072 ~ 3 km
+
+res: 96 # Cubed-sphere face resolution
+gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
+target_lon: -96 # Grid center longitude [degrees]; used for stretch / regional
+target_lat: 35.0 # Grid center latitude  [degrees]; used for stretch / regional
+stretch_factor: 1.0 # Schmidt stretching coefficient; values > 1 refine the target region
+
+# 6a. Nested grids (active when gtype = nest)
+# Nesting options: for 3 nests set to [ 4, 4, 2 ]  so that inner nest is 3km
+refine_ratio: [ 3 ] # Refinement ratio for each nest relative to its parent grid
+parent_tile: 6 # Parent cubed-sphere tile, 1 to 6
+halo: 3 # Halo width for MPI exchange
+
+lon_min: null # Western nest bound(s) [degrees east]; list required for multiple nests
+lon_max: null # Eastern nest bound(s) [degrees east]; list required for multiple nests
+lat_min: null # Southern nest bound(s) [degrees north]; list required for multiple nests
+lat_max: null # Northern nest bound(s) [degrees north]; list required for multiple nests
+
+# 6b. Regional ESG grids (active when gtype = regional_esg)
+idim: 200 # Zonal grid points
+jdim: 200 # Meridional grid points
+delx: 0.0585 # Supergrid spacing, zonal      [degrees]
+dely: 0.0585 # Supergrid spacing, meridional [degrees]
+
+# -----------------------------------------------------------------------------
+# 7. VERTICAL GRID AND PHYSICS
+# -----------------------------------------------------------------------------
+
+levels: 64 # Hybrid sigma-pressure levels
+do_deep: false # Deep convection parameterization (disable for dx < 4 km)
+
+# -----------------------------------------------------------------------------
+# 8. TIME STEPPING (CFL CONSTRAINED)
+# -----------------------------------------------------------------------------
+# Relationships:
+#   dt_dyn      = dt_atmos / k_split[i]
+#   dt_acoustic = dt_atmos / (k_split[i] * n_split[i])
+#
+# Index convention for k_split and n_split:
+#   [0] = global grid
+#   [1] = nest01
+#   [2] = nest02
+#   [3] = nest03
+#
+# Guideline:
+#   dt_atmos is CFL constrained and should decrease with increasing horizontal
+#   resolution or refinement ratio.
+
+dt_atmos: null # Atmospheric timestep [s] for nested high res set to 90
+dt_ocean: null # Ocean coupling timestep [s], if coupled for nested high res set to 90
+
+# k_split: [ 1, 2, 2, 2 ]  for 3 nests with dt_atmos = 90 s, nest01 runs at 45 s, nest02 and nest03 run at 22.5 s
+# n_split: [ 3, 6, 6, 10 ] for 3 nests with dt_atmos = 90 s and k_split as above, global acoustic timestep is 30 s, nest01 acoustic timestep is 7.5 s, and nest02 and nest03 acoustic timestep is 2.25 s
+k_split: null # Remap-split counts per dt_atmos for each grid; first value is global, remaining values are nests in nest order
+n_split: null # Acoustic-substep counts per remap split for each grid; first value is global, remaining values are nests in nest order
+
+# -----------------------------------------------------------------------------
+# 9. SURFACE AND OROGRAPHY
+# -----------------------------------------------------------------------------
+
+lake_cutoff: 0.2 # Land / water fractional threshold
+add_lake: false # Activate lake model
+make_gsl_orog: false # Generate GSL orography fields
+
+# -----------------------------------------------------------------------------
+# 10. NAMELIST SETTINGS
+# -----------------------------------------------------------------------------
+# Optional namelist overrides applied after the default namelist is generated.
+#
+# Accepted values:
+#   - null
+#   - path to a .yaml, .yml, or .nml file
+#   - mapping with namelist sections and key-value pairs
+#
+# Override precedence:
+#   1. global_input_nml applies to the parent/global namelist only.
+#   2. nestXX_input_nml applies the same overrides to every configured nest.
+#   3. nestNN_input_nml applies overrides to one specific nest and takes
+#      precedence over nestXX_input_nml for that nest.
+#
+# Nest numbering:
+#   - Nest-specific keys start at nest02_input_nml.
+#   - For two configured nests, the valid nest-specific keys are:
+#       nest02_input_nml
+#       nest03_input_nml
+#
+# Example:
+#   global_input_nml: path/to/global_input.yaml
+#   nestXX_input_nml: path/to/common_nest_input.yaml
+#   nest02_input_nml: path/to/nest02_input.nml
+#   nest03_input_nml: path/to/nest03_input.yaml
+#
+# Example mapping:
+#   global_input_nml:
+#     gfs_physics_nml:
+#       do_deep: false
+#       imfdeepcnv: -1
+#
+# Notes:
+#   - Overrides are shallow. A provided key replaces the generated value in the
+#     matching namelist section.
+#   - Empty sections are ignored.
+#
+global_input_nml: null
+nestXX_input_nml: null
+
+# -----------------------------------------------------------------------------
+# 11. LAND SURFACE PERTURBATIONS
+# -----------------------------------------------------------------------------
+# Apply controlled perturbations to soil-state variables for ensemble spread
+# or sensitivity experiments.
+#
+# Schema
+# ------
+# sm_perturbations:
+#   perturbations:
+#     - target_var:  <str>                 # e.g., smc, slc, stc
+#       soil_layers: <int | list[int]>
+#       tiles:       <list[int]>
+#       method:      <str | list[str]>
+#
+# Methods
+# -------
+#   std_shift       X = X + k * sigma
+#   mean_shift      X = mu * factor
+#   anom_shift      X = mu + alpha * (X - mu)
+#   constant_fill   X = constant (or mu)
+#
+# Optional controls
+# -----------------
+#   n_sigma:           float
+#   mean_scale:        float
+#   anom_scale:        float
+#   fill_value:        float | "mean"
+#   use_climo:         bool
+#   do_nudge:          bool
+#   climo_file:        str          # global file; must contain target_var and
+#                                   # match soil_layers
+#   tau_hours:         float        # default 24
+#   do_hold:           bool
+#   apply_on_restarts: int | list[int]
+#
+# Constraints
+# -----------
+#   Physical bounds enforced (e.g., soil moisture in [0.01, 0.99]).
+#   Ice / water consistency preserved (smc, slc coupling).
+#   Multiple methods applied sequentially in the listed order.
+#
+# Warnings
+# --------
+#   do_nudge and do_hold are mutually exclusive.
+#   Improper perturbations may violate energy or water conservation.
+
+sm_perturbations: null
 ```

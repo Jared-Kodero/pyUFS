@@ -3,7 +3,6 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
-
 from fv3gfs_state import state
 
 BASE_TIMINGS = {
@@ -17,16 +16,24 @@ BASE_TIMINGS = {
 }
 
 
-def _get_user_timings(name: Literal["global", "nest"], nest=None) -> dict:
+def _get_user_timings(name: Literal["global", "nest"], nml: dict, nest=None) -> dict:
     timings = {}
     if name == "global":
         if state.k_split is not None:
-            timings["k_split"] = state.k_split
+            timings["k_split"] = state.k_split[0]
+        else:
+            timings["k_split"] = nml["fv_core_nml"]["k_split"]
         if state.n_split is not None:
-            timings["n_split"] = state.n_split
+            timings["n_split"] = state.n_split[0]
+        else:
+            timings["n_split"] = nml["fv_core_nml"]["n_split"]
+
         if state.dt_atmos is not None:
             timings["dt_atmos"] = state.dt_atmos
             timings["dt_ocean"] = state.dt_ocean
+        else:
+            timings["dt_atmos"] = nml["coupler_nml"]["dt_atmos"]
+            timings["dt_ocean"] = nml["coupler_nml"]["dt_ocean"]
 
     elif name == "nest":
         if nest is None:
@@ -34,17 +41,32 @@ def _get_user_timings(name: Literal["global", "nest"], nest=None) -> dict:
 
         nest_idx = nest - 1  # zero-based index
 
-        if state.nest_k_split is not None:
-            timings["k_split"] = state.nest_k_split[nest_idx]
-        if state.nest_n_split is not None:
-            timings["n_split"] = state.nest_n_split[nest_idx]
+        nests_k_split = None
+        nests_n_split = None
+
+        if state.k_split is not None:
+            nests_k_split = state.k_split[1:]
+        if state.n_split is not None:
+            nests_n_split = state.n_split[1:]
+
+        if nests_k_split is not None and len(nests_k_split) > nest_idx:
+            timings["k_split"] = nests_k_split[nest_idx]
+        else:
+            timings["k_split"] = nml["fv_core_nml"]["k_split"]
+
+        if nests_n_split is not None and len(nests_n_split) > nest_idx:
+            timings["n_split"] = nests_n_split[nest_idx]
+        else:
+            timings["n_split"] = nml["fv_core_nml"]["n_split"]
 
     return timings
 
 
-def apply_user_timings(nml, name: Literal["global", "nest"], nest=None) -> dict:
+def apply_user_timings(
+    nml: dict, name: Literal["global", "nest"], nest: int = None
+) -> dict:
     # check for user timing overrides suplied in cli args or config
-    timings_overrides = _get_user_timings(name, nest)
+    timings_overrides = _get_user_timings(name, nml, nest)
     if not timings_overrides:
         return nml
 

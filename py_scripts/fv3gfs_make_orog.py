@@ -73,9 +73,6 @@ def _run_make_orog(
         f.write(f"{out_grid}\n")
         f.write(f"{orogfile}\n")
 
-    log.debug("Running orog with INPS:")
-    log.debug(Path("INPS").read_text())
-
     # Run executable
     with open("INPS", "r") as fin:
         cmd = [f"{orog}"]

@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 import yaml
 from fv3gfs_state import state
@@ -22,7 +23,7 @@ def gen_shield_run_sh() -> None:
 
 
 def gen_shield_container_scripts(
-    native_modules, native_launcher, container_launcher
+    native_modules: list, native_launcher: str, container_launcher: str
 ) -> None:
     if state.multi_node and not state.shield_exe:
         raise RuntimeError(
@@ -59,7 +60,9 @@ def gen_shield_container_scripts(
     )
 
 
-def write_shield_sh(exe, log_file, exit_code, modules, launcher) -> None:
+def write_shield_sh(
+    exe: str, log_file: Path, exit_code: Path, modules: str, launcher: str
+) -> None:
     template_path = state.configs / "shield.launcher"
     output_path = state.home / "shield"
 

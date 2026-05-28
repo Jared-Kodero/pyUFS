@@ -143,29 +143,37 @@ if (( CASE_RESUBMIT_COUNT == 0 )) && (( EXIT_CODE == 0 )); then
 
     CASE_OUT="$CASE_DIR/OUTPUT"
     rm -rf "$CASE_DIR"/IC/R*_INPUT
-    mkdir -p "$ARCHIVE_DIR"
+
+    if (( CASE_ENSEMBLES == 1 )); then
+        CASE_ARCHIVE_DIR="$ARCHIVE_DIR/ensembles"
+    else
+        CASE_ARCHIVE_DIR="$ARCHIVE_DIR/case"
+    fi
+
+    mkdir -p "$CASE_ARCHIVE_DIR"
 
     if (( CASE_ARCHIVE == 1 )); then
-        cp -rf "$CASE_OUT"/*.nc "$ARCHIVE_DIR/"
-        rm -rf "$ARCHIVE_DIR"/atmos_static*
-        rm -rf "$ARCHIVE_DIR"/grid_spec*
+        cp -rf "$CASE_OUT"/*.nc "$CASE_ARCHIVE_DIR/"
+        rm -rf "$CASE_ARCHIVE_DIR"/atmos_static*
+        rm -rf "$CASE_ARCHIVE_DIR"/grid_spec*
         rm -rf "$CASE_OUT"
         rm -rf "$CASE_DIR"/HIST
 
-
         TARFILE="$ARCHIVE_DIR/case.tar.gz"
+
         if tar --use-compress-program='pigz -p 32' -cf "$TARFILE" -C "$CASE_DIR" . \
-        && tar -tzf "$TARFILE" > /dev/null; then
+            && tar -tzf "$TARFILE" > /dev/null; then
+
             rm -rf "$CASE_DIR"
             rm -f "$CASE_DATA_SYMLINK"
-            echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $ARCHIVE_DIR"
+
+            echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $CASE_ARCHIVE_DIR"
         else
             echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - ERROR - Failed to archive case directory: $CASE_DIR"
             rm -f "$TARFILE"
             exit 1
         fi
     fi
-
 
 fi
 

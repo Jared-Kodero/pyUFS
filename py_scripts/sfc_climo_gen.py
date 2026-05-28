@@ -85,6 +85,7 @@ def _run_single_sfc_climo(
         log.error(msgs)
         raise RuntimeError("Failed to generate sfc climatology")
 
+    written_files = []
     for f in tmp_dir.glob("*.nc"):
         if grid_type == "regional":
             if f.name.endswith(".halo.nc"):
@@ -97,6 +98,53 @@ def _run_single_sfc_climo(
             dest = out_dir / f"C{res}.{f.name}"
 
         cp(f, dest)
+
+    written_files = []
+
+    for f in tmp_dir.glob("*.nc"):
+        if grid_type == "regional":
+            if f.name.endswith(".halo.nc"):
+                stem = f.stem.replace(".halo", "")
+                dest = out_dir / f"C{res}.{stem}.halo{halo}.nc"
+            else:
+                dest = out_dir / f"C{res}.{f.stem}.halo0.nc"
+        else:
+            dest = out_dir / f"C{res}.{f.name}"
+
+        if dest.is_symlink() or dest.exists():
+            dest.unlink()
+
+        cp(f, dest)
+        written_files.append(dest)
+
+    if name.startswith("tile_") and grid_type == "nest" and halo > 0:
+        tile_no = int(name.split("_")[-1])
+
+        if tile_no >= 7:
+            for halo_file in written_files:
+                if ".halo." not in halo_file.name:
+                    continue
+
+                regular_file = Path(str(halo_file).replace(".halo.nc", ".nc"))
+                nohalo_file = Path(str(halo_file).replace(".halo.nc", ".nohalo.nc"))
+
+                if not halo_file.exists():
+                    raise FileNotFoundError(f"Missing halo file: {halo_file}")
+
+                if not regular_file.exists() and not regular_file.is_symlink():
+                    raise FileNotFoundError(
+                        f"Missing no-halo file corresponding to: {halo_file}"
+                    )
+
+                if regular_file.is_symlink():
+                    regular_file.unlink()
+                else:
+                    if nohalo_file.is_symlink() or nohalo_file.exists():
+                        nohalo_file.unlink()
+                    regular_file.rename(nohalo_file)
+
+                rel_target = os.path.relpath(halo_file, start=regular_file.parent)
+                regular_file.symlink_to(rel_target)
 
 
 def run_sfc_climo_gen(
@@ -224,7 +272,7 @@ def run_sfc_climo_gen(
             mosaic_file,
             tmp_dir / "global",
             out_dir,
-            halo,
+            0,
             vegsoilt_frac,
             veg_type_src,
             soil_type_src,
@@ -279,7 +327,7 @@ def run_sfc_climo_gen(
             mosaic_file,
             tmp_dir,
             out_dir,
-            halo,
+            0,
             vegsoilt_frac,
             veg_type_src,
             soil_type_src,

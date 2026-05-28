@@ -1,11 +1,11 @@
-# new version
+# pes_config.py
 
 from math import isqrt
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
-from fv3gfs_runtime import sort_paths
+from fv3gfs_runtime import read_namelist, sort_paths
 from fv3gfs_state import save_state, state
 
 grid_dir: Path = None
@@ -63,10 +63,46 @@ def calc_uniform_pes() -> None:
     state["total_pes"] = total_pes
     state["global_pes"] = total_pes
 
-    set_layouts([total_pes // 6])
+    layouts = get_layouts([total_pes // 6])
+    state["layout"] = layouts["layout"]
+    state["io_layout"] = layouts["io_layout"]
+    state["blocksize"] = layouts["blocksize"]
+
+
+def check_user_define_pes() -> bool:
+    global_input_nml = state.get("global_input_nml")
+    if not global_input_nml:
+        return False
+
+    if isinstance(global_input_nml, (str, Path)):
+        path = Path(global_input_nml)
+        if not path.exists():
+            return False
+        global_input_nml = read_namelist(path)
+        if not global_input_nml:
+            return False
+
+    grid_pes = global_input_nml.get("fv_nest_nml", {}).get("grid_pes")
+    if not grid_pes:
+        return False
+
+    state["grid_pes"] = grid_pes
+    state["total_pes"] = sum(grid_pes)
+    state["global_pes"] = grid_pes[0]
+
+    layouts = get_layouts(p // d for p, d in zip(grid_pes, [6, *([1] * state.n_nests)]))
+
+    state["layout"] = layouts["layout"]
+    state["io_layout"] = layouts["io_layout"]
+    state["blocksize"] = layouts["blocksize"]
+
+    return True
 
 
 def calc_nest_pes() -> None:
+    if check_user_define_pes():
+        return
+
     global_base_pes = 6 * max(1, state.res // 96)
     nest_base_pes = []
 
@@ -75,7 +111,7 @@ def calc_nest_pes() -> None:
         nest_base_pes.append(nest_i_base_pe)
 
     weights = [global_base_pes] + nest_base_pes
-    valid = np.array([4, 8, 16, 32, 64, 128, 256], dtype=np.int64)
+    valid = np.array([16, 32, 64, 128, 256], dtype=np.int64)
 
     final_pes = allocate_pes(
         weights=weights,
@@ -90,7 +126,13 @@ def calc_nest_pes() -> None:
     state["total_pes"] = total_pes
     state["global_pes"] = final_pes[0]
 
-    set_layouts([p // n for p, n in zip(final_pes, ntiles_list)])
+    layouts = get_layouts([p // n for p, n in zip(final_pes, ntiles_list)])
+
+    state["layout"] = layouts["layout"]
+    state["io_layout"] = layouts["io_layout"]
+    state["blocksize"] = layouts["blocksize"]
+
+    save_state()
 
 
 def allocate_pes(
@@ -135,18 +177,23 @@ def allocate_pes(
     return candidates[np.argmin(score)].astype(int).tolist()
 
 
-def set_layouts(pes: list) -> None:
-    for k in {"layout", "io_layout", "blocksize"}:
-        state[k] = []
+def get_layouts(pes: list[int]) -> dict[str, list[int]]:
+    layouts = []
+    io_layouts = []
+    blocksizes = []
 
     for p in pes:
         for layout_x in range(isqrt(p), 0, -1):
             if p % layout_x == 0:
-                layouts = [layout_x, p // layout_x]
+                layout = [layout_x, p // layout_x]
                 break
 
-        state.layout.append(layouts)
-        state.io_layout.append([1, 1])
-        state.blocksize.append(32)
+        layouts.append(layout)
+        io_layouts.append([1, 1])
+        blocksizes.append(32)
 
-    save_state()
+    return {
+        "layout": layouts,
+        "io_layout": io_layouts,
+        "blocksize": blocksizes,
+    }

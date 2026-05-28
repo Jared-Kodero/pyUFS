@@ -8,7 +8,16 @@ from fv3gfs_utils import run_cmd
 
 
 def _run_add_lakefrac(
-    workdir, res, tile, gtype, orog_dir, grid_dir, topo, lake_cutoff, exec_dir, log_file
+    workdir: Path,
+    res: int,
+    tile: int,
+    gtype: str,
+    orog_dir: Path,
+    grid_dir: Path,
+    topo: Path,
+    lake_cutoff: float,
+    exec_dir: Path,
+    log_file: Path,
 ):
 
     lakefrac = Path(exec_dir) / "lakefrac"
@@ -91,15 +100,15 @@ def run_add_lakefrac(
         return None
 
     if gtype not in ["uniform", "regional_gfdl"]:
-        raise NotImplementedError(
-            f"lakefrac only implemented for uniform and regional_gfdl, not {gtype}."
+        log.warning(
+            f"add_lakefrac is only supported for uniform and regional_gfdl grids, skipping lakefrac generation for gtype: {gtype}"
         )
+        return
 
     workdir = tmp / f"C{res}" / "orog" / "tiles"
     workdir.mkdir(parents=True, exist_ok=True)
 
     os.chdir(workdir)
-    log.debug(f"workdir = {workdir}\noutdir = {orog_dir}\nindir = {topo}")
 
     # Link required orog + grid files
     if gtype == "uniform":

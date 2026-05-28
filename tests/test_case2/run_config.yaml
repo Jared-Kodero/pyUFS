@@ -1,0 +1,56 @@
+sbatch:
+  exclusive: false
+  constraint: false
+  cpus_per_task: 1
+  time: 6
+  nnodes: 1
+  ntasks: 36
+
+fv3_debug: false
+do_deep: false
+levels: 64
+gtype: nest
+res: C96
+continue_run: true
+init_datetime: 2025092206Z
+run_nhours: 2
+k_split: [ 1, 2, 2, 2 ]
+n_split: [ 3, 6, 6, 10 ]
+
+dt_atmos: 90
+dt_ocean: 90
+refine_ratio: [ 4, 4, 2 ]
+lon_min: [ -125, -95, -85 ]
+lon_max: [ -47, -57, -67 ]
+lat_min: [ 25, 32, 38 ]
+lat_max: [ 60, 55, 47 ]
+
+global_input_nml:
+  fv_nest_nml:
+    grid_pes: [ 6, 6, 12, 12 ]
+  fv_core_nml:
+    layout: [ 1, 1 ]
+  atmos_model_nml:
+    blocksize: 6
+
+nest02_input_nml:
+  fv_core_nml:
+    layout: [ 3, 2 ]
+  atmos_model_nml:
+    blocksize: 6
+
+nest03_input_nml:
+  fv_core_nml:
+    layout: [ 4, 3 ]
+  atmos_model_nml:
+    blocksize: 6
+
+nest04_input_nml:
+  fv_core_nml:
+    layout: [ 4, 3 ]
+  atmos_model_nml:
+    blocksize: 6
+
+archive_data: false
+#chgres_config: /oscar/data/deeps/shared/gfdl_shield/ufs_py/tests/test_case2/chgres_cube.yaml
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
