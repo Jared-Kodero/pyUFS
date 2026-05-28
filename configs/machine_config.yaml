@@ -7,7 +7,7 @@ sbatch:
   nnodes: 2
   ntasks: 64
   partition: "batch"
-  output: "shield.driver.log"
+  output: "shield_driver"
 
 paths:
   jobtmp: /jobtmp/$USER/gfdl_shield

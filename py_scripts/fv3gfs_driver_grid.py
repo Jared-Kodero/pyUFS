@@ -177,6 +177,7 @@ def run_driver(
             mosaic_dir=tmp_ic_dir,
             orog_dir=tmp_ic_dir,
             grid_type=gtype,
+            halo=halo if gtype == "nest" else 0,
             n_nests=n_nests,
         )
 
@@ -374,6 +375,7 @@ def run_driver(
             mosaic_dir=tmp_ic_dir,
             orog_dir=tmp_ic_dir,
             grid_type="regional",
+            halo=halop1,
             n_nests=0,
         )
 

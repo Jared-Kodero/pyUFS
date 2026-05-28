@@ -1,38 +1,15 @@
-import hashlib
 import os
 
-from fv3gfs_namelists import restart_config
+from fv3gfs_namelists import restart_config, update_table_files
 from fv3gfs_runscripts import gen_shield_run_sh
-from fv3gfs_stage_data import update_table_files
-from fv3gfs_state import prev_state, save_state, state
+from fv3gfs_state import compute_checksum, prev_state, save_state, state
 from fv3gfs_utils import env_setup
 from sm_pertubutions import apply_perturbations
 
 
 def check_prev_state(params: dict) -> None:
 
-    _hash_keys = [
-        "res",
-        "gtype",
-        "levels",
-        "target_lon",
-        "target_lat",
-        "stretch_factor",
-        "refine_ratio",
-        "lon_min",
-        "lon_max",
-        "lat_min",
-        "lat_max",
-        "datetime",
-        "chgres_config",
-    ]
-
-    # ------------------------------------------------------------
-    # Compute checksum
-    # ------------------------------------------------------------
-
-    _hash_data_str = ",".join(str(params.get(k)) for k in _hash_keys)
-    checksum = hashlib.sha256(_hash_data_str.encode("utf-8")).hexdigest()[32:].upper()
+    checksum = compute_checksum(params)
     params["checksum"] = checksum
 
     run_hours = params["run_nhours"]

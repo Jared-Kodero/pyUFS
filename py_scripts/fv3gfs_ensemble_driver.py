@@ -3,7 +3,6 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-
 from fv3gfs_runtime import log
 from fv3gfs_state import state
 
@@ -11,7 +10,7 @@ ensemble_stds = {}
 ensemble_amp = 0.01  # 1% perturbation
 
 
-def _get_stds(in_file, target_vars):
+def _get_stds(in_file: Path, target_vars: set) -> dict:
     out = {}
     with xr.open_dataset(in_file) as ds:
         for v in ds.data_vars:
@@ -26,7 +25,12 @@ def _get_stds(in_file, target_vars):
 
 
 def _get_delta(
-    scale: float, rng, shape=None, dims=None, coords=None, dx=None
+    scale: float,
+    rng: np.random.Generator,
+    shape: tuple = None,
+    dims: tuple = None,
+    coords: tuple = None,
+    dx: float = None,
 ) -> xr.DataArray:
 
     delta = rng.normal(0.0, scale, size=shape)
@@ -39,7 +43,14 @@ def _get_delta(
     return da
 
 
-def _gen_ensemble(stds, in_file, out_file, target_vars, rng, dx):
+def _gen_ensemble(
+    stds: dict,
+    in_file: Path,
+    out_file: Path,
+    target_vars: set,
+    rng: np.random.Generator,
+    dx: float,
+):
     """
     Generate ensemble members by adding small perturbations to the input data. for GFDL SHiELD, 3km convective run
     """

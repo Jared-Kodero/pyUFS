@@ -9,6 +9,7 @@ env_paths["fix_am"] = env_paths["fix"] / "am"
 env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
 env_paths["rundir"] = Path(os.getenv("CASE_PWD"))
 env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
+env_paths["scratch_dir"] = Path(os.getenv("SCRATCH_DIR"))
 env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
 
 
@@ -26,7 +27,7 @@ case_paths["IC"] = env_paths["home"] / "IC"
 paths = {**env_paths, **case_paths}
 
 
-def configure_directories(params) -> dict:
+def configure_directories(params: dict) -> dict:
     config_restart_dir({**env_paths, **case_paths}, params)
 
     def _clear(path: Path) -> None:

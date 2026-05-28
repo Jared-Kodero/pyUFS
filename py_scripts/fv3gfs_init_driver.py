@@ -5,6 +5,7 @@ from fv3gfs_ic_data import ic_only, init_external_ic
 from fv3gfs_namelists import update_nml_configs
 from fv3gfs_runscripts import gen_shield_run_sh
 from fv3gfs_runtime import log
+from fv3gfs_stage_data import cached_ic_files
 from fv3gfs_state import save_state, state
 from sm_pertubutions import apply_perturbations
 
@@ -16,37 +17,39 @@ def init_driver():
 
     else:
         log.info("Starting FV3 Grid and IC generation driver")
+        if not cached_ic_files():
+            run_driver(
+                res=state.res,
+                gtype=state.gtype,
+                add_lake=state.add_lake,
+                lake_cutoff=state.lake_cutoff,
+                make_gsl_orog=state.make_gsl_orog,
+                stretch_factor=state.stretch_factor,
+                target_lon=state.target_lon,
+                target_lat=state.target_lat,
+                refine_ratio=state.refine_ratio,
+                istart_nest=state.istart_nest,
+                jstart_nest=state.jstart_nest,
+                iend_nest=state.iend_nest,
+                jend_nest=state.jend_nest,
+                parent_tile=state.parent_tile,
+                n_nests=state.n_nests,
+                halo=state.halo,
+                idim=state.idim,
+                jdim=state.jdim,
+                delx=state.delx,
+                dely=state.dely,
+                orog_dir=state.fix / "orog",
+                tmp=state.tmp,
+                exe_dir=state.ufs_exe,
+                fix_dir=state.fix,
+            )
 
-        run_driver(
-            res=state.res,
-            gtype=state.gtype,
-            add_lake=state.add_lake,
-            lake_cutoff=state.lake_cutoff,
-            make_gsl_orog=state.make_gsl_orog,
-            stretch_factor=state.stretch_factor,
-            target_lon=state.target_lon,
-            target_lat=state.target_lat,
-            refine_ratio=state.refine_ratio,
-            istart_nest=state.istart_nest,
-            jstart_nest=state.jstart_nest,
-            iend_nest=state.iend_nest,
-            jend_nest=state.jend_nest,
-            parent_tile=state.parent_tile,
-            n_nests=state.n_nests,
-            halo=state.halo,
-            idim=state.idim,
-            jdim=state.jdim,
-            delx=state.delx,
-            dely=state.dely,
-            orog_dir=state.fix / "orog",
-            tmp=state.tmp,
-            exe_dir=state.ufs_exe,
-            fix_dir=state.fix,
-        )
-
-        # Generate ICs
-        run_chgres_cube()
-        ensemble_config()
+            # Generate ICs
+            run_chgres_cube()
+            ensemble_config()
+        else:
+            ensemble_config()
 
     log.info(f"Staged diag files: {state.home}")
     log.info(f"Staged grid files: {state.grid}")

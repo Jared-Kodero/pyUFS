@@ -1,0 +1,29 @@
+sbatch:
+  exclusive: false
+  constraint: false
+  cpus_per_task: 1
+  time: 12
+  nnodes: 8
+  ntasks: 256
+
+fv3_debug: false
+do_deep: false
+levels: 64
+gtype: nest
+res: C96
+continue_run: true
+init_datetime: 2025092206Z
+run_nhours: 2
+k_split: [ 1, 2, 2, 2 ]
+n_split: [ 3, 6, 6, 10 ]
+
+dt_atmos: 90
+dt_ocean: 90
+
+refine_ratio: [ 4, 4, 2 ]
+lon_min: [ -125, -95, -85 ]
+lon_max: [ -47, -57, -67 ]
+lat_min: [ 25, 32, 38 ]
+lat_max: [ 60, 55, 47 ]
+
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x

@@ -127,9 +127,6 @@ def run_ice_blend(
     env["FORT15"] = str(five_min_file)
     env["FORT51"] = str(blended_file)
 
-    if verbose:
-        log.debug(f"Running {blend_exec} with FORT51={blended_file}")
-
     subprocess.run(
         [str(blend_exec)], check=True, env=env, stdout=log_file, stderr=log_file
     )

@@ -7,7 +7,9 @@ from fv3gfs_state import state
 from fv3gfs_utils import cp, run_cmd
 
 
-def _mosaic_for_uniform_and_stretch(res, out_dir, make_solo_mosaic, log_file):
+def _mosaic_for_uniform_and_stretch(
+    res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+):
     tiles = [f"C{res}_grid.tile{i}.nc" for i in range(1, 7)]
     n_tiles = len(tiles)
     tiles = ",".join(tiles)
@@ -29,7 +31,14 @@ def _mosaic_for_uniform_and_stretch(res, out_dir, make_solo_mosaic, log_file):
         raise RuntimeError("Failed to generate mosaic")
 
 
-def _mosaic_for_i_nest(make_solo_mosaic, out_dir, res, nest_idx, tile, log_file):
+def _mosaic_for_i_nest(
+    make_solo_mosaic: str,
+    out_dir: Path,
+    res: int,
+    nest_idx: int,
+    tile: int,
+    log_file: Path,
+):
     cmd = [
         f"{make_solo_mosaic}",
         "--num_tiles",
@@ -48,7 +57,7 @@ def _mosaic_for_i_nest(make_solo_mosaic, out_dir, res, nest_idx, tile, log_file)
         raise RuntimeError(f"Failed to generate mosaic for nest tile: [{tile}]")
 
 
-def _mosaic_for_nest(res, out_dir, make_solo_mosaic, log_file):
+def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path):
     # 1. Global tiles
     global_tiles = [f"C{res}_grid.tile{i}.nc" for i in range(1, 7)]
     global_tiles = ",".join(global_tiles)
@@ -110,7 +119,9 @@ def _mosaic_for_nest(res, out_dir, make_solo_mosaic, log_file):
         pool.starmap(_mosaic_for_i_nest, args)
 
 
-def _mosaic_for_regionalgfdl(res, out_dir, make_solo_mosaic, log_file):
+def _mosaic_for_regionalgfdl(
+    res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+):
     grid_file = out_dir / f"C{res}_grid.tile7.nc"
     new_res = get_newres(grid_file)
 
@@ -134,7 +145,9 @@ def _mosaic_for_regionalgfdl(res, out_dir, make_solo_mosaic, log_file):
         raise RuntimeError("Failed to generate mosaic for regional GFDL grid")
 
 
-def _mosaic_for_regionalesg(res, out_dir, make_solo_mosaic, log_file):
+def _mosaic_for_regionalesg(
+    res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+):
     grid_file = out_dir / "regional_grid.nc"
     new_res = get_newres(grid_file)
 

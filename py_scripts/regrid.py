@@ -12,7 +12,6 @@ import numpy as np
 import xarray as xr
 from derived_vars import calc_derived_vars
 from fv3gfs_runtime import exit_code
-from fv3gfs_setup import logger
 from fv3gfs_state import load_state
 from fv3gfs_state import prev_state as state
 from fv3gfs_utils import cres_to_deg, env_setup
@@ -21,7 +20,7 @@ from pyfregrid import fregrid
 
 warnings.filterwarnings("ignore")
 load_state()
-logger(state.debug)
+
 
 log = logging.getLogger("REGRIDDING")
 
