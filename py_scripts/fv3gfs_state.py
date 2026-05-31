@@ -22,14 +22,9 @@ logging.basicConfig(
 
 class FV3State(dict):
     __slots__ = ()
-
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError:
-            raise KeyError(f"FV3State has no field {key!r}")
-
+    __getattr__ = dict.get
     __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
 
 
 state = FV3State({})
