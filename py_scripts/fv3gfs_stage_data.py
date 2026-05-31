@@ -132,6 +132,7 @@ def cache_ic_files():
 
     _keys_to_remove = (
         "n_cpus",
+        "checksum",
         "n_nodes",
         "node_list",
         "n_cpus_per_node",
@@ -157,6 +158,7 @@ def cache_ic_files():
         "cached_ic",
         "ic_gen",
         "ic_only",
+        "sm_perturbations",
         "update_nml_only",
         "fv3_debug",
         "shield_exe",
@@ -167,7 +169,7 @@ def cache_ic_files():
     for k in _keys_to_remove:
         cached_cfg.pop(k, None)
 
-    state_yaml_cache = cache_subdir / "state.yaml"
+    state_yaml_cache = cache_subdir / checksum
 
     save_state(cached_cfg, path=state_yaml_cache)
 
@@ -183,7 +185,7 @@ def cached_ic_files():
 
     grid_dir = cache_dir / checksum / state.grid.name
     input_dir = cache_dir / checksum / state.input.name
-    state_yaml_src = cache_dir / checksum / "state.yaml"
+    state_yaml_src = cache_dir / checksum / checksum
     if not grid_dir.exists() or not input_dir.exists() or not state_yaml_src.exists():
         return False
 
