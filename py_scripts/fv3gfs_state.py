@@ -1,8 +1,10 @@
 import hashlib
+import json
 import logging
 import os
 from pathlib import Path
 
+import pandas as pd
 import yaml
 from fv3gfs_paths import paths
 from fv3gfs_utils import parse_datetime
@@ -19,17 +21,26 @@ logging.basicConfig(
 
 
 class FV3State(dict):
-    __getattr__ = dict.get
+    __slots__ = ()
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise KeyError(f"FV3State has no field {key!r}")
+
     __setattr__ = dict.__setitem__
-    __delattr__ = dict.__delitem__
 
 
 state = FV3State({})
 prev_state = FV3State({})
 
 
-def compute_checksum(data: dict) -> str:
-    _hash_keys = (
+def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
+    if not isinstance(hash_keys, list) and hash_keys is not None:
+        raise ValueError("hash_keys must be a list of keys to include in the hash")
+
+    _hash_keys = [
         "res",
         "gtype",
         "levels",
@@ -43,29 +54,62 @@ def compute_checksum(data: dict) -> str:
         "lat_max",
         "init_datetime",
         "chgres_config",
-    )
+    ]
 
-    _hash_data_str = ",".join(str(data.get(k)) for k in _hash_keys)
-    checksum = hashlib.sha256(_hash_data_str.encode("utf-8")).hexdigest()
+    if hash_keys is not None:
+        _hash_keys += list(hash_keys)
 
-    return checksum
+    def _normalize_for_hash(value):
+        if isinstance(value, dict):
+            return {
+                str(k): _normalize_for_hash(v)
+                for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+            }
+        if isinstance(value, list):
+            return [_normalize_for_hash(v) for v in value]
+        if isinstance(value, pd.Timestamp):
+            return str(value)
+
+        if isinstance(value, tuple):
+            return [_normalize_for_hash(v) for v in value]
+        return value
+
+    payload = {key: _normalize_for_hash(data.get(key, None)) for key in _hash_keys}
+
+    hash_data_str = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(hash_data_str.encode("utf-8")).hexdigest()
 
 
-def save_state():
+def merge_saved_state():
+    """Merge current and previous states"""
+
+    load_state()
+    new_state = FV3State({**prev_state, **state})
+    state.update(new_state)
+    save_state()
+
+
+def save_state(cfg: dict = None, path: Path = None):
     """
     Save the current state to a YAML file
     """
 
-    if not state:
+    if cfg is not None:
+        _cfg = cfg
+    else:
+        _cfg = state
+
+    if not _cfg:
         return
 
-    path = Path(paths["home"]) / "state.yaml"
-    data = {}
+    if path is None:
+        path = Path(paths["home"]) / "state.yaml"
 
+    data = {}
     if path.exists():
         path.unlink()
 
-    for k, v in state.items():
+    for k, v in _cfg.items():
         if isinstance(v, Path):
             continue
         data[k] = v
@@ -100,7 +144,7 @@ env_vars = {
     "n_nodes": int(os.environ.get("SBATCH_NNODES", 1)),
     "node_list": os.environ.get("SLURM_NODELIST"),
     "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
-    "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 1)),
+    "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
     "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
     "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE_FLAG", 0))),
     "ufs_utils": Path(__file__).resolve().parent.parent,
