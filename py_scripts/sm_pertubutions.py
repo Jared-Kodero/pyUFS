@@ -12,18 +12,24 @@ SM_MIN = 0.01
 SM_MAX = 0.99
 
 
-def load_climo(path: Path) -> xr.Dataset:
+def load_climo(path: Path, data_var: str) -> xr.Dataset:
     if not path.exists():
         raise FileNotFoundError(f"Climatology file not found: {path}")
 
     cdate = state.init_datetime
     ds = xr.open_dataset(path, engine="netcdf4")
+
+    if data_var not in ds.data_vars:
+        raise KeyError(f"Variable {data_var} not found in climatology file {path}")
+
     ds = ds.sel(time=ds.time.dt.month == cdate.month)
 
     if ds.sizes["time"] == 0:
-        msg = f"No climatology entries found for month {cdate.month} in file {path}."
-        msg += "\nUpdate your climatology file to include data for this month."
+        msg = f"No climatology data found for month {cdate.month} in file {path}"
         raise ValueError(msg)
+
+    ds = ds.sortby(["lat", "lon"])
+    ds = ds.where((ds[data_var] >= SM_MIN) & (ds[data_var] <= SM_MAX), other=1.0)
 
     return ds
 
@@ -131,7 +137,9 @@ def do_hold(p: dict, backup_dir: Path, restart_no: int):
             ds.to_netcdf(in_path)
 
 
-def do_nudge_soil_moisture(p: dict, backup_dir: Path, restart_no: int):
+def do_nudge_soil_moisture(
+    p: dict, backup_dir: Path, restart_no: int, sm_clim_path: Path
+):
 
     tau_hours = p.get("tau_hours", 24)
     dt_hours = state.run_nhours
@@ -163,8 +171,7 @@ def do_nudge_soil_moisture(p: dict, backup_dir: Path, restart_no: int):
 
         if use_climo:
             log.info("Nudging soil moisture towards climatological mean")
-            ref_path = Path(state.fix) / "era5" / "sm_monthly_1980_2020.nc"
-            ds_ref = load_climo(ref_path)
+            ds_ref = load_climo(sm_clim_path, p["target_var"])
             ds_ref = ds_ref.mean(dim="time", skipna=True)
             ds_ref = ds_ref.squeeze(drop=True)
             ds_ref = to_fv3cube_grid(ds_ref, load_coords_ds(filename, tile))
@@ -193,7 +200,7 @@ def do_nudge_soil_moisture(p: dict, backup_dir: Path, restart_no: int):
             layer = ds[v].isel(zaxis_1=z)
             ref_layer = ds_ref[v].isel(zaxis_1=z)
 
-            is_valid = (layer > SM_MIN) & (layer < SM_MAX)
+            is_valid = (layer >= SM_MIN) & (layer <= SM_MAX)
 
             updated = (1.0 - alpha) * layer + alpha * ref_layer
             updated = updated.clip(min=SM_MIN, max=SM_MAX)
@@ -220,7 +227,9 @@ def do_nudge_soil_moisture(p: dict, backup_dir: Path, restart_no: int):
         cp(backup_path, in_path)
 
 
-def adjust_soil_moisture(p: dict, backup_dir: Path, methods, restart_no: int):
+def adjust_soil_moisture(
+    p: dict, backup_dir: Path, methods, restart_no: int, sm_clim_path: Path
+):
     mean_scale = p.get("mean_scale")
     anom_scale = p.get("anom_scale")
     n_sigma = p.get("n_sigma")
@@ -236,7 +245,7 @@ def adjust_soil_moisture(p: dict, backup_dir: Path, methods, restart_no: int):
         if climo_file is not None:
             climo_path = Path(climo_file)
         else:
-            climo_path = Path(state.fix) / "era5" / "sm_monthly_1980_2020.nc"
+            climo_path = sm_clim_path
         log.info(f"Using reference climatology: {climo_path}")
 
     for tile in p["tiles"]:
@@ -265,14 +274,14 @@ def adjust_soil_moisture(p: dict, backup_dir: Path, methods, restart_no: int):
                     continue
 
                 layer = ds[v].isel(zaxis_1=z)
-                is_valid = (layer > SM_MIN) & (layer < SM_MAX)
+                is_valid = (layer >= SM_MIN) & (layer <= SM_MAX)
 
                 layer_new = layer
 
                 for method in methods:
                     if method == "std_shift":
                         if climo_path is not None:
-                            climo_ds = load_climo(climo_path)
+                            climo_ds = load_climo(climo_path, v)
                             climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False).load()
                             std = climo_layer.std(dim="time", skipna=True)
                             std = to_fv3cube_grid(std, load_coords_ds(filename, tile))
@@ -290,7 +299,7 @@ def adjust_soil_moisture(p: dict, backup_dir: Path, methods, restart_no: int):
                                 "`climo_file` must be provided when using `climo_mean` method"
                             )
 
-                        climo_ds = load_climo(climo_path)
+                        climo_ds = load_climo(climo_path, v)
                         climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False).load()
                         climo = climo_layer.mean(dim="time", skipna=True)
                         climo = to_fv3cube_grid(climo, load_coords_ds(filename, tile))
@@ -352,6 +361,8 @@ def apply_perturbations():
     if not perturbations:
         return
 
+    sm_clim_path = Path(state.fix) / "era5" / "sm_monthly_1950_2025.nc"
+
     restart_no = state.restart_no
     total_restarts = state["total_restarts"]
     max_restart_index = total_restarts - 1
@@ -366,6 +377,7 @@ def apply_perturbations():
     missing = [k for k in required if k not in p]
     if missing:
         raise KeyError(f"Missing perturbation keys: {missing}")
+
     soft_keys = (
         "mean_scale",
         "anom_scale",
@@ -450,10 +462,10 @@ def apply_perturbations():
 
     if restart_no > 1:
         if do_nudge:
-            do_nudge_soil_moisture(p, backup_dir, restart_no)
+            do_nudge_soil_moisture(p, backup_dir, restart_no, sm_clim_path)
         elif hold:
             do_hold(p, backup_dir, restart_no)
         else:
-            adjust_soil_moisture(p, backup_dir, methods, restart_no)
+            adjust_soil_moisture(p, backup_dir, methods, restart_no, sm_clim_path)
     else:
-        adjust_soil_moisture(p, backup_dir, methods, restart_no)
+        adjust_soil_moisture(p, backup_dir, methods, restart_no, sm_clim_path)

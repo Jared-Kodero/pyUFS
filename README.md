@@ -457,7 +457,7 @@ resubmit: 0 # Number of sequential job resubmissions
 # -----------------------------------------------------------------------------
 
 ensemble_run: false # Multi-member ensemble; false runs a single simulation
-n_ensembles: 1 # Number of members (used when ensemble_run = true)
+n_ensembles: 0 # Number of members (used when ensemble_run = true)
 paired_ensembles: false # Generate paired perturbations across members
 skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
 
