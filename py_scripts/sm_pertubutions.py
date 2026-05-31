@@ -242,6 +242,8 @@ def adjust_soil_moisture(
     constant_value = p.get("fill_value", None)
     climo_file = p.get("climo_file", None)
 
+    pert_logs = []
+
     if isinstance(methods, str):
         methods = [methods]
 
@@ -299,6 +301,9 @@ def adjust_soil_moisture(
                         updated = layer_new + (std * n_sigma)
                         updated = updated.clip(SM_MIN, SM_MAX)
                         layer_new = xr.where(is_valid, updated, layer_new)
+                        pert_logs.append(
+                            f"Applied std_shift to {v} with n_sigma={n_sigma}"
+                        )
 
                     elif method == "climo_mean":
                         if climo_path is None:
@@ -311,7 +316,7 @@ def adjust_soil_moisture(
                         climo = climo_layer.mean(dim="time", skipna=True).load()
                         climo = to_fv3cube_grid(climo, grid)
                         layer_new = xr.where(is_valid, climo, layer_new)
-
+                        pert_logs.append(f"Applied climo_mean to {v} ")
                     elif method == "anom_shift":
                         data = layer_new.where(is_valid)
                         mu = data.mean(skipna=True)
@@ -319,6 +324,9 @@ def adjust_soil_moisture(
 
                         updated = mu + (1.0 + anom_scale) * anomaly
                         updated = updated.clip(SM_MIN, SM_MAX)
+                        pert_logs.append(
+                            f"Applied anom_shift to {v} with anom_scale={anom_scale}"
+                        )
                         layer_new = xr.where(is_valid, updated, layer_new)
 
                     elif method == "mean_shift":
@@ -326,6 +334,9 @@ def adjust_soil_moisture(
                         updated = data * (1.0 + mean_scale)
                         updated = updated.clip(SM_MIN, SM_MAX)
                         layer_new = xr.where(is_valid, updated, layer_new)
+                        pert_logs.append(
+                            f"Applied mean_shift to {v} with mean_scale={mean_scale}"
+                        )
 
                     elif method == "constant_fill":
                         if constant_value == "mean":
@@ -335,6 +346,9 @@ def adjust_soil_moisture(
                         else:
                             updated = xr.full_like(layer_new, fill_value=constant_value)
 
+                        pert_logs.append(
+                            f"Applied constant_fill to {v} with fill_value={constant_value}"
+                        )
                         layer_new = xr.where(is_valid, updated, layer_new)
 
                     else:
@@ -360,6 +374,9 @@ def adjust_soil_moisture(
 
         in_path.unlink()
         cp(backup_path, in_path)
+
+    for log_entry in dict.fromkeys(pert_logs):
+        log.info(log_entry)
 
 
 def apply_perturbations():
