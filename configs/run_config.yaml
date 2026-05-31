@@ -63,6 +63,7 @@ skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
 # -----------------------------------------------------------------------------
 ic_gen: true # Generate grid and IC files
 ic_only: false # Generate ICs and grid only, then exit
+cached_ic: true # Reuse existing IC files if available (true / false)
 ic_source_path: null # Source case path (REQUIRED if ic_gen = false)
 ic_source_type: "case" # Options: case | external 
 chgres_config: null # CHGRES configuration (.yaml) path to chgress config
