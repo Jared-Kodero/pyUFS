@@ -168,7 +168,7 @@ def preprocess_input():
 
     # validate the length of k_split and n_split
 
-    description = [params.datetime, state.case_name]
+    description = [params.init_datetime, state.case_name]
 
     params.description = ".".join([str(d).upper() for d in description if d])
 
