@@ -73,12 +73,22 @@ def handle_errors(type, value, tb):
     log = logging.getLogger("ERROR_HANDLER")
     frames = traceback.extract_tb(tb)
 
+    def _norm_path(p: str) -> str:
+        try:
+            return str(Path(p).resolve())
+        except Exception:
+            return p
+
     frame = [
         f
         for f in frames
-        if "py_scripts" in str(Path(f.filename).resolve())
-        and f.filename.endswith(".py")
+        if "py_scripts" in _norm_path(f.filename) and f.filename.endswith(".py")
     ][-1]
+
+    if frame is None:
+        log.error("An error has been detected, but no relevant frame was found.")
+        log.error(f"{type.__qualname__}: {value}")
+        return
 
     file_name = Path(frame.filename).name
     lineno = f"{frame.lineno}"

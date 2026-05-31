@@ -113,6 +113,10 @@ def stage_files() -> None:
 
 
 def cache_ic_files():
+
+    if not state.cached_ic:
+        return False
+
     save_state()
     cache_dir = state.scratch_dir / ".cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -167,7 +171,7 @@ def cache_ic_files():
 
     save_state(cached_cfg, path=state_yaml_cache)
 
-    log.info("Cached IC files for current configuration")
+    log.info("Cached IC files. Set `ic_cache: false` to disable IC caching.")
 
 
 def cached_ic_files():
@@ -195,5 +199,7 @@ def cached_ic_files():
     calc_cpu_alloc(state.input)
     save_state()
 
-    log.info("Loaded cached IC files for current configuration.")
+    log.info(
+        "Loaded cached IC files. Set `ic_cache: false` in run_config.yaml to disable cached IC loading."
+    )
     return True

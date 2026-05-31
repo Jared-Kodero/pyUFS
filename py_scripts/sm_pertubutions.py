@@ -34,19 +34,22 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
     return ds
 
 
-def load_coords_ds(filename: Path, tile: int) -> xr.Dataset:
-    grid_file = Path(state.IC) / "perturbations" / f"tile.{tile}.grid.nc"
+def load_grid(filename: Path, tile: int) -> xr.Dataset:
+    grid_file = Path(state.IC) / "perts" / f"tile.{tile}.grid.nc"
     if not grid_file.exists():
-        path = Path(state.IC) / "INPUT" / filename
-        ds = xr.open_dataset(path, decode_cf=False, engine="netcdf4")
-        # Select coordinate variables only. `ds.dims` returns dimension names,
-        # which are not necessarily variables and raise KeyError on selection.
-        keep = ["geolat", "geolon"] + list(ds.coords)
-        keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
-        ds = ds[keep]
-        ds.to_netcdf(grid_file, engine="netcdf4")
-    else:
-        ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4")
+        if state.restart_no == 0:
+            path = Path(state.input) / filename
+        else:
+            path = Path(state.IC) / "INPUT" / filename
+        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as ds:
+            # Select coordinate variables only. `ds.dims` returns dimension names,
+            # which are not necessarily variables and raise KeyError on selection.
+            keep = ["geolat", "geolon"] + list(ds.coords)
+            keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
+            ds = ds[keep].load()
+            ds.to_netcdf(grid_file, engine="netcdf4")
+
+    ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4").load()
     return ds
 
 
@@ -165,6 +168,8 @@ def do_nudge_soil_moisture(
 
         cp(in_path, orig_path)
 
+        grid = load_grid(filename, tile)
+
         # Read fully into memory and release the handle before writing back.
         with xr.open_dataset(in_path, decode_cf=False, engine="netcdf4") as ds:
             ds = ds.load()
@@ -174,7 +179,7 @@ def do_nudge_soil_moisture(
             ds_ref = load_climo(sm_clim_path, p["target_var"])
             ds_ref = ds_ref.mean(dim="time", skipna=True)
             ds_ref = ds_ref.squeeze(drop=True)
-            ds_ref = to_fv3cube_grid(ds_ref, load_coords_ds(filename, tile))
+            ds_ref = to_fv3cube_grid(ds_ref, grid)
             ds_ref = ds_ref.load()
         else:
             log.info("Nudging soil moisture towards state from last restart")
@@ -261,6 +266,8 @@ def adjust_soil_moisture(
 
         cp(in_path, orig_path)
 
+        grid = load_grid(filename, tile)
+
         with xr.open_dataset(in_path, decode_cf=False, engine="netcdf4") as ds:
             ds = ds.load()
 
@@ -282,9 +289,9 @@ def adjust_soil_moisture(
                     if method == "std_shift":
                         if climo_path is not None:
                             climo_ds = load_climo(climo_path, v)
-                            climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False).load()
-                            std = climo_layer.std(dim="time", skipna=True)
-                            std = to_fv3cube_grid(std, load_coords_ds(filename, tile))
+                            climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
+                            std = climo_layer.std(dim="time", skipna=True).load()
+                            std = to_fv3cube_grid(std, grid)
                         else:
                             data = layer_new.where(is_valid)
                             std = float(data.std(skipna=True))
@@ -300,9 +307,9 @@ def adjust_soil_moisture(
                             )
 
                         climo_ds = load_climo(climo_path, v)
-                        climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False).load()
-                        climo = climo_layer.mean(dim="time", skipna=True)
-                        climo = to_fv3cube_grid(climo, load_coords_ds(filename, tile))
+                        climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
+                        climo = climo_layer.mean(dim="time", skipna=True).load()
+                        climo = to_fv3cube_grid(climo, grid)
                         layer_new = xr.where(is_valid, climo, layer_new)
 
                     elif method == "anom_shift":
@@ -469,3 +476,5 @@ def apply_perturbations():
             adjust_soil_moisture(p, backup_dir, methods, restart_no, sm_clim_path)
     else:
         adjust_soil_moisture(p, backup_dir, methods, restart_no, sm_clim_path)
+
+    log.info("Finished applying soil moisture perturbations")
