@@ -5,14 +5,16 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import xarray as xr
 from fv3gfs_namelists import update_table_files
 from fv3gfs_pes_config import calc_cpu_alloc
 from fv3gfs_runtime import log
-from fv3gfs_state import FV3State, load_state, prev_state, save_state, state
+from fv3gfs_state import merge_saved_state, save_state, state
 from fv3gfs_utils import run_cmd
 from pyproj import Proj
 
@@ -23,15 +25,6 @@ _ENS_DIR_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 _ENS_PREFIXES = ("ens", "ENS", "ensemble", "ENSEMBLE", "mem", "MEM", "member", "MEMBER")
-
-
-def merge_states():
-    """Merge current and previous states"""
-
-    load_state()
-    new_state = FV3State({**prev_state, **state})
-    state.update(new_state)
-    save_state()
 
 
 def ic_only():
@@ -254,7 +247,7 @@ def init_external_ic() -> None:
         )
 
     if not src:
-        merge_states()
+        merge_saved_state()
         return
 
     log.info("Skipping Grid and IC generation; using existing files")
@@ -299,10 +292,10 @@ def init_external_ic() -> None:
     run_id = os.environ.get("CURR_RUN_ID", "0")
     (state.home / "run.id").write_text(str(run_id))
 
-    merge_states()
+    merge_saved_state()
 
     update_table_files()
-    calc_cpu_alloc(Path(state.input))
+    calc_cpu_alloc(state.input)
 
 
 def _wget(url: str, output_path: Path) -> bool:
@@ -310,13 +303,23 @@ def _wget(url: str, output_path: Path) -> bool:
     Attempt to download a single URL. Returns True on success, False on failure.
     Does not raise; caller is responsible for fallback logic.
     """
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["/wget", "-q", "--no-check-certificate", url, "-O", str(output_path)]
-    result, _ = run_cmd(cmd, warn_on_error=False)
-    if result != 0:
+
+    result = 1
+    for _ in range(10):
+        result, _ = run_cmd(cmd, warn_on_error=False)
+
+        if result == 0:
+            if output_path.exists() and output_path.stat().st_size > 0:
+                return True
+
         if output_path.exists():
             output_path.unlink()
-        return False
-    return True
+
+        time.sleep(np.random.uniform(0, 5))
+
+    return False
 
 
 def _download_data(
@@ -331,6 +334,13 @@ def _download_data(
             log.info(f"Successfully retrieved {external_model} IC data from {source}")
             return
         log.warning(f"Failed to retrieve {external_model} IC data from {source}")
+
+    if external_model == "HRRR":
+        log.warning(
+            f"Falling back to GFS IC data for {datetime} since all HRRR sources failed"
+        )
+        get_IC(external_model="GFS")
+        return
 
     raise RuntimeError(
         f"All download sources failed for {external_model} at {datetime}.\nAttempted URLs:\n{urls}"

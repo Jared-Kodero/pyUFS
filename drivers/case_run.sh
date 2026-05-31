@@ -158,6 +158,7 @@ if (( CASE_RESUBMIT_COUNT == 0 )) && (( EXIT_CODE == 0 )); then
         rm -rf "$CASE_ARCHIVE_DIR"/grid_spec*
         rm -rf "$CASE_OUT"
         rm -rf "$CASE_DIR"/HIST
+        cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/run_config.yaml"
 
         TARFILE="$ARCHIVE_DIR/case.tar.gz"
 

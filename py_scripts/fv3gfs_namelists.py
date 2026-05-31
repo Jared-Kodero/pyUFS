@@ -167,7 +167,7 @@ def update_global_nml(
     nml = disable_deep_convection(nml, 1, "global")
 
     nml = apply_user_timings(nml, "global")
-    nml = update_namsfc(nml, res)
+    nml = update_namsfc(nml)
 
     # check for nml overrides if user provided external nml
     nml = namelist_overrides(state.global_input_nml, nml, "global")
@@ -227,7 +227,7 @@ def update_nest_nml(
 
         nml = apply_user_timings(nml, "nest", nest=i)
 
-        nml = update_namsfc(nml, res)
+        nml = update_namsfc(nml)
 
         overide_obj = state.get(f"nest{i + 1:02d}_input_nml") or state.nestXX_input_nml
         nml = namelist_overrides(overide_obj, nml, f"nest{i + 1:02d}")
@@ -365,9 +365,32 @@ def update_table_files():
         f.writelines(lines)
 
 
-def update_namsfc(nml, res):
+def update_namsfc(nml):
 
     am_dir = Path(state.fix) / "am"
+
+    namsfc = {
+        "fnacna": "",
+        "fnsnoa": "",
+        "fntsfa": "",
+        "fnzorc": "igbp",
+        "fabsl": 99999,
+        "faisl": 99999,
+        "faiss": 99999,
+        "fsicl": 99999,
+        "fsics": 99999,
+        "fslpl": 99999,
+        "fsnol": 99999,
+        "fsnos": 99999,
+        "fsotl": 99999,
+        "ftsfl": 99999,
+        "ftsfs": 90,
+        "fvetl": 99999,
+        "fvmnl": 99999,
+        "fvmxl": 99999,
+        "ldebug": False,
+        "fsmcl": [99999, 99999, 99999],
+    }
 
     namsfc_files = {
         "fnabsc": "global_mxsnoalb.uariz.t1534.3072.1536.rg.grb",
@@ -397,9 +420,11 @@ def update_namsfc(nml, res):
         if not src.exists():
             raise FileNotFoundError(src)
 
-        cp(src, dst)
-        nml["namsfc"][key] = f"FIXED/{fname}"
+        if not dst.exists():
+            cp(src, dst)
 
-    nml["namsfc"]["FNZORC"] = "igbp"
+        namsfc[key] = f"FIXED/{fname}"
+
+    nml["namsfc"] = namsfc
 
     return nml

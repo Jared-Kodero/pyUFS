@@ -1,13 +1,11 @@
-import hashlib
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 from fv3gfs_runtime import log
-from fv3gfs_state import state
+from fv3gfs_state import compute_checksum, state
 
-ensemble_stds = {}
-ensemble_amp = 0.01  # 1% perturbation
+ensemble_amp = 0.01  # perturbation std = 1% of each level's spatial std
 
 
 def _get_stds(in_file: Path, target_vars: set) -> dict:
@@ -100,12 +98,13 @@ def ensemble_config():
 
     log.info(f"Generating ensemble member for ensemble {state.ensemble_id}")
 
-    seed_string = f"{state.init_datetime}_{state.ensemble_id}_{state.res}"
-    seed = int(hashlib.sha256(seed_string.encode()).hexdigest(), 16) % (2**32)
+    checksum = compute_checksum(state, hash_keys=["ensemble_id"])
+
+    seed = int(checksum, 16) % (2**32)
     rng = np.random.default_rng(seed)
 
     target_vars = {"t"}  # only perturb temperature enough for div of ensemble
-    atm_files = list(Path(state.input).glob("gfs_data*.nc"))
+    atm_files = sorted(Path(state.input).glob("gfs_data*.nc"))
 
     file_stds = {}
     for f in atm_files:

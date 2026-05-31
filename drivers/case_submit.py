@@ -180,7 +180,7 @@ def get_config():
         sbatch_time = 48
 
     sbatch_time = f"{sbatch_time}:00:00"
-    n_ensembles = user_cfg.get("n_ensembles", 1)
+    n_ensembles = user_cfg.get("n_ensembles", 0)
     resubmit = user_cfg.get("resubmit", 0)
     archive_data = int(user_cfg.get("archive_data", False))
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
@@ -248,28 +248,14 @@ def main():
     sbatch_script = ufs_utils_dir / "drivers" / "sbatch.sh"
     skipped_ensembles = env["CASE_SKIP_ENSEMBLES"]
 
-    for i in range(n_ensembles):
-        ensemble_id = i + 1
+    jobs = [i for i in range(n_ensembles)]
 
-        if ensemble_id in skipped_ensembles:
-            logger.info(f"Skipped ensemble: {ensemble_id}")
-            continue
-
-        if n_ensembles == 1:
-            ensemble_id = 0
-            slurm_job_name = f"{case_parent_dir}.{case_dir}"
-            case_name = env["CASE_NAME"]
-            case_data_symlink = case_pwd / "run"
-            case_log_file = sbatch_output.with_suffix(".log")
-        else:
-            run_link = case_pwd / "run"
-            if run_link.is_symlink() or run_link.exists():
-                run_link.unlink()
-            mem_id = f"{ensemble_id:02d}"
-            slurm_job_name = f"{case_parent_dir}.{case_dir}.MEM{mem_id}"
-            case_name = f"{env['CASE_NAME']}/mem{mem_id}"
-            case_data_symlink = case_pwd / f"mem{mem_id}"
-            case_log_file = sbatch_output.with_suffix(f".{mem_id}.log")
+    if not jobs:
+        ensemble_id = 0
+        slurm_job_name = f"{case_parent_dir}.{case_dir}"
+        case_name = env["CASE_NAME"]
+        case_data_symlink = case_pwd / "run"
+        case_log_file = sbatch_output.with_suffix(".log")
 
         iter_env = {
             **env,
@@ -280,11 +266,42 @@ def main():
             "CASE_DATA_SYMLINK": str(case_data_symlink),
             "CASE_LOG_FILE": str(case_log_file),
         }
-
         proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
         run(sbatch_script, proc_env, case_pwd)
+        logger.info("Success! Case Submitted")
 
-    logger.info("Success! Case Submitted")
+    else:
+        for i in jobs:
+            ensemble_id = i + 1
+
+            if ensemble_id in skipped_ensembles:
+                logger.info(f"Skipped ensemble: {ensemble_id}")
+                continue
+
+            run_link = case_pwd / "run"
+            if run_link.is_symlink() or run_link.exists():
+                run_link.unlink()
+            mem_id = f"{ensemble_id:02d}"
+            slurm_job_name = f"{case_parent_dir}.{case_dir}.MEM{mem_id}"
+            case_name = f"{env['CASE_NAME']}/mem{mem_id}"
+            case_data_symlink = case_pwd / f"mem{mem_id}"
+            case_log_file = sbatch_output.with_suffix(f".{mem_id}.log")
+
+            iter_env = {
+                **env,
+                "CASE_ENSEMBLE_ID": ensemble_id,
+                "SLURM_JOB_NAME": slurm_job_name,
+                "SLURM_OPEN_MODE": "truncate",
+                "CASE_NAME": case_name,
+                "CASE_DATA_SYMLINK": str(case_data_symlink),
+                "CASE_LOG_FILE": str(case_log_file),
+            }
+
+            proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
+            run(sbatch_script, proc_env, case_pwd)
+            logger.info(f"Submitted ensemble {ensemble_id}/{n_ensembles}")
+
+        logger.info("Success! Case Submitted")
 
 
 if __name__ == "__main__":
