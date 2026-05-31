@@ -1,5 +1,6 @@
 # Ignore test_data
-tests
+tests/
+*.ipynb
 *.nc
 
 
