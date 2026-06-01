@@ -242,7 +242,6 @@ def get_nest_indices(
     normal: normal static nests each embedded directly in the same parent (global) grid.
     """
 
-    nk = "nesting"
     keys = (
         "parent_tile",
         "istart_nest",
@@ -253,9 +252,9 @@ def get_nest_indices(
         "nest_joffsets",
     )
 
-    state[nk] = {}
+    state.nesting = {}
     for k in keys:
-        state[nk].setdefault(k, [])
+        state.nesting.setdefault(k, [])
 
     if not grid_dir:
         grid_dir = gen_global_nest_parent(res)
@@ -272,17 +271,17 @@ def get_nest_indices(
         i_refine_ratio,
     )
 
-    state[nk]["parent_tile"].append(parent_tile[i])
-    state[nk]["istart_nest"].append(indices["istart_nest"])
-    state[nk]["iend_nest"].append(indices["iend_nest"])
-    state[nk]["jstart_nest"].append(indices["jstart_nest"])
-    state[nk]["jend_nest"].append(indices["jend_nest"])
+    state.nesting["parent_tile"].append(parent_tile[i])
+    state.nesting["istart_nest"].append(indices["istart_nest"])
+    state.nesting["iend_nest"].append(indices["iend_nest"])
+    state.nesting["jstart_nest"].append(indices["jstart_nest"])
+    state.nesting["jend_nest"].append(indices["jend_nest"])
 
     # Convert supergrid (grid file) indices to FV3 parent cell indices
-    nest_ioffsets = [999] + [(i // 2) + 1 for i in state[nk]["istart_nest"]]
-    nest_joffsets = [999] + [(j // 2) + 1 for j in state[nk]["jstart_nest"]]
-    state[nk]["nest_ioffsets"] = nest_ioffsets
-    state[nk]["nest_joffsets"] = nest_joffsets
+    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.nesting["istart_nest"]]
+    nest_joffsets = [999] + [(j // 2) + 1 for j in state.nesting["jstart_nest"]]
+    state.nesting["nest_ioffsets"] = nest_ioffsets
+    state.nesting["nest_joffsets"] = nest_joffsets
 
     save_state()
 
@@ -292,7 +291,6 @@ def get_nest_tele_indices(
 ) -> None:
 
     # Reset previous same_level indices if they exist
-    nk = "nesting"
     keys = (
         "parent_tile",
         "istart_nest",
@@ -303,7 +301,7 @@ def get_nest_tele_indices(
         "nest_joffsets",
     )
     for k in keys:
-        state[nk][k] = []
+        state.nesting[k] = []
 
     tiles = [i + 7 for i in range(n_nests)]
 
@@ -322,14 +320,14 @@ def get_nest_tele_indices(
             i_refine_ratio,
         )
 
-        state[nk]["parent_tile"].append(parent_tile)
-        state[nk]["istart_nest"].append(indices["istart_nest"])
-        state[nk]["iend_nest"].append(indices["iend_nest"])
-        state[nk]["jstart_nest"].append(indices["jstart_nest"])
-        state[nk]["jend_nest"].append(indices["jend_nest"])
+        state.nesting["parent_tile"].append(parent_tile)
+        state.nesting["istart_nest"].append(indices["istart_nest"])
+        state.nesting["iend_nest"].append(indices["iend_nest"])
+        state.nesting["jstart_nest"].append(indices["jstart_nest"])
+        state.nesting["jend_nest"].append(indices["jend_nest"])
 
-    nest_ioffsets = [999] + [(i // 2) + 1 for i in state[nk]["istart_nest"]]
-    nest_joffsets = [999] + [(j // 2) + 1 for j in state[nk]["jstart_nest"]]
-    state[nk]["nest_ioffsets"] = nest_ioffsets
-    state[nk]["nest_joffsets"] = nest_joffsets
+    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.nesting["istart_nest"]]
+    nest_joffsets = [999] + [(j // 2) + 1 for j in state.nesting["jstart_nest"]]
+    state.nesting["nest_ioffsets"] = nest_ioffsets
+    state.nesting["nest_joffsets"] = nest_joffsets
     save_state()

@@ -166,7 +166,7 @@ def run_chgres_cube() -> None:
     env_setup()
 
     yml_configs = load_yml(state.n_nests, state.chgres_config)
-    state["external_ic_source"] = {}
+    state.external_ic_source = {}
 
     # Determine IC directory based on run_chgres_only flag
     ic_dir = state.tmp / "ic"
@@ -269,7 +269,7 @@ def run_chgres_cube() -> None:
 
     # set flag indicating IC generation complete
     stage_files()
-    state["ic_and_grid_generated"] = True
+    state.ic_and_grid_generated = True
 
 
 def apply_config_settings(
@@ -307,14 +307,14 @@ def apply_config_settings(
         if v is not None:
             domain_f41[k] = v
 
-    if domain not in state["external_ic_source"]:
-        state["external_ic_source"][domain] = {"atm": None, "sfc": None, "nst": None}
-    if domain_f41.convert_atm:
-        state["external_ic_source"][domain]["atm"] = ext_model
-    if domain_f41.convert_sfc:
-        state["external_ic_source"][domain]["sfc"] = ext_model
-    if domain_f41.convert_nst:
-        state["external_ic_source"][domain]["nst"] = ext_model
+        if domain not in state.external_ic_source:
+            state.external_ic_source[domain] = {"atm": None, "sfc": None, "nst": None}
+        if domain_f41.convert_atm:
+            state.external_ic_source[domain]["atm"] = ext_model
+        if domain_f41.convert_sfc:
+            state.external_ic_source[domain]["sfc"] = ext_model
+        if domain_f41.convert_nst:
+            state.external_ic_source[domain]["nst"] = ext_model
 
     chgres_exe(domain_f41, n_cpus, domain, ext_model)
 

@@ -85,11 +85,6 @@ def handle_errors(type, value, tb):
         if "py_scripts" in _norm_path(f.filename) and f.filename.endswith(".py")
     ][-1]
 
-    if frame is None:
-        log.error("An error has been detected, but no relevant frame was found.")
-        log.error(f"{type.__qualname__}: {value}")
-        return
-
     file_name = Path(frame.filename).name
     lineno = f"{frame.lineno}"
     code_line = frame.line.strip() if frame.line else ""
