@@ -388,7 +388,7 @@ def apply_perturbations():
     sm_clim_path = Path(state.fix) / "era5" / "sm_monthly_1950_2025.nc"
 
     restart_no = state.restart_no
-    total_restarts = state["total_restarts"]
+    total_restarts = state.total_restarts
     max_restart_index = total_restarts - 1
 
     if not isinstance(perturbations, dict):

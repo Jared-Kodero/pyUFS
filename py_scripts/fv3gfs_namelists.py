@@ -152,13 +152,12 @@ def update_global_nml(
     nml["atmos_model_nml"]["blocksize"] = state.blocksize[0]
 
     if n_nests > 0:
-        nk = "nesting"
-        nml["fv_nest_nml"]["grid_pes"] = state["grid_pes"]
-        nml["fv_nest_nml"]["nest_refine"] = [0] + state["refine_ratio"]
+        nml["fv_nest_nml"]["grid_pes"] = state.grid_pes
+        nml["fv_nest_nml"]["nest_refine"] = [0] + state.refine_ratio
         nml["fv_nest_nml"]["num_tile_top"] = 6  # use 7 if regional suppergrid is used
-        nml["fv_nest_nml"]["tile_coarse"] = [0] + state[nk]["parent_tile"]
-        nml["fv_nest_nml"]["nest_ioffsets"] = state[nk]["nest_ioffsets"]
-        nml["fv_nest_nml"]["nest_joffsets"] = state[nk]["nest_joffsets"]
+        nml["fv_nest_nml"]["tile_coarse"] = [0] + state.nesting["parent_tile"]
+        nml["fv_nest_nml"]["nest_ioffsets"] = state.nesting["nest_ioffsets"]
+        nml["fv_nest_nml"]["nest_joffsets"] = state.nesting["nest_joffsets"]
         nml["fv_nest_nml"]["p_split"] = 1
 
     else:

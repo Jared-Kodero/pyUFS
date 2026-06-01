@@ -22,11 +22,11 @@ def calc_cpu_alloc(dir: Path) -> None:
 
 
 def get_grid_info() -> None:
-    state["nest_ngrid_cells"] = []
-    state["global_ngrid_cells"] = 0
-    state["ntiles"] = []
-    state["npx"] = []
-    state["npy"] = []
+    state.nest_ngrid_cells = []
+    state.global_ngrid_cells = 0
+    state.ntiles = []
+    state.npx = []
+    state.npy = []
 
     files = sorted(list(grid_dir.glob("C*_grid.tile*.nc")), key=sort_paths)
 
@@ -46,10 +46,10 @@ def get_grid_info() -> None:
 
         if tile_num == 6:
             n = 6
-            state["global_ngrid_cells"] = cells * n
+            state.global_ngrid_cells = cells * n
         else:
             n = 1
-            state["nest_ngrid_cells"].append(cells)
+            state.nest_ngrid_cells.append(cells)
 
         state.ntiles.append(n)
         state.npx.append(npx)
@@ -59,14 +59,14 @@ def get_grid_info() -> None:
 def calc_uniform_pes() -> None:
 
     total_pes = 6 * (state.n_cpus // 6)
-    state["grid_pes"] = [total_pes]
-    state["total_pes"] = total_pes
-    state["global_pes"] = total_pes
+    state.grid_pes = [total_pes]
+    state.total_pes = total_pes
+    state.global_pes = total_pes
 
     layouts = get_layouts([total_pes // 6])
-    state["layout"] = layouts["layout"]
-    state["io_layout"] = layouts["io_layout"]
-    state["blocksize"] = layouts["blocksize"]
+    state.layout = layouts["layout"]
+    state.io_layout = layouts["io_layout"]
+    state.blocksize = layouts["blocksize"]
 
 
 def check_user_define_pes() -> bool:
@@ -86,15 +86,15 @@ def check_user_define_pes() -> bool:
     if not grid_pes:
         return False
 
-    state["grid_pes"] = grid_pes
-    state["total_pes"] = sum(grid_pes)
-    state["global_pes"] = grid_pes[0]
+    state.grid_pes = grid_pes
+    state.total_pes = sum(grid_pes)
+    state.global_pes = grid_pes[0]
 
     layouts = get_layouts(p // d for p, d in zip(grid_pes, [6, *([1] * state.n_nests)]))
 
-    state["layout"] = layouts["layout"]
-    state["io_layout"] = layouts["io_layout"]
-    state["blocksize"] = layouts["blocksize"]
+    state.layout = layouts["layout"]
+    state.io_layout = layouts["io_layout"]
+    state.blocksize = layouts["blocksize"]
 
     return True
 
@@ -122,15 +122,15 @@ def calc_nest_pes() -> None:
     ntiles_list = [6] + [1] * state.n_nests
 
     total_pes = sum(final_pes)
-    state["grid_pes"] = final_pes
-    state["total_pes"] = total_pes
-    state["global_pes"] = final_pes[0]
+    state.grid_pes = final_pes
+    state.total_pes = total_pes
+    state.global_pes = final_pes[0]
 
     layouts = get_layouts([p // n for p, n in zip(final_pes, ntiles_list)])
 
-    state["layout"] = layouts["layout"]
-    state["io_layout"] = layouts["io_layout"]
-    state["blocksize"] = layouts["blocksize"]
+    state.layout = layouts["layout"]
+    state.io_layout = layouts["io_layout"]
+    state.blocksize = layouts["blocksize"]
 
     save_state()
 
