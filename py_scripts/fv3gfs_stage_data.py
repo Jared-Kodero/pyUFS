@@ -25,11 +25,10 @@ def stage_files() -> None:
     nest_indices = [f"{i:02d}" for i in range(2, len(nest_tile_dirs) + 2)]
     nest_dict = dict(zip(nest_tile_dirs, nest_indices))
 
-    if n_nests > 0:
-        if len(nest_tile_dirs) != n_nests:
-            raise ValueError(
-                f"Number of nest directories [{len(nest_tile_dirs)}] does not match n_nests [{n_nests}]."
-            )
+    if n_nests > 0 and len(nest_tile_dirs) != n_nests:
+        raise ValueError(
+            f"Number of nest directories [{len(nest_tile_dirs)}] does not match n_nests [{n_nests}]."
+        )
 
     # Process global 1st
     global_dir = chgres_cube / "global"

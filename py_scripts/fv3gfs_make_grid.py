@@ -31,7 +31,6 @@ def make_nested_grid(
     nest_type = state.nest_type
     refine_ratio = to_list(state.refine_ratio)
     parent_tile = to_list(parent_tile)
-    nk = "nesting"
 
     if nest_type == "telescoping":
         log.info("Generating telescoped nested grids")
@@ -64,10 +63,10 @@ def make_nested_grid(
             i_refine_ratio=i_refine_ratio,
         )
 
-        istart_nest = ",".join(map(str, state[nk]["istart_nest"]))
-        iend_nest = ",".join(map(str, state[nk]["iend_nest"]))
-        jstart_nest = ",".join(map(str, state[nk]["jstart_nest"]))
-        jend_nest = ",".join(map(str, state[nk]["jend_nest"]))
+        istart_nest = ",".join(map(str, state.nesting["istart_nest"]))
+        iend_nest = ",".join(map(str, state.nesting["iend_nest"]))
+        jstart_nest = ",".join(map(str, state.nesting["jstart_nest"]))
+        jend_nest = ",".join(map(str, state.nesting["jend_nest"]))
 
         cmd = [
             f"{make_hgrid}",
@@ -130,11 +129,11 @@ def make_nested_grid(
         get_nest_tele_indices(res, state.n_nests, refine_ratio, out_dir)
 
         refine_ratios = ",".join(map(str, refine_ratio))
-        istart_nest = ",".join(map(str, state[nk]["istart_nest"]))
-        iend_nest = ",".join(map(str, state[nk]["iend_nest"]))
-        jstart_nest = ",".join(map(str, state[nk]["jstart_nest"]))
-        jend_nest = ",".join(map(str, state[nk]["jend_nest"]))
-        parent_tile = ",".join(map(str, state[nk]["parent_tile"]))
+        istart_nest = ",".join(map(str, state.nesting["istart_nest"]))
+        iend_nest = ",".join(map(str, state.nesting["iend_nest"]))
+        jstart_nest = ",".join(map(str, state.nesting["jstart_nest"]))
+        jend_nest = ",".join(map(str, state.nesting["jend_nest"]))
+        parent_tile = ",".join(map(str, state.nesting["parent_tile"]))
 
         cmd = [
             f"{make_hgrid}",
