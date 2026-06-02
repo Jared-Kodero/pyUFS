@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Literal
 
 import xarray as xr
 import xesmf as xe
-from fv3gfs_runtime import log
-from fv3gfs_state import state
-from fv3gfs_utils import cp
+from fv3_runtime import log
+from fv3_state import state
+from fv3_utils import cp
 
 # Physical bounds for valid volumetric soil moisture (m3 m-3). Used for both
 # the validity mask and the clip so the two are guaranteed consistent.
@@ -34,31 +37,13 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
     return ds
 
 
-def load_grid(filename: Path, tile: int) -> xr.Dataset:
-    grid_file = Path(state.IC) / "perts" / f"tile.{tile}.grid.nc"
-    if not grid_file.exists():
-        if state.restart_no == 0:
-            path = Path(state.input) / filename
-        else:
-            path = Path(state.IC) / "INPUT" / filename
-        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as ds:
-            # Select coordinate variables only. `ds.dims` returns dimension names,
-            # which are not necessarily variables and raise KeyError on selection.
-            keep = ["geolat", "geolon"] + list(ds.coords)
-            keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
-            ds = ds[keep].load()
-            ds.to_netcdf(grid_file, engine="netcdf4")
-
-    ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4").load()
-    return ds
-
-
-def to_fv3cube_grid(
+def to_fv3_grid(
     grid_in: xr.Dataset | xr.DataArray,
     grid_out: xr.Dataset | xr.DataArray,
+    method: Literal["bilinear", "conservative"] = "bilinear",
 ) -> xr.Dataset:
     """
-    Remap source dataset to the grid of the destination dataset using bilinear
+    Remap ll grid to c-grid using xesmf
     interpolation. Regridding weights are recomputed on every call.
     """
 
@@ -79,7 +64,7 @@ def to_fv3cube_grid(
     regridder = xe.Regridder(
         ll_grid,
         c_grid,
-        method="bilinear",
+        method=method,
     )
 
     # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
@@ -105,6 +90,25 @@ def to_fv3cube_grid(
     out.attrs = grid_out.attrs
 
     return out
+
+
+def load_grid(filename: Path, tile: int) -> xr.Dataset:
+    grid_file = Path(state.IC) / "perts" / f"tile.{tile}.grid.nc"
+    if not grid_file.exists():
+        if state.restart_no == 0:
+            path = Path(state.input) / filename
+        else:
+            path = Path(state.IC) / "INPUT" / filename
+        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as ds:
+            # Select coordinate variables only. `ds.dims` returns dimension names,
+            # which are not necessarily variables and raise KeyError on selection.
+            keep = ["geolat", "geolon"] + list(ds.coords)
+            keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
+            ds = ds[keep].load()
+            ds.to_netcdf(grid_file, engine="netcdf4")
+
+    ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4").load()
+    return ds
 
 
 def do_hold(p: dict, backup_dir: Path, restart_no: int):
@@ -171,15 +175,15 @@ def do_nudge_soil_moisture(
         grid = load_grid(filename, tile)
 
         # Read fully into memory and release the handle before writing back.
-        with xr.open_dataset(in_path, decode_cf=False, engine="netcdf4") as ds:
-            ds = ds.load()
+        ds = xr.open_dataset(in_path, decode_cf=False, engine="netcdf4")
+        ds = ds.load()
 
         if use_climo:
             log.info("Nudging soil moisture towards climatological mean")
             ds_ref = load_climo(sm_clim_path, p["target_var"])
             ds_ref = ds_ref.mean(dim="time", skipna=True)
             ds_ref = ds_ref.squeeze(drop=True)
-            ds_ref = to_fv3cube_grid(ds_ref, grid)
+            ds_ref = to_fv3_grid(ds_ref, grid)
             ds_ref = ds_ref.load()
         else:
             log.info("Nudging soil moisture towards state from last restart")
@@ -228,13 +232,154 @@ def do_nudge_soil_moisture(
         # Persist the nudged state so that a subsequent restart can use it as
         # its reference, then overwrite the live input.
         ds.to_netcdf(backup_path)
+        ds.close()
         in_path.unlink()
         cp(backup_path, in_path)
+
+
+def std_shift(
+    v: str,
+    z: int,
+    layer: xr.DataArray,
+    climo_path: Path,
+    is_valid: xr.DataArray,
+    grid: xr.Dataset,
+    mean_scale: float,
+    anom_scale: float,
+    n_sigma: float,
+    constant_value: float,
+    pert_logs: list,
+) -> xr.DataArray:
+
+    if climo_path is not None:
+        climo_ds = load_climo(climo_path, v)
+        climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
+        std = climo_layer.std(dim="time", skipna=True).load()
+        std = to_fv3_grid(std, grid)
+    else:
+        data = layer.where(is_valid)
+        std = float(data.std(skipna=True))
+
+    updated = layer + (std * n_sigma)
+    updated = updated.clip(SM_MIN, SM_MAX)
+    layer = xr.where(is_valid, updated, layer)
+
+    pert_logs.append(f"Applied std_shift to {v} with n_sigma={n_sigma}")
+    return layer
+
+
+def climo_mean(
+    v: str,
+    z: int,
+    layer: xr.DataArray,
+    climo_path: Path,
+    is_valid: xr.DataArray,
+    grid: xr.Dataset,
+    mean_scale: float,
+    anom_scale: float,
+    n_sigma: float,
+    constant_value: float,
+    pert_logs: list,
+) -> xr.DataArray:
+
+    if climo_path is None:
+        raise ValueError("`climo_file` must be provided when using `climo_mean` method")
+
+    climo_ds = load_climo(climo_path, v)
+    climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
+    climo = climo_layer.mean(dim="time", skipna=True).load()
+    climo = to_fv3_grid(climo, grid)
+
+    layer = xr.where(is_valid, climo, layer)
+
+    pert_logs.append(f"Applied climo_mean to {v} ")
+
+    return layer
+
+
+def anom_shift(
+    v: str,
+    z: int,
+    layer: xr.DataArray,
+    climo_path: Path,
+    is_valid: xr.DataArray,
+    grid: xr.Dataset,
+    mean_scale: float,
+    anom_scale: float,
+    n_sigma: float,
+    constant_value: float,
+    pert_logs: list,
+) -> xr.DataArray:
+
+    data = layer.where(is_valid)
+    mu = data.mean(skipna=True)
+    anomaly = layer - mu
+
+    updated = mu + (1.0 + anom_scale) * anomaly
+    updated = updated.clip(SM_MIN, SM_MAX)
+
+    layer = xr.where(is_valid, updated, layer)
+
+    pert_logs.append(f"Applied anom_shift to {v} with anom_scale={anom_scale}")
+
+    return layer
+
+
+def mean_shift(
+    v: str,
+    z: int,
+    layer: xr.DataArray,
+    climo_path: Path,
+    is_valid: xr.DataArray,
+    grid: xr.Dataset,
+    mean_scale: float,
+    anom_scale: float,
+    n_sigma: float,
+    constant_value: float,
+    pert_logs: list,
+) -> xr.DataArray:
+
+    data = layer.where(is_valid)
+    updated = data * (1.0 + mean_scale)
+    updated = updated.clip(SM_MIN, SM_MAX)
+
+    layer = xr.where(is_valid, updated, layer)
+
+    pert_logs.append(f"Applied mean_shift to {v} with mean_scale={mean_scale}")
+
+    return layer
+
+
+def constant_fill(
+    v: str,
+    z: int,
+    layer: xr.DataArray,
+    climo_path: Path,
+    is_valid: xr.DataArray,
+    grid: xr.Dataset,
+    mean_scale: float,
+    anom_scale: float,
+    n_sigma: float,
+    constant_value: float,
+    pert_logs: list,
+) -> xr.DataArray:
+
+    if constant_value == "mean":
+        data = layer.where(is_valid)
+        mean_val = data.mean(skipna=True)
+        updated = xr.full_like(layer, fill_value=mean_val)
+    else:
+        updated = xr.full_like(layer, fill_value=constant_value)
+
+    layer = xr.where(is_valid, updated, layer)
+    pert_logs.append(f"Applied constant_fill to {v} with fill_value={constant_value}")
+    return layer
 
 
 def adjust_soil_moisture(
     p: dict, backup_dir: Path, methods, restart_no: int, sm_clim_path: Path
 ):
+    pert_logs = []
     mean_scale = p.get("mean_scale")
     anom_scale = p.get("anom_scale")
     n_sigma = p.get("n_sigma")
@@ -242,7 +387,13 @@ def adjust_soil_moisture(
     constant_value = p.get("fill_value", None)
     climo_file = p.get("climo_file", None)
 
-    pert_logs = []
+    perturbation_methods = {
+        "std_shift": std_shift,
+        "climo_mean": climo_mean,
+        "anom_shift": anom_shift,
+        "mean_shift": mean_shift,
+        "constant_fill": constant_fill,
+    }
 
     if isinstance(methods, str):
         methods = [methods]
@@ -270,107 +421,57 @@ def adjust_soil_moisture(
 
         grid = load_grid(filename, tile)
 
-        with xr.open_dataset(in_path, decode_cf=False, engine="netcdf4") as ds:
-            ds = ds.load()
+        ds = xr.open_dataset(in_path, decode_cf=False, engine="netcdf4")
+        ds = ds.load()
 
-            ice = None
-            if "smc" in ds and "slc" in ds:
-                ice = ds["smc"] - ds["slc"]
+        ice = None
+        if "smc" in ds and "slc" in ds:
+            ice = ds["smc"] - ds["slc"]
 
-            for z in p["soil_layers"]:
-                v = p["target_var"]
-                if v not in ds.data_vars:
-                    continue
+        for z in p["soil_layers"]:
+            v = p["target_var"]
+            if v not in ds.data_vars:
+                continue
 
-                layer = ds[v].isel(zaxis_1=z)
-                is_valid = (layer >= SM_MIN) & (layer <= SM_MAX)
+            layer = ds[v].isel(zaxis_1=z)
+            is_valid = (layer >= SM_MIN) & (layer <= SM_MAX)
 
-                layer_new = layer
+            new_layer = layer.copy()
 
-                for method in methods:
-                    if method == "std_shift":
-                        if climo_path is not None:
-                            climo_ds = load_climo(climo_path, v)
-                            climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
-                            std = climo_layer.std(dim="time", skipna=True).load()
-                            std = to_fv3cube_grid(std, grid)
-                        else:
-                            data = layer_new.where(is_valid)
-                            std = float(data.std(skipna=True))
+            for m in methods:
+                new_layer = perturbation_methods[m](
+                    v,
+                    z,
+                    new_layer,
+                    climo_path,
+                    is_valid,
+                    grid,
+                    mean_scale,
+                    anom_scale,
+                    n_sigma,
+                    constant_value,
+                    pert_logs,
+                )
 
-                        updated = layer_new + (std * n_sigma)
-                        updated = updated.clip(SM_MIN, SM_MAX)
-                        layer_new = xr.where(is_valid, updated, layer_new)
-                        pert_logs.append(
-                            f"Applied std_shift to {v} with n_sigma={n_sigma}"
-                        )
+            # Write the layer once, after all methods have been chained.
+            coord_val = ds.zaxis_1.values[z]
+            ds[v].loc[{"zaxis_1": coord_val}] = new_layer
 
-                    elif method == "climo_mean":
-                        if climo_path is None:
-                            raise ValueError(
-                                "`climo_file` must be provided when using `climo_mean` method"
-                            )
+        # reconstruct slc from updated smc
+        if ice is not None and "smc" == p["target_var"]:
+            smc_new = ds["smc"]
+            slc_new = smc_new - ice
+            slc_new = xr.where(slc_new < 0, 0, slc_new)
+            slc_new = xr.where(slc_new > smc_new, smc_new, slc_new)
 
-                        climo_ds = load_climo(climo_path, v)
-                        climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
-                        climo = climo_layer.mean(dim="time", skipna=True).load()
-                        climo = to_fv3cube_grid(climo, grid)
-                        layer_new = xr.where(is_valid, climo, layer_new)
-                        pert_logs.append(f"Applied climo_mean to {v} ")
-                    elif method == "anom_shift":
-                        data = layer_new.where(is_valid)
-                        mu = data.mean(skipna=True)
-                        anomaly = layer_new - mu
+            ds["slc"] = slc_new
 
-                        updated = mu + (1.0 + anom_scale) * anomaly
-                        updated = updated.clip(SM_MIN, SM_MAX)
-                        pert_logs.append(
-                            f"Applied anom_shift to {v} with anom_scale={anom_scale}"
-                        )
-                        layer_new = xr.where(is_valid, updated, layer_new)
+        for v in ds.data_vars:
+            ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
 
-                    elif method == "mean_shift":
-                        data = layer_new.where(is_valid)
-                        updated = data * (1.0 + mean_scale)
-                        updated = updated.clip(SM_MIN, SM_MAX)
-                        layer_new = xr.where(is_valid, updated, layer_new)
-                        pert_logs.append(
-                            f"Applied mean_shift to {v} with mean_scale={mean_scale}"
-                        )
+        ds.to_netcdf(backup_path)
 
-                    elif method == "constant_fill":
-                        if constant_value == "mean":
-                            data = layer_new.where(is_valid)
-                            mean_val = data.mean(skipna=True)
-                            updated = xr.full_like(layer_new, fill_value=mean_val)
-                        else:
-                            updated = xr.full_like(layer_new, fill_value=constant_value)
-
-                        pert_logs.append(
-                            f"Applied constant_fill to {v} with fill_value={constant_value}"
-                        )
-                        layer_new = xr.where(is_valid, updated, layer_new)
-
-                    else:
-                        raise ValueError(f"Unknown method: {method}")
-
-                # Write the layer once, after all methods have been chained.
-                coord_val = ds.zaxis_1.values[z]
-                ds[v].loc[{"zaxis_1": coord_val}] = layer_new
-
-            # reconstruct slc from updated smc
-            if ice is not None and "smc" == p["target_var"]:
-                smc_new = ds["smc"]
-                slc_new = smc_new - ice
-                slc_new = xr.where(slc_new < 0, 0, slc_new)
-                slc_new = xr.where(slc_new > smc_new, smc_new, slc_new)
-
-                ds["slc"] = slc_new
-
-            for v in ds.data_vars:
-                ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
-
-            ds.to_netcdf(backup_path)
+        ds.close()
 
         in_path.unlink()
         cp(backup_path, in_path)
@@ -484,7 +585,7 @@ def apply_perturbations():
     backup_dir = Path(state.IC) / "perts"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    if restart_no > 1:
+    if restart_no >= 1:
         if do_nudge:
             do_nudge_soil_moisture(p, backup_dir, restart_no, sm_clim_path)
         elif hold:

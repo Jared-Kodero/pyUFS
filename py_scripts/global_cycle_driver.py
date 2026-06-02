@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
 
-from fv3gfs_runtime import log
-from fv3gfs_state import state
-from fv3gfs_utils import cp
+from fv3_runtime import log
+from fv3_state import state
+from fv3_utils import cp
 from global_cycle import run_global_cycle
 
 
@@ -19,7 +19,7 @@ def drive_global_cycle(
 ):
     """
     Python driver for global_cycle.
-    Reproduces FV3GFS surface update behavior, including symbolic linking
+    Reproduces fv3 surface update behavior, including symbolic linking
     of restart, grid, and orography files into the working directory.
     """
 
@@ -60,7 +60,7 @@ def drive_global_cycle(
             (tmp_dir / f"fnbgsi.{n:03d}").symlink_to(sfc_in)
             (tmp_dir / f"fnbgso.{n:03d}").symlink_to(sfc_out)
 
-            # Grid and orography from fix_fv3gfs (here assumed under ic_dir)
+            # Grid and orography from fix_fv3 (here assumed under ic_dir)
             grid_file = state.input / f"{c_res}_grid.{tile}"
             orog_file = state.input / f"oro_data.{tile}"
 

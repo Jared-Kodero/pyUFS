@@ -2,9 +2,9 @@ from pathlib import Path
 
 import f90nml
 import pandas as pd
-from fv3gfs_runtime import get_launcher, log
-from fv3gfs_state import state
-from fv3gfs_utils import cp, run_cmd
+from fv3_runtime import get_launcher, log
+from fv3_state import state
+from fv3_utils import cp, run_cmd
 
 
 def run_global_cycle(
@@ -62,7 +62,7 @@ def run_global_cycle(
         Executables directory (default: $basedir/gfs_ver/exec).
     fix_am : Path
         Directory containing climatology GRIBs (default: $basedir/gfs_ver/fix/am).
-    fix_fv3gfs : Path
+    fix_fv3 : Path
         Directory containing FV3 orog/grid files (default: $basedir/gfs_ver/fix/orog/$case).
     cycle_exec : Path
         Path to global_cycle executable (default: exec_dir/global_cycle).

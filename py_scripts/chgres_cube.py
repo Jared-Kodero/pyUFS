@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Literal
 
 import f90nml
-from fv3gfs_ic_data import get_IC, validate_hrrr_bounds
-from fv3gfs_runtime import get_launcher, log, read_namelist
-from fv3gfs_stage_data import stage_files
-from fv3gfs_state import FV3State, state
-from fv3gfs_utils import cp, env_setup, run_cmd
+from fv3_ic_data import get_IC, validate_hrrr_bounds
+from fv3_runtime import get_launcher, log, read_namelist
+from fv3_stage_data import stage_files
+from fv3_state import FV3State, state
+from fv3_utils import cp, env_setup, run_cmd
 
 log = logging.getLogger("PREPROCESSING")
 
