@@ -2,9 +2,9 @@ import subprocess
 from pathlib import Path
 
 import f90nml
-from fv3gfs_runtime import log
-from fv3gfs_state import state
-from fv3gfs_utils import run_cmd
+from fv3_runtime import log
+from fv3_state import state
+from fv3_utils import run_cmd
 
 
 def run_emcsfc_snow(
@@ -57,7 +57,7 @@ def run_emcsfc_snow(
     output_grib2 : bool
         Write output in grib2 (default False = grib1).
     wgrib2, wgrib : str
-        Paths to grib fv3gfs_utilities.
+        Paths to grib fv3_utilities.
     sendcom : bool
         If True, copy outputs to comout.
     comout : Path

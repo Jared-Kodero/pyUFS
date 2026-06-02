@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 
 import f90nml
-from fv3gfs_runtime import get_launcher, log
-from fv3gfs_state import state
-from fv3gfs_utils import cp, run_cmd
+from fv3_runtime import get_launcher, log
+from fv3_state import state
+from fv3_utils import cp, run_cmd
 
 
 def _run_single_sfc_climo(
@@ -228,7 +228,7 @@ def run_sfc_climo_gen(
     log_file = state.logs / "sfc_climo_gen.log"
 
     if not orog_dir:
-        orog_dir = fix_dir / "fix_fv3gfs_gmted2010" / f"C{res}"
+        orog_dir = fix_dir / "fix_fv3_gmted2010" / f"C{res}"
 
     local_cpus = len(os.sched_getaffinity(0))
 

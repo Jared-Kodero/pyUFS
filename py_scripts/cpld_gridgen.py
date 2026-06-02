@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from fv3gfs_runtime import get_launcher, log
-from fv3gfs_state import state
-from fv3gfs_utils import run_cmd
+from fv3_runtime import get_launcher, log
+from fv3_state import state
+from fv3_utils import run_cmd
 
 
 def write_grid_nml(
