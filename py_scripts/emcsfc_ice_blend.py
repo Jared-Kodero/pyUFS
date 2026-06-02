@@ -3,9 +3,9 @@ import os
 import subprocess
 from pathlib import Path
 
-from fv3gfs_runtime import log
-from fv3gfs_state import state
-from fv3gfs_utils import cp
+from fv3_runtime import log
+from fv3_state import state
+from fv3_utils import cp
 
 
 def run_ice_blend(
@@ -41,7 +41,7 @@ def run_ice_blend(
     blended_file : Path
         Output blended ice concentration file (grib1 for GFS).
     wgrib2, cnvgrib, copygb, copygb2 : str
-        External fv3gfs_utilities (must be available in PATH or given as full paths).
+        External fv3_utilities (must be available in PATH or given as full paths).
     workdir : Path
         Working directory (temporary). Defaults to CWD.
     sendcom : bool

@@ -1,8 +1,8 @@
-from fv3gfs_init_driver import init_driver
-from fv3gfs_restart_driver import restart_driver
-from fv3gfs_runtime import exit_code
-from fv3gfs_setup import preprocess_input
-from fv3gfs_state import state
+from fv3_init_driver import init_driver
+from fv3_restart_driver import restart_driver
+from fv3_runtime import exit_code
+from fv3_setup import preprocess_input
+from fv3_state import state
 
 
 def main():

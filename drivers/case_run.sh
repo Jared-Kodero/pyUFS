@@ -53,7 +53,6 @@ ln -s "$WORK_DIR" "$CASE_DATA_SYMLINK"
 # SYNC CASE_DIR TO WORK_DIR
 if (( SYNC == 1 )); then
     rsync -a --delete "$CASE_DIR/" "$WORK_DIR/"
-
 fi
 
 
