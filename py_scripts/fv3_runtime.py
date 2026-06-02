@@ -71,7 +71,6 @@ def to_list(x: object) -> list:
 
 def handle_errors(type, value, tb):
     log = logging.getLogger("ERROR_HANDLER")
-    frames = traceback.extract_tb(tb)
 
     def _norm_path(p: str) -> str:
         try:
@@ -79,11 +78,17 @@ def handle_errors(type, value, tb):
         except Exception:
             return p
 
-    frame = [
+    frames = [
         f
-        for f in frames
+        for f in traceback.extract_tb(tb)
         if "py_scripts" in _norm_path(f.filename) and f.filename.endswith(".py")
-    ][-1]
+    ]
+
+    if not frames:
+        log.error(f"{type.__qualname__}: {value}")
+        return
+
+    frame = frames[-1]
 
     file_name = Path(frame.filename).name
     lineno = f"{frame.lineno}"
