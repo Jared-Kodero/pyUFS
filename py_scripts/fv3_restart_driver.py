@@ -4,7 +4,7 @@ from fv3_namelists import restart_config, update_table_files
 from fv3_runscripts import gen_shield_run_sh
 from fv3_state import compute_checksum, prev_state, save_state, state
 from fv3_utils import env_setup
-from sm_pertubutions import apply_perturbations
+from sm_perturbations import apply_perturbations
 
 
 def check_prev_state(params: dict) -> None:

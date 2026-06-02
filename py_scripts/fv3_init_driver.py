@@ -7,7 +7,7 @@ from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import log
 from fv3_stage_data import cached_ic_files
 from fv3_state import save_state, state
-from sm_pertubutions import apply_perturbations
+from sm_perturbations import apply_perturbations
 
 
 def init_driver():
