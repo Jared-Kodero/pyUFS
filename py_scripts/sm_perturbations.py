@@ -481,6 +481,7 @@ def adjust_soil_moisture(
 
 
 def apply_perturbations():
+    """Apply soil moisture perturbations to the current input state according to the `sm_perturbations` config in the state."""
 
     perturbations = state.get("sm_perturbations", None)
     if not perturbations:
