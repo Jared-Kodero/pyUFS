@@ -254,11 +254,14 @@ def call_fregrid(
 
         ds = post_process(ds, data_attrs, dim_attrs)
 
+        case = pstate.get("case_description") or ""
+        description = pstate.get("description") or ""
+
         ds.attrs = {
-            "case": pstate.get("case_description", ""),
             "tile_type": name,
             "resolution": f"{step:.2f} degrees",
-            "description": pstate.description,
+            "case": case,
+            "description": description,
         }
 
         ds.to_netcdf(output_file)
