@@ -89,6 +89,11 @@ def parse_input():
     input_params["case_description"] = input_params.get("description", "")
 
     input_params["warm_start"] = input_params.get("continue_run", False)
+    # validate the length of k_split and n_split
+
+    description = [input_params["init_datetime"], input_params["case_name"]]
+    input_params["description"] = "_".join([str(d).upper() for d in description if d])
+
     check_prev_state(input_params)
     input_params = parse_datetime(input_params)
 
@@ -165,12 +170,6 @@ def preprocess_input():
     else:
         params.n_nests = 0
         params.refine_ratio = 1
-
-    # validate the length of k_split and n_split
-
-    description = [params.init_datetime, state.case_name]
-
-    params.description = ".".join([str(d).upper() for d in description if d])
 
     # Derive warm_start from restart_no (single source of truth)
     params.warm_start = (params.restart_no or 0) > 0
