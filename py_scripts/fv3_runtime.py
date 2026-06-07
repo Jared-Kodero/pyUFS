@@ -69,7 +69,7 @@ def to_list(x: object) -> list:
     return [x] if not isinstance(x, list) else x
 
 
-def handle_errors(type, value, tb):
+def handle_errors(exc_type, value, tb):
     log = logging.getLogger("ERROR_HANDLER")
 
     def _norm_path(p: str) -> str:
@@ -85,7 +85,7 @@ def handle_errors(type, value, tb):
     ]
 
     if not frames:
-        log.error(f"{type.__qualname__}: {value}")
+        log.error(f"{exc_type.__qualname__}: {value}")
         return
 
     frame = frames[-1]
@@ -95,7 +95,11 @@ def handle_errors(type, value, tb):
     code_line = frame.line.strip() if frame.line else ""
 
     log.warning(f"An error has been detected in: {file_name}: {lineno}: {code_line}")
-    log.error(f"{type.__qualname__}: {value}")
+    log.error(f"{exc_type.__qualname__}: {value}")
+
+    # now print frames
+    for f in frames:
+        print(f)
 
 
 sys.excepthook = handle_errors
