@@ -30,6 +30,22 @@ class FV3State(dict):
 state = FV3State({})
 prev_state = FV3State({})
 
+env_vars = {
+    "case_name": os.getenv("CASE_NAME"),
+    "n_cpus": int(os.environ.get("SBATCH_NTASKS")),
+    "n_nodes": int(os.environ.get("SBATCH_NNODES", 1)),
+    "node_list": os.environ.get("SLURM_NODELIST"),
+    "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
+    "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
+    "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
+    "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE_FLAG", 0))),
+    "ufs_utils": Path(__file__).resolve().parent.parent,
+    "configs": Path(__file__).resolve().parent.parent / "configs",
+}
+
+state.update(env_vars)
+log = logging.getLogger("PREPROCESSING")
+
 
 def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
     if not isinstance(hash_keys, list) and hash_keys is not None:
@@ -131,20 +147,3 @@ def load_state():
         prev_state.update(data)
         prev_state.update(paths)
         state.update(paths)
-
-
-env_vars = {
-    "case_name": os.getenv("CASE_NAME"),
-    "n_cpus": int(os.environ.get("SBATCH_NTASKS")),
-    "n_nodes": int(os.environ.get("SBATCH_NNODES", 1)),
-    "node_list": os.environ.get("SLURM_NODELIST"),
-    "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
-    "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
-    "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
-    "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE_FLAG", 0))),
-    "ufs_utils": Path(__file__).resolve().parent.parent,
-    "configs": Path(__file__).resolve().parent.parent / "configs",
-}
-
-state.update(env_vars)
-log = logging.getLogger("PREPROCESSING")
