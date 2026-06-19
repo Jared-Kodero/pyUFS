@@ -91,7 +91,7 @@ def parse_input():
     input_params["warm_start"] = input_params.get("continue_run", False)
     # validate the length of k_split and n_split
 
-    description = [input_params["init_datetime"], input_params["case_name"]]
+    description = [input_params["init_datetime"], state["case_name"]]
     input_params["description"] = "_".join([str(d).upper() for d in description if d])
 
     check_prev_state(input_params)
