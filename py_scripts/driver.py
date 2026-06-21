@@ -8,7 +8,7 @@ from fv3_state import state
 def main():
     preprocess_input()  # Preprocess input and update state with any necessary derived values
 
-    if state.update_nml_only:
+    if state.warm_start:
         restart_driver()
     else:
         init_driver()
