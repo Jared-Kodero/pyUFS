@@ -1,6 +1,12 @@
+from __future__ import annotations
+
 import os
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fv3_state import FV3State
 
 env_paths = {}
 env_paths["fix"] = Path(os.getenv("FIX_DIR"))
@@ -27,7 +33,7 @@ case_paths["IC"] = env_paths["home"] / "IC"
 paths = {**env_paths, **case_paths}
 
 
-def configure_directories(params: dict) -> dict:
+def configure_directories(params: FV3State) -> dict:
     config_restart_dir({**env_paths, **case_paths}, params)
 
     def _clear(path: Path) -> None:
@@ -38,7 +44,7 @@ def configure_directories(params: dict) -> dict:
         else:
             path.unlink()
 
-    if not (params["warm_start"]):
+    if not (params.warm_start):
         for item in case_paths["home"].iterdir():
             _clear(item)
 
@@ -57,7 +63,7 @@ def configure_directories(params: dict) -> dict:
     return {**env_paths, **case_paths}
 
 
-def config_restart_dir(paths: dict, params: dict) -> None:
+def config_restart_dir(paths: dict, params: FV3State) -> None:
     """
     Archive the previous INPUT directory and promote RESTART to INPUT
     for warm-start continuation runs.
@@ -78,7 +84,7 @@ def config_restart_dir(paths: dict, params: dict) -> None:
     prev_model_restart = Path(paths["restarts"])
     curr_input_data = home / "INPUT"
 
-    restart_no = int(params["restart_no"])
+    restart_no = int(params.restart_no)
     archive_index = restart_no - 1
 
     if archive_index == 0:

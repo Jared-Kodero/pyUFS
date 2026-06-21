@@ -72,7 +72,7 @@ def classify_nesting(params: FV3State) -> FV3State:
         raise ValueError("All coordinate lists must have the same length.")
 
     if n < 2:
-        params["nest_type"] = "same_level"
+        params.nest_type = "same_level"
         return params
 
     for i in range(n):
@@ -100,7 +100,7 @@ def classify_nesting(params: FV3State) -> FV3State:
         is_nested = parent_contains_child or child_contains_parent
 
         if not is_nested:
-            params["nest_type"] = "same_level"
+            params.nest_type = "same_level"
             break
 
         if child_contains_parent:
@@ -109,7 +109,7 @@ def classify_nesting(params: FV3State) -> FV3State:
             )
 
         # if we reach here, parent contains child
-        params["nest_type"] = "telescoping"
+        params.nest_type = "telescoping"
 
     return params
 
