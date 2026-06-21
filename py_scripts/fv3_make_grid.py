@@ -1,4 +1,3 @@
-import os
 import shutil
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from fv3_nesting import (
     get_nest_tele_indices,
 )
 from fv3_pes_config import calc_cpu_alloc
-from fv3_runtime import log, to_list
+from fv3_runtime import log, tmp_cwd, to_list
 from fv3_state import save_state, state
 from fv3_utils import cp, rename, run_cmd
 
@@ -443,69 +442,68 @@ def run_make_grid(
     make_hgrid = exec_dir / "make_hgrid"
     global_equiv_resol = exec_dir / "global_equiv_resol"
     nlon = res * 2
-
     out_dir.mkdir(parents=True, exist_ok=True)
-    os.chdir(out_dir)
 
     # -------------------------------
     # Grid generation
     # -------------------------------
 
-    if gtype == "uniform":
-        make_uniform_grid(make_hgrid, nlon, res)
+    with tmp_cwd(out_dir):
+        if gtype == "uniform":
+            make_uniform_grid(make_hgrid, nlon, res)
 
-    elif gtype == "stretch":
-        make_stretched_grid(
-            make_hgrid, nlon, res, stretch_factor, target_lon, target_lat
-        )
+        elif gtype == "stretch":
+            make_stretched_grid(
+                make_hgrid, nlon, res, stretch_factor, target_lon, target_lat
+            )
 
-    elif gtype == "nest":
-        make_nested_grid(
-            make_hgrid,
-            nlon,
-            res,
-            stretch_factor,
-            parent_tile,
-            out_dir,
-            halo,
-            gtype,
-        )
+        elif gtype == "nest":
+            make_nested_grid(
+                make_hgrid,
+                nlon,
+                res,
+                stretch_factor,
+                parent_tile,
+                out_dir,
+                halo,
+                gtype,
+            )
 
-    elif gtype == "regional_gfdl":
-        make_regional_gfdl_grid(
-            make_hgrid,
-            nlon,
-            res,
-            stretch_factor,
-            target_lon,
-            target_lat,
-            parent_tile,
-            refine_ratio,
-            istart_nest,
-            jstart_nest,
-            iend_nest,
-            jend_nest,
-            halo,
-            out_dir,
-            global_equiv_resol,
-        )
+        elif gtype == "regional_gfdl":
+            make_regional_gfdl_grid(
+                make_hgrid,
+                nlon,
+                res,
+                stretch_factor,
+                target_lon,
+                target_lat,
+                parent_tile,
+                refine_ratio,
+                istart_nest,
+                jstart_nest,
+                iend_nest,
+                jend_nest,
+                halo,
+                out_dir,
+                global_equiv_resol,
+            )
 
-    elif gtype == "regional_esg":
-        make_regional_esg_grid(
-            regional_esg_grid,
-            state.target_lon,
-            state.target_lat,
-            idim,
-            jdim,
-            delx,
-            dely,
-            halo,
-            out_dir,
-            global_equiv_resol,
-        )
+        elif gtype == "regional_esg":
+            make_regional_esg_grid(
+                regional_esg_grid,
+                state.target_lon,
+                state.target_lat,
+                idim,
+                jdim,
+                delx,
+                dely,
+                halo,
+                out_dir,
+                global_equiv_resol,
+            )
 
-    else:
-        raise ValueError(f"Unsupported gtype {gtype}")
+        else:
+            raise ValueError(f"Unsupported gtype {gtype}")
 
     calc_cpu_alloc(Path(state.tmp / "grid"))
     save_state()

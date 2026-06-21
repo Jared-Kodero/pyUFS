@@ -1,8 +1,7 @@
-import os
 from pathlib import Path
 
 import f90nml
-from fv3_runtime import log
+from fv3_runtime import log, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -56,62 +55,62 @@ def run_filter_topo(
     log.info("Filtering topography for global tiles")
     # Create unique log file for each nest tile to avoid overwriting
 
-    log_file = state.logs / "filter_topo.log"
-
-    filter_topo = Path(exec_dir) / "filter_topo"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    os.chdir(tmp_dir)
 
-    # Processing all tiles (uniform/stretch) or coarse tiles only
-    mosaic_grid = f"C{res}_mosaic.nc"
-    # grid_files = f"C{res}_grid.tile[1-6].nc"
-    # topo_files = f"oro.C{res}.tile[1-6].nc"
-    grid_files = [f"C{res}_grid.tile{t}.nc" for t in range(1, 7)]
-    topo_files = [f"oro.C{res}.tile{t}.nc" for t in range(1, 7)]
-    topo_file = f"oro.C{res}"
+    with tmp_cwd(tmp_dir):
+        log_file = state.logs / "filter_topo.log"
 
-    # Copy mosaic file
-    mosaic_src = grid_dir / mosaic_grid
-    if mosaic_src.exists():
-        cp(mosaic_src, ".")
-    else:
-        cp(grid_dir / f"C{res}_mosaic.nc", ".")
+        filter_topo = Path(exec_dir) / "filter_topo"
+        # Processing all tiles (uniform/stretch) or coarse tiles only
+        mosaic_grid = f"C{res}_mosaic.nc"
+        # grid_files = f"C{res}_grid.tile[1-6].nc"
+        # topo_files = f"oro.C{res}.tile[1-6].nc"
+        grid_files = [f"C{res}_grid.tile{t}.nc" for t in range(1, 7)]
+        topo_files = [f"oro.C{res}.tile{t}.nc" for t in range(1, 7)]
+        topo_file = f"oro.C{res}"
 
-    # Copy grid and orography files
-    for f in grid_files:
-        cp(grid_dir / f, ".")
-    for f in topo_files:
-        cp(orog_dir / f, ".")
+        # Copy mosaic file
+        mosaic_src = grid_dir / mosaic_grid
+        if mosaic_src.exists():
+            cp(mosaic_src, ".")
+        else:
+            cp(grid_dir / f"C{res}_mosaic.nc", ".")
 
-    cp(filter_topo, ".")
+        # Copy grid and orography files
+        for f in grid_files:
+            cp(grid_dir / f, ".")
+        for f in topo_files:
+            cp(orog_dir / f, ".")
 
-    # Decide stretch factor
-    if gtype in ["stretch", "regional_gfdl"]:
-        stretch = stretch_factor
-    else:
-        stretch = 1.0
+        cp(filter_topo, ".")
 
-    # Regional flag
-    regional = gtype in ["regional_gfdl", "regional_esg"]
+        # Decide stretch factor
+        if gtype in ["stretch", "regional_gfdl"]:
+            stretch = stretch_factor
+        else:
+            stretch = 1.0
 
-    # Write namelist - use appropriate mosaic file for namelist
-    nml_mosaic = mosaic_grid if mosaic_grid.endswith(".nc") else f"C{res}_mosaic.nc"
-    nml = {
-        "filter_topo_nml": {
-            "grid_file": nml_mosaic,
-            "topo_file": topo_file,
-            "mask_field": "land_frac",
-            "regional": regional,
-            "stretch_fac": stretch,
-            "res": res,
+        # Regional flag
+        regional = gtype in ["regional_gfdl", "regional_esg"]
+
+        # Write namelist - use appropriate mosaic file for namelist
+        nml_mosaic = mosaic_grid if mosaic_grid.endswith(".nc") else f"C{res}_mosaic.nc"
+        nml = {
+            "filter_topo_nml": {
+                "grid_file": nml_mosaic,
+                "topo_file": topo_file,
+                "mask_field": "land_frac",
+                "regional": regional,
+                "stretch_fac": stretch,
+                "res": res,
+            }
         }
-    }
-    with open("input.nml", "w") as f:
-        f90nml.write(nml, f)
+        with open("input.nml", "w") as f:
+            f90nml.write(nml, f)
 
-    cmd = [f"{filter_topo}"]
+        cmd = [f"{filter_topo}"]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError("Filtering topography failed")
+        result, msgs = run_cmd(cmd, log_file=log_file)
+        if result != 0:
+            log.error(msgs)
+            raise RuntimeError("Filtering topography failed")

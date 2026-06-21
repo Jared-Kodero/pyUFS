@@ -18,7 +18,7 @@ def run_ice_blend(
     cnvgrib: str = "cnvgrib",
     copygb: str = "copygb",
     copygb2: str = "copygb2",
-    f: Path = None,
+    directory: Path = None,
     sendcom: bool = False,
     tmp_ic_dir: Path = None,
     verbose: bool = True,
@@ -51,7 +51,7 @@ def run_ice_blend(
         If True, print diagnostic commands.
     """
 
-    f = Path(f)
+    directory = Path(directory)
 
     # Create unique log file for each nest to avoid overwriting
     if nest_idx is not None and nest_idx > 0:
@@ -62,8 +62,7 @@ def run_ice_blend(
         )
     else:
         log_file = state.logs / "ice_blend.log"
-    f.mkdir(parents=True, exist_ok=True)
-    os.chdir(f)
+    directory.mkdir(parents=True, exist_ok=True)
 
     # -------------------------------------------------------------------------
     # Step 1: IMS input check + convert to grib2 if needed
@@ -77,6 +76,7 @@ def run_ice_blend(
         capture_output=True,
         text=True,
         stderr=log_file,
+        cwd=directory,
     )
     if "grib1 message" in result.stdout:
         subprocess.run(
@@ -84,6 +84,7 @@ def run_ice_blend(
             check=True,
             stdout=log_file,
             stderr=log_file,
+            cwd=directory,
         )
     else:
         cp(ims_file, "ims.grib2")
@@ -93,6 +94,7 @@ def run_ice_blend(
             check=True,
             stdout=log_file,
             stderr=log_file,
+            cwd=directory,
         )
 
     grid173 = "0 0 0 0 0 0 0 0 4320 2160 0 0 89958000 42000 48 -89958000 359958000 83000 83000 0"
@@ -110,6 +112,7 @@ def run_ice_blend(
         check=True,
         stdout=log_file,
         stderr=log_file,
+        cwd=directory,
     )
 
     # -------------------------------------------------------------------------
@@ -128,7 +131,12 @@ def run_ice_blend(
     env["FORT51"] = str(blended_file)
 
     subprocess.run(
-        [str(blend_exec)], check=True, env=env, stdout=log_file, stderr=log_file
+        [str(blend_exec)],
+        check=True,
+        env=env,
+        stdout=log_file,
+        stderr=log_file,
+        cwd=directory,
     )
 
     # -------------------------------------------------------------------------
@@ -149,6 +157,7 @@ def run_ice_blend(
         check=True,
         stdout=log_file,
         stderr=log_file,
+        cwd=directory,
     )
 
     subprocess.run(
@@ -156,6 +165,7 @@ def run_ice_blend(
         check=True,
         stdout=log_file,
         stderr=log_file,
+        cwd=directory,
     )
     os.remove(blended_file)
 
@@ -164,6 +174,7 @@ def run_ice_blend(
         check=True,
         stdout=log_file,
         stderr=log_file,
+        cwd=directory,
     )
 
     comout = tmp_ic_dir / "ice_blend"
@@ -173,9 +184,9 @@ def run_ice_blend(
         cp(blended_file, comout)
 
     # cleanup
-    for f in [f"{blended_file}.corner", f"{blended_file}.bitmap"]:
+    for directory in [f"{blended_file}.corner", f"{blended_file}.bitmap"]:
         try:
-            os.remove(f)
+            os.remove(directory)
         except FileNotFoundError:
             pass
 

@@ -1,9 +1,11 @@
 # runtime.py
 import logging
+import os
 import re
 import sys
 import traceback
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path
 
 import f90nml
@@ -67,6 +69,16 @@ def sort_paths(f: str | Path):
 
 def to_list(x: object) -> list:
     return [x] if not isinstance(x, list) else x
+
+
+@contextmanager
+def tmp_cwd(path: Path | str):
+    cwd = paths["home"]
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(cwd)
 
 
 def handle_errors(exc_type, value, tb):
