@@ -44,7 +44,7 @@ def gen_shield_container_scripts(
             launcher=native_launcher,
         )
 
-        (state.home / "shield.native").touch()
+        (state.case_home / "shield.native").touch()
 
     else:
         cfg = dict(
@@ -55,7 +55,7 @@ def gen_shield_container_scripts(
         )
 
     write_shield_sh(
-        exit_code=state.home / "exit_code",
+        exit_code=state.case_home / "exit_code",
         **cfg,
     )
 
@@ -64,7 +64,7 @@ def write_shield_sh(
     exe: str, log_file: Path, exit_code: Path, modules: str, launcher: str
 ) -> None:
     template_path = state.configs / "shield.launcher"
-    output_path = state.home / "shield"
+    output_path = state.case_home / "shield"
 
     # read template
     with open(template_path, "r") as f:
@@ -72,7 +72,7 @@ def write_shield_sh(
 
     # replace placeholders
     content = content.replace("__MODULES__", str(modules))
-    content = content.replace("__RUNDIR__", str(state.home))
+    content = content.replace("__RUNDIR__", str(state.case_home))
     content = content.replace("__LAUNCHER__", str(launcher))
     content = content.replace("__TOTAL_PES__", str(state.total_pes))
     content = content.replace("__EXECUTABLE__", str(exe))

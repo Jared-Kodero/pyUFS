@@ -24,7 +24,7 @@ log = logging.getLogger("REGRIDDING")
 
 
 def get_stream_handles() -> list[str]:
-    path = Path(pstate.home) / "diag_table"
+    path = Path(pstate.case_home) / "diag_table"
     handles = []
 
     with open(path) as f:
@@ -271,9 +271,9 @@ def call_fregrid(
 
 def regrid_global_tiles(streams: list, c_res: int):
     if pstate.gtype == "nest":
-        g_input_mosaic = pstate.home / "GRID" / f"C{c_res}_coarse_mosaic.nc"
+        g_input_mosaic = pstate.case_home / "GRID" / f"C{c_res}_coarse_mosaic.nc"
     else:
-        g_input_mosaic = pstate.home / "GRID" / f"C{c_res}_mosaic.nc"
+        g_input_mosaic = pstate.case_home / "GRID" / f"C{c_res}_mosaic.nc"
 
     step = cres_to_deg(pstate.res).deg
 
@@ -332,7 +332,9 @@ def regrid_nest_tiles(streams: list, c_res: int):
         nx = int(np.round(abs(lon_max - lon_min) / n_step))
         ny = int(np.round(abs(lat_max - lat_min) / n_step))
 
-        input_mosaic = pstate.home / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
+        input_mosaic = (
+            pstate.case_home / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
+        )
 
         if not input_mosaic.exists():
             log.error(f"Input mosaic file {input_mosaic} does not exist. Aborting!")
@@ -379,7 +381,7 @@ def regrid():
         )
         log.info("Run Completed Successfully!")
 
-    static_path = Path(pstate.home) / "STATIC"
+    static_path = Path(pstate.case_home) / "STATIC"
     static_path.mkdir(parents=True, exist_ok=True)
 
     for f in Path(pstate.hist).glob("*"):

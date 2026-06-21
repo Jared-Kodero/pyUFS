@@ -40,7 +40,7 @@ def parse_input():
         params_keys = yaml.safe_load(f)
 
     # --- Resolve runtime config path ---
-    yml_path = paths["rundir"] / "run_config.yaml"
+    yml_path = paths["run_dir"] / "run_config.yaml"
 
     if not Path(yml_path).exists():
         raise FileNotFoundError(f"Configuration file not found at: {yml_path}")
@@ -101,8 +101,8 @@ def parse_input():
 
 
 def _append_init_logs(params: FV3State) -> None:
-    run_logs.append(f"Current directory: {params.rundir}")
-    run_logs.append(f"Working directory: {params.home}")
+    run_logs.append(f"Current directory: {params.run_dir}")
+    run_logs.append(f"Working directory: {params.case_home}")
     run_logs.append(f"Case directory: {params.case_dir}")
     run_logs.append(f"Archive directory: {params.archive_dir}")
     run_logs.append(f"Fixed/static directory: {params.fix}")
@@ -146,13 +146,14 @@ def _append_restart_logs(params: FV3State) -> None:
 
 def preprocess_input():
 
-    load_state()
-    params = parse_input()  # Get parsed arguments
-
     if py_ncpus < 32:
         raise RuntimeError(
             f"Insufficient CPUs for this run. Detected {py_ncpus} available, but at least 32 is required."
         )
+
+    load_state()
+    params = parse_input()  # Get parsed arguments
+    params.warm_start = (params.restart_no or 0) > 0
 
     params.n_cpus = state.n_cpus  # Update n_cpus based on available CPUs
     params.global_res_km = cres_to_deg(params.res).km
@@ -167,9 +168,6 @@ def preprocess_input():
     else:
         params.n_nests = 0
         params.refine_ratio = 1
-
-    # Derive warm_start from restart_no (single source of truth)
-    params.warm_start = (params.restart_no or 0) > 0
 
     # Now decide which block to print
     if not params.warm_start:

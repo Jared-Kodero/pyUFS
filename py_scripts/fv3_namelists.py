@@ -13,7 +13,7 @@ def restart_config():
 
     log.info(f"Generating namelist for restart {state.restart_no}")
 
-    for f in list(state.home.glob("*.nml")):
+    for f in list(state.case_home.glob("*.nml")):
         nml = read_namelist(f)
 
         nml["fv_core_nml"]["warm_start"] = True
@@ -126,7 +126,7 @@ def update_global_nml(
 ):
 
     nml_template_path = state.configs / "input_nml.yaml"
-    parent_save_path = state.home / "input.nml"
+    parent_save_path = state.case_home / "input.nml"
 
     nml = read_namelist(nml_template_path)
     nml = common_configs(nml)
@@ -191,7 +191,9 @@ def update_nest_nml(
         return
 
     nest_nml_template_path = state.configs / "input_nestXX_nml.yaml"
-    save_paths = [state.home / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)]
+    save_paths = [
+        state.case_home / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
+    ]
     tiles = [7 + i for i in range(n_nests)]
 
     nest_pes = state.grid_pes  # includes parent tile pes
@@ -274,7 +276,7 @@ def namelist_overrides(overide_obj: str | dict, nml: dict, name: str):
 def update_fixed_files():
     dt = state.init_datetime
     year = dt.year
-    fix_dirs = [state.fix_am, state.fix / "lut"]
+    fix_dirs = [state.fixed_am, state.fixed_dir / "lut"]
 
     required_files = [
         "aerosol.dat",
@@ -329,11 +331,11 @@ def update_table_files():
 
     restart_no = state.get("restart_no", 0)
 
-    diag_table_path = state.home / "diag_table"
-    field_table_path = state.home / "field_table.yaml"
+    diag_table_path = state.case_home / "diag_table"
+    field_table_path = state.case_home / "field_table.yaml"
 
-    user_diag = state.rundir / "diag_table"
-    user_field = state.rundir / "field_table"
+    user_diag = state.run_dir / "diag_table"
+    user_field = state.run_dir / "field_table"
 
     template_diag = state.configs / "diag_table"
     template_field = state.configs / "field_table.yaml"
@@ -366,7 +368,7 @@ def update_table_files():
 
 def update_namsfc(nml):
 
-    am_dir = Path(state.fix) / "am"
+    am_dir = Path(state.fixed_dir) / "am"
 
     namsfc = {
         "fnacna": "",

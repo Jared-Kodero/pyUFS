@@ -94,12 +94,12 @@ def to_fv3_grid(
 
 
 def load_grid(filename: Path, tile: int) -> xr.Dataset:
-    grid_file = Path(state.IC) / "perts" / f"tile.{tile}.grid.nc"
+    grid_file = Path(state.ic_data) / "perts" / f"tile.{tile}.grid.nc"
     if not grid_file.exists():
         if state.restart_no == 0:
             path = Path(state.input) / filename
         else:
-            path = Path(state.IC) / "INPUT" / filename
+            path = Path(state.ic_data) / "INPUT" / filename
         with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as ds:
             # Select coordinate variables only. `ds.dims` returns dimension names,
             # which are not necessarily variables and raise KeyError on selection.
@@ -488,7 +488,7 @@ def apply_perturbations():
     if not perturbations:
         return
 
-    sm_clim_path = Path(state.fix) / "era5" / "sm_monthly_1950_2025.nc"
+    sm_clim_path = Path(state.fixed_dir) / "era5" / "sm_monthly_1950_2025.nc"
 
     restart_no = state.restart_no
     total_restarts = state.total_restarts
@@ -584,7 +584,7 @@ def apply_perturbations():
         f"sm_perturbations detected for restart {restart_no}; applying perturbations"
     )
 
-    backup_dir = Path(state.IC) / "perts"
+    backup_dir = Path(state.ic_data) / "perts"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
     if restart_no >= 1:

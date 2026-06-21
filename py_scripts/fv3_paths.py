@@ -9,26 +9,26 @@ if TYPE_CHECKING:
     from fv3_state import FV3State
 
 env_paths = {}
-env_paths["fix"] = Path(os.getenv("FIX_DIR"))
-env_paths["home"] = Path(os.getenv("WORK_DIR"))
-env_paths["fix_am"] = env_paths["fix"] / "am"
+env_paths["case_home"] = Path(os.getenv("WORK_DIR"))
+env_paths["fixed_dir"] = Path(os.getenv("FIX_DIR"))
+env_paths["fixed_am"] = env_paths["fixed_dir"] / "am"
 env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
-env_paths["rundir"] = Path(os.getenv("CASE_PWD"))
+env_paths["run_dir"] = Path(os.getenv("CASE_PWD"))
 env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
 env_paths["scratch_dir"] = Path(os.getenv("SCRATCH_DIR"))
 env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
 
 
 case_paths = {}
-case_paths["tmp"] = env_paths["home"] / "TMP"
-case_paths["hist"] = env_paths["home"] / "HIST"
-case_paths["grid"] = env_paths["home"] / "GRID"
-case_paths["logs"] = env_paths["home"] / "LOGS"
-case_paths["fixed"] = env_paths["home"] / "FIXED"
-case_paths["input"] = env_paths["home"] / "INPUT"
-case_paths["output"] = env_paths["home"] / "OUTPUT"
-case_paths["restarts"] = env_paths["home"] / "RESTART"
-case_paths["IC"] = env_paths["home"] / "IC"
+case_paths["tmp"] = env_paths["case_home"] / "TMP"
+case_paths["hist"] = env_paths["case_home"] / "HIST"
+case_paths["grid"] = env_paths["case_home"] / "GRID"
+case_paths["logs"] = env_paths["case_home"] / "LOGS"
+case_paths["fixed"] = env_paths["case_home"] / "FIXED"
+case_paths["input"] = env_paths["case_home"] / "INPUT"
+case_paths["output"] = env_paths["case_home"] / "OUTPUT"
+case_paths["restarts"] = env_paths["case_home"] / "RESTART"
+case_paths["ic_data"] = env_paths["case_home"] / "IC"
 
 paths = {**env_paths, **case_paths}
 
@@ -45,7 +45,7 @@ def configure_directories(params: FV3State) -> dict:
             path.unlink()
 
     if not params.warm_start:
-        for item in case_paths["home"].iterdir():
+        for item in case_paths["case_home"].iterdir():
             _clear(item)
     else:
         _clear(case_paths["restarts"])
@@ -69,13 +69,13 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
     if not params.get("warm_start") or int(params.get("restart_no", 0)) == 0:
         return
 
-    home = Path(paths["home"])
-    archive_dir = home / "IC"
+    case_home = Path(paths["case_home"])
+    archive_dir = case_home / "ic_data"
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     prev_input_data = Path(paths["input"])
     prev_model_restart = Path(paths["restarts"])
-    curr_input_data = home / "INPUT"
+    curr_input_data = case_home / "INPUT"
 
     restart_no = int(params.restart_no)
     archive_index = restart_no - 1

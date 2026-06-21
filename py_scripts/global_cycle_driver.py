@@ -25,7 +25,7 @@ def drive_global_cycle(
 
     # Resolution formatting
     c_res = f"C{res}"
-    fix_am = fix / "am"
+    fixed_am = fix / "am"
 
     # Default: global-only
     nest_range = range(n_nests + 1) if n_nests > 0 else [0]
@@ -81,7 +81,7 @@ def drive_global_cycle(
             datetime=datetime,
             c_res=c_res,
             tmp_dir=tmp_dir,
-            fix_am=fix_am,
+            fixed_am=fixed_am,
             tmp_ic_dir=tmp_ic_dir,
             exec_dir=state.ufs_exe,
             n_nests=n_nests,

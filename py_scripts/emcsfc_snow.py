@@ -51,7 +51,7 @@ def run_emcsfc_snow(
     gfs_lpl_file : str
         Reduced grid definition (optional).
     climo_qc : str
-        Snow cover climatology file. Default: fix_am/emcsfc_snow_cover_climo.grib2.
+        Snow cover climatology file. Default: fixed_am/emcsfc_snow_cover_climo.grib2.
     model_snow_file : str
         Output file name.
     output_grib2 : bool
