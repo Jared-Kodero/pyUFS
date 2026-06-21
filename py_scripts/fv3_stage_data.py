@@ -103,5 +103,4 @@ def stage_files() -> None:
             rel_target = os.path.relpath(dest, start=f.parent)
             f.symlink_to(rel_target)
 
-    shutil.rmtree(state.tmp, ignore_errors=True)
-    Path(state.tmp).mkdir(parents=True, exist_ok=True)
+    os.system(f"rm -rf {state.tmp}/*")
