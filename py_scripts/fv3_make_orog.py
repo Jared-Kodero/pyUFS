@@ -1,8 +1,7 @@
-import os
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log
+from fv3_runtime import log, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -50,46 +49,45 @@ def _run_make_orog(
         out_grid = f"C{res}_grid.tile{tile}.nc"
 
     # Prepare working directory
-    os.chdir(workdir)
+    with tmp_cwd(workdir):
+        cp(orog_dir / "thirty.second.antarctic.new.bin", "fort.15")
+        cp(orog_dir / "landcover30.fixed", ".")
+        cp(orog_dir / "gmted2010.30sec.int", "fort.235")
 
-    cp(orog_dir / "thirty.second.antarctic.new.bin", "fort.15")
-    cp(orog_dir / "landcover30.fixed", ".")
-    cp(orog_dir / "gmted2010.30sec.int", "fort.235")
+        if inorogexist:
+            cp(inputorog, ".")
 
-    if inorogexist:
-        cp(inputorog, ".")
+        if not is_latlon:
+            cp(grid_dir / out_grid, ".")
 
-    if not is_latlon:
-        cp(grid_dir / out_grid, ".")
+        cp(orog, ".")
 
-    cp(orog, ".")
+        # Input file
+        mtnres, jcap, NR, NF1, NF2, efac, blat = 1, 0, 0, 0, 0, 0, 0
+        with open("INPS", "w") as f:
+            f.write(
+                f"{mtnres} {lonb or res} {latb or res} {jcap} {NR} {NF1} {NF2} {efac} {blat}\n"
+            )
+            f.write(f"{out_grid}\n")
+            f.write(f"{orogfile}\n")
 
-    # Input file
-    mtnres, jcap, NR, NF1, NF2, efac, blat = 1, 0, 0, 0, 0, 0, 0
-    with open("INPS", "w") as f:
-        f.write(
-            f"{mtnres} {lonb or res} {latb or res} {jcap} {NR} {NF1} {NF2} {efac} {blat}\n"
-        )
-        f.write(f"{out_grid}\n")
-        f.write(f"{orogfile}\n")
+        # Run executable
+        with open("INPS", "r") as fin:
+            cmd = [f"{orog}"]
 
-    # Run executable
-    with open("INPS", "r") as fin:
-        cmd = [f"{orog}"]
+            result, msgs = run_cmd(cmd, stdin=fin, log_file=log_file)
 
-        result, msgs = run_cmd(cmd, stdin=fin, log_file=log_file)
+        if result != 0:
+            log.error(msgs)
+            raise RuntimeError(f"Failed to generate orography for tile: [{tile}]")
 
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError(f"Failed to generate orography for tile: [{tile}]")
+        # Output file
+        if is_latlon:
+            outfile = f"oro.{lonb}x{latb}.nc"
+        else:
+            outfile = f"oro.C{res}.tile{tile}.nc"
 
-    # Output file
-    if is_latlon:
-        outfile = f"oro.{lonb}x{latb}.nc"
-    else:
-        outfile = f"oro.C{res}.tile{tile}.nc"
-
-    cp("out.oro.nc", out_dir / outfile)
+        cp("out.oro.nc", out_dir / outfile)
 
 
 def run_make_orog(

@@ -12,6 +12,7 @@ from sm_perturbations import apply_perturbations
 
 
 def init_driver():
+    os.chdir(state.home)
 
     if not state.ic_gen:
         init_external_ic()
@@ -62,7 +63,6 @@ def init_driver():
         return
 
     os.chdir(state.home)
-
     log.info("Init Run")
     update_nml_configs()
     apply_perturbations()

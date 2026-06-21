@@ -1,8 +1,7 @@
-import os
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log
+from fv3_runtime import log, tmp_cwd
 from fv3_state import state
 from fv3_utils import run_cmd
 
@@ -108,29 +107,28 @@ def run_add_lakefrac(
     workdir = tmp / f"C{res}" / "orog" / "tiles"
     workdir.mkdir(parents=True, exist_ok=True)
 
-    os.chdir(workdir)
+    with tmp_cwd(workdir):
+        # Link required orog + grid files
+        if gtype == "uniform":
+            tile_beg, tile_end = 1, 6
+        else:  # regional_gfdl
+            tile_beg = tile_end = 7
 
-    # Link required orog + grid files
-    if gtype == "uniform":
-        tile_beg, tile_end = 1, 6
-    else:  # regional_gfdl
-        tile_beg = tile_end = 7
+        args = [
+            (
+                workdir,
+                res,
+                tile,
+                gtype,
+                orog_dir,
+                grid_dir,
+                topo,
+                lake_cutoff,
+                exec_dir,
+                state.logs / f"add_lakefrac_tile{tile}.log",
+            )
+            for tile in range(tile_beg, tile_end + 1)
+        ]
 
-    args = [
-        (
-            workdir,
-            res,
-            tile,
-            gtype,
-            orog_dir,
-            grid_dir,
-            topo,
-            lake_cutoff,
-            exec_dir,
-            state.logs / f"add_lakefrac_tile{tile}.log",
-        )
-        for tile in range(tile_beg, tile_end + 1)
-    ]
-
-    with Pool(processes=len(args)) as pool:
-        pool.starmap(_run_add_lakefrac, args)
+        with Pool(processes=len(args)) as pool:
+            pool.starmap(_run_add_lakefrac, args)
