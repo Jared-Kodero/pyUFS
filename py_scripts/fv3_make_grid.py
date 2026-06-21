@@ -505,5 +505,5 @@ def run_make_grid(
         else:
             raise ValueError(f"Unsupported gtype {gtype}")
 
-    calc_cpu_alloc(Path(state.tmp / "grid"))
-    save_state()
+        calc_cpu_alloc(Path(state.tmp / "grid"))
+        save_state()
