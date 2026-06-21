@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import time
 from pathlib import Path
 from typing import Literal
@@ -7,7 +8,7 @@ from typing import Literal
 import numpy as np
 import xarray as xr
 from fv3_runtime import log
-from fv3_state import state
+from fv3_state import save_state, state
 from fv3_utils import run_cmd
 from pyproj import Proj
 
@@ -197,6 +198,15 @@ def validate_hrrr_bounds(tile: int) -> str:
     if is_contained:
         return "HRRR"
     return "GFS"
+
+
+def ic_only():
+    files_to_rm = []
+    for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
+        files_to_rm.extend(state.home.glob(pattern))
+    subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
+    Path(state.home / "ic.only").touch()
+    save_state()
 
 
 def init_external_ic() -> bool:
