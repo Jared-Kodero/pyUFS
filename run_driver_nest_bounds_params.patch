@@ -1,0 +1,45 @@
+diff --git a/py_scripts/fv3_driver_grid.py b/py_scripts/fv3_driver_grid.py
+index e6fd551..ee7273f 100755
+--- a/py_scripts/fv3_driver_grid.py
++++ b/py_scripts/fv3_driver_grid.py
+@@ -29,6 +29,10 @@ def run_driver(
+     iend_nest: float = None,
+     jend_nest: float = None,
+     parent_tile: float = None,
++    lon_min: float = None,
++    lon_max: float = None,
++    lat_min: float = None,
++    lat_max: float = None,
+     n_nests: int = None,
+     halo: int = None,
+     idim: int = None,
+@@ -191,10 +195,10 @@ def run_driver(
+         offsets = get_nest_indices(
+             parent_res=res,
+             refine_ratio=refine_ratio,
+-            lon_min=state.lon_min,
+-            lon_max=state.lon_max,
+-            lat_min=state.lat_min,
+-            lat_max=state.lat_max,
++            lon_min=lon_min,
++            lon_max=lon_max,
++            lat_min=lat_min,
++            lat_max=lat_max,
+             parent_tile=6,
+             grid_dir=None,
+         )
+diff --git a/py_scripts/fv3_init_driver.py b/py_scripts/fv3_init_driver.py
+index ab920f5..102af81 100755
+--- a/py_scripts/fv3_init_driver.py
++++ b/py_scripts/fv3_init_driver.py
+@@ -35,6 +35,10 @@ def init_driver():
+             iend_nest=state.iend_nest,
+             jend_nest=state.jend_nest,
+             parent_tile=state.parent_tile,
++            lon_min=state.lon_min,
++            lon_max=state.lon_max,
++            lat_min=state.lat_min,
++            lat_max=state.lat_max,
+             n_nests=state.n_nests,
+             halo=state.halo,
+             idim=state.idim,
