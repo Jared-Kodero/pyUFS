@@ -1,8 +1,7 @@
-import os
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import get_newres, log
+from fv3_runtime import get_newres, log, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -210,16 +209,16 @@ def run_make_mosaic(
 
     log_file = state.logs / "make_mosaic.log"
     make_solo_mosaic = exec_dir / "make_solo_mosaic"
-    os.chdir(out_dir)
 
-    if gtype in ["uniform", "stretch"]:
-        _mosaic_for_uniform_and_stretch(res, out_dir, make_solo_mosaic, log_file)
+    with tmp_cwd(out_dir):
+        if gtype in ["uniform", "stretch"]:
+            _mosaic_for_uniform_and_stretch(res, out_dir, make_solo_mosaic, log_file)
 
-    elif gtype == "nest":
-        _mosaic_for_nest(res, out_dir, make_solo_mosaic, log_file)
+        elif gtype == "nest":
+            _mosaic_for_nest(res, out_dir, make_solo_mosaic, log_file)
 
-    elif gtype == "regional_gfdl":
-        _mosaic_for_regionalgfdl(res, out_dir, make_solo_mosaic, log_file)
+        elif gtype == "regional_gfdl":
+            _mosaic_for_regionalgfdl(res, out_dir, make_solo_mosaic, log_file)
 
-    elif gtype == "regional_esg":
-        _mosaic_for_regionalesg(res, out_dir, make_solo_mosaic, log_file)
+        elif gtype == "regional_esg":
+            _mosaic_for_regionalesg(res, out_dir, make_solo_mosaic, log_file)

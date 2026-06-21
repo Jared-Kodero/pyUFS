@@ -1,8 +1,7 @@
-import os
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log
+from fv3_runtime import log, tmp_cwd
 from fv3_state import FV3State, state
 from fv3_utils import cp, run_cmd
 
@@ -45,37 +44,36 @@ def _run_make_orog_gsl(
         out_grid = f"C{res}_grid.tile{tile}.halo{halo}.nc"
 
     # Work in temporary directory
-    os.chdir(workdir)
+    with tmp_cwd(workdir):
+        # Symlinks to required inputs
+        (workdir / out_grid).symlink_to(grid_dir / out_grid)
+        (workdir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc").symlink_to(
+            topo_dir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc"
+        )
+        (workdir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc").symlink_to(
+            topo_dir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc"
+        )
 
-    # Symlinks to required inputs
-    (workdir / out_grid).symlink_to(grid_dir / out_grid)
-    (workdir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc").symlink_to(
-        topo_dir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc"
-    )
-    (workdir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc").symlink_to(
-        topo_dir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc"
-    )
+        cp(orog_gsl, ".")
 
-    cp(orog_gsl, ".")
+        # Write grid_info.dat
+        with open("grid_info.dat", "w") as f:
+            f.write(f"{tile}\n{res}\n{halo}\n")
 
-    # Write grid_info.dat
-    with open("grid_info.dat", "w") as f:
-        f.write(f"{tile}\n{res}\n{halo}\n")
+        with open("grid_info.dat", "r") as fin:
+            cmd = [f"{orog_gsl}"]
+            result, msgs = run_cmd(cmd, stdin=fin, log_file=log_file)
 
-    with open("grid_info.dat", "r") as fin:
-        cmd = [f"{orog_gsl}"]
-        result, msgs = run_cmd(cmd, stdin=fin, log_file=log_file)
+        if result != 0:
+            log.error(msgs)
+            raise RuntimeError(f"Failed to run orog_gsl for tile: [{tile}]")
 
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError(f"Failed to run orog_gsl for tile: [{tile}]")
+        # Move outputs
+        for nc in workdir.glob("C*oro_data_*.nc"):
+            cp(nc, f"{out_dir}/")
 
-    # Move outputs
-    for nc in workdir.glob("C*oro_data_*.nc"):
-        cp(nc, f"{out_dir}/")
-
-    log.info(f"ORO_DATA FILES CREATED IN: {out_dir}")
-    return list(out_dir.glob("C*oro_data_*.nc"))
+        log.info(f"ORO_DATA FILES CREATED IN: {out_dir}")
+        return list(out_dir.glob("C*oro_data_*.nc"))
 
 
 def run_make_orog_gsl(
