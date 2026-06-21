@@ -45,15 +45,15 @@ def configure_directories(params: FV3State) -> dict:
             path.unlink()
 
     if not params.warm_start:
-        for item in case_paths["case_home"].iterdir():
+        for item in paths["case_home"].iterdir():
             _clear(item)
     else:
-        _clear(case_paths["restarts"])
+        _clear(paths["restarts"])
 
     for k, d in case_paths.items():
         d.mkdir(parents=True, exist_ok=True)
 
-    return {**env_paths, **case_paths}
+    return paths
 
 
 def config_restart_dir(paths: dict, params: FV3State) -> None:
@@ -70,7 +70,7 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
         return
 
     case_home = Path(paths["case_home"])
-    archive_dir = case_home / "ic_data"
+    archive_dir = Path(paths["ic_data"])
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     prev_input_data = Path(paths["input"])
