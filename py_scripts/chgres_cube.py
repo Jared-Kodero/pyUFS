@@ -277,8 +277,8 @@ def apply_config_settings(
     tile: int,
     n_cpus: int,
     ext_model: str,
-    yml_cfg: dict,
-    domain_f41: dict,
+    yml_cfg: FV3State,
+    domain_f41: FV3State,
 ) -> str:
     if ext_model == "HRRR" and domain.startswith(("tile", "regional")):
         ext_model = validate_hrrr_bounds(tile)
@@ -289,8 +289,8 @@ def apply_config_settings(
             domain_f41.varmap_file = varmap_file
         else:
             # Revert to GFS  settings
-            yml_cfg["convert_sfc"] = True
-            yml_cfg["convert_atm"] = True
+            yml_cfg.convert_sfc = True
+            yml_cfg.convert_atm = True
 
     elif ext_model == "GFS":
         pass
