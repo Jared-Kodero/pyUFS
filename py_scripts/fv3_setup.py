@@ -32,7 +32,7 @@ def print_logs():
 
 def parse_input():
 
-    input_params = {}
+    input_params = FV3State({})
 
     default_config_path = state.configs / "run_config.yaml"
 
@@ -64,9 +64,9 @@ def parse_input():
             raise KeyError(msg)
         input_params[k] = v
 
-    input_params["run_config"] = Path(yml_path)
-    if "res" in input_params and input_params["res"] is not None:
-        input_params["res"] = parse_resolution(input_params["res"])
+    input_params.run_config = Path(yml_path)
+    if "res" in input_params and input_params.res is not None:
+        input_params.res = parse_resolution(input_params.res)
 
     for k, v in params_keys.items():
         if v is None:
@@ -83,16 +83,16 @@ def parse_input():
     if not isinstance(n_split, list) and n_split is not None:
         n_split = [n_split]
 
-    input_params["k_split"] = k_split
-    input_params["n_split"] = n_split
+    input_params.k_split = k_split
+    input_params.n_split = n_split
 
-    input_params["case_description"] = input_params.get("description", "")
+    input_params.case_description = input_params.get("description", "")
 
-    input_params["warm_start"] = input_params.get("continue_run", False)
+    input_params.warm_start = input_params.get("continue_run", False)
     # validate the length of k_split and n_split
 
-    description = [input_params["init_datetime"], state["case_name"]]
-    input_params["description"] = "_".join([str(d).upper() for d in description if d])
+    description = [input_params.init_datetime, state.case_name]
+    input_params.description = "_".join([str(d).upper() for d in description if d])
 
     check_prev_state(input_params)
     input_params = parse_datetime(input_params)
@@ -101,22 +101,22 @@ def parse_input():
 
 
 def _append_init_logs(params: FV3State) -> None:
-    run_logs.append(f"Current directory: {params['rundir']}")
-    run_logs.append(f"Working directory: {params['home']}")
-    run_logs.append(f"Case directory: {params['case_dir']}")
-    run_logs.append(f"Archive directory: {params['archive_dir']}")
-    run_logs.append(f"Fixed/static directory: {params['fix']}")
-    run_logs.append(f"Configuration file: {params['run_config']}")
+    run_logs.append(f"Current directory: {params.rundir}")
+    run_logs.append(f"Working directory: {params.home}")
+    run_logs.append(f"Case directory: {params.case_dir}")
+    run_logs.append(f"Archive directory: {params.archive_dir}")
+    run_logs.append(f"Fixed/static directory: {params.fix}")
+    run_logs.append(f"Configuration file: {params.run_config}")
 
     if "shield_exe" in params:
-        run_logs.append(f"Model executable: {params['shield_exe']}")
+        run_logs.append(f"Model executable: {params.shield_exe}")
     else:
         run_logs.append("Model executable: container image (SHiELD)")
 
     run_logs.append(f"Description: {params.description}")
     run_logs.append("Initial run mode selected")
 
-    if params["update_nml_only"]:
+    if params.update_nml_only:
         run_logs.append("`update_nml_only` flag is set to true.")
     else:
         run_logs.append("Full Grid/IC regeneration will be performed.")
@@ -124,7 +124,7 @@ def _append_init_logs(params: FV3State) -> None:
     if state.ensemble_run:
         run_logs.append(f"Ensemble run [{state.ensemble_id}/{state.n_ensembles}]")
 
-    run_logs.append(f"Model initialization time: {params['init_datetime']} UTC")
+    run_logs.append(f"Model initialization time: {params.init_datetime} UTC")
     run_logs.append(f"Forecast length: {params.run_nhours} hours")
     run_logs.append(f"Vertical levels: {params.levels}")
 
@@ -150,7 +150,7 @@ def _append_restart_logs(params: FV3State) -> None:
 def preprocess_input():
 
     load_state()
-    params = FV3State(parse_input())  # Get parsed arguments
+    params = parse_input()  # Get parsed arguments
 
     if py_ncpus < 32:
         raise RuntimeError(
