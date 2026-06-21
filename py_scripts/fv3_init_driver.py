@@ -1,3 +1,5 @@
+import os
+
 from chgres_cube import run_chgres_cube
 from fv3_driver_grid import run_driver
 from fv3_ensemble_driver import ensemble_config
@@ -58,6 +60,8 @@ def init_driver():
     if state.ic_only:
         ic_only()
         return
+
+    os.chdir(state.home)
 
     log.info("Init Run")
     update_nml_configs()
