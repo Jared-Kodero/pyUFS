@@ -2,6 +2,7 @@
 tests/
 *.ipynb
 *.nc
+__pycache__
 
 
 
