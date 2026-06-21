@@ -190,8 +190,8 @@ def run_chgres_cube() -> None:
     f41.cycle_hour = state.init_datetime.hour
     f41.orog_dir_target_grid = ic_dir
     f41.fix_dir_target_grid = ic_dir / "fix_sfc"
-    f41.vcoord_file_target_grid = state.fix_am / f"global_hyblev.l{state.levels}.txt"
-    f41.varmap_file = state.fix / "varmap_tables" / "GFSphys_var_map.txt"
+    f41.vcoord_file_target_grid = state.fixed_am / f"global_hyblev.l{state.levels}.txt"
+    f41.varmap_file = state.fixed_dir / "varmap_tables" / "GFSphys_var_map.txt"
 
     # Create symlinks for fix files
     link_fix_files(state.res, f41)
@@ -284,8 +284,8 @@ def apply_config_settings(
         ext_model = validate_hrrr_bounds(tile)
 
         if ext_model == "HRRR":
-            varmap_file = state.fix / "varmap_tables" / "GSDphys_var_map.txt"
-            domain_f41.geogrid_file_input_grid = state.fix_am / "geo_em.d01.nc_HRRRX"
+            varmap_file = state.fixed_dir / "varmap_tables" / "GSDphys_var_map.txt"
+            domain_f41.geogrid_file_input_grid = state.fixed_am / "geo_em.d01.nc_HRRRX"
             domain_f41.varmap_file = varmap_file
         else:
             # Revert to GFS  settings

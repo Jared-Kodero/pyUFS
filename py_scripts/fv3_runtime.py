@@ -28,7 +28,7 @@ def get_launcher(n_procs: int = None) -> list:
 
 
 def exit_code(code: int) -> None:
-    (paths["home"] / "exit_code").write_text(str(code))
+    (paths["case_home"] / "exit_code").write_text(str(code))
 
 
 def open_yaml(path: Path) -> dict:
@@ -73,7 +73,7 @@ def to_list(x: object) -> list:
 
 @contextmanager
 def tmp_cwd(path: Path | str):
-    cwd = paths["home"]
+    cwd = paths["case_home"]
     try:
         os.chdir(path)
         yield
