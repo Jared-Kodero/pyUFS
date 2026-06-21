@@ -47,15 +47,14 @@ def _download_data(
     for url, source in zip(urls, sources):
         if _wget(url, output_path):
             log.info(f"Successfully retrieved {external_model} IC data from {source}")
-            return
+            return external_model
         log.warning(f"Failed to retrieve {external_model} IC data from {source}")
 
     if external_model == "HRRR":
         log.warning(
             f"Falling back to GFS IC data for {datetime} since all HRRR sources failed"
         )
-        get_IC(external_model="GFS")
-        return
+        return get_IC(external_model="GFS")
 
     raise RuntimeError(
         f"All download sources failed for {external_model} at {datetime}.\nAttempted URLs:\n{urls}"
@@ -227,8 +226,7 @@ def init_external_ic() -> bool:
         or not any((state.case_home / d).iterdir())
     ]
     if missing:
-        log.error(
+        raise FileNotFoundError(
             f"Incomplete IC staging in {state.case_home}: {', '.join(missing)} missing or empty"
         )
-        return False
     return True

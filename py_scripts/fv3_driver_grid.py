@@ -294,12 +294,18 @@ def run_driver(
             )
 
         # --- Replace res with derived resolution ---
+        old_res = res
         res = get_newres(tmp / "grid" / f"C{res}_grid.tile7.nc")
+
+        # replace res part in the prev generated grid/orog files with the new res for consistency
+        for f in (tmp / "grid").glob(f"*{old_res}*"):
+            new_name = f.name.replace(f"{old_res}", f"{res}")
+            f.rename(tmp / "grid" / new_name)
 
         # --- Make orography ---
         run_make_orog(
             res=res,
-            tile=tile,
+            tiles=[tile],
             grid_dir=tmp / "grid",
             out_dir=tmp / "orog",
             orog_dir=orog_dir,
@@ -352,7 +358,7 @@ def run_driver(
         run_make_orog_gsl(
             make_gsl_orog=make_gsl_orog,
             res=res,
-            tile=tile,
+            tiles=[tile],
             halo=0,
             grid_dir=tmp / "grid",
             out_dir=tmp / "orog",

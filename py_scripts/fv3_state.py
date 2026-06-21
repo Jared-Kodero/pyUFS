@@ -22,9 +22,9 @@ logging.basicConfig(
 
 class FV3State(dict):
     __slots__ = ()
-    __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+    __getattr__ = dict.get
 
 
 state = FV3State({})
