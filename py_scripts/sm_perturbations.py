@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Literal
 
-import numpy as np
 import xarray as xr
 import xesmf as xe
 from fv3_runtime import log
@@ -49,60 +47,50 @@ def to_fv3_grid(
     interpolation. Regridding weights are recomputed on every call.
     """
 
-    def _to_fv3_grid(grid_in, grid_out, method) -> xr.Dataset:
+    ll_grid = xr.Dataset(
+        {
+            "lat": grid_in["lat"],
+            "lon": grid_in["lon"],
+        }
+    )
 
-        ll_grid = xr.Dataset(
-            {
-                "lat": grid_in["lat"],
-                "lon": grid_in["lon"],
-            }
-        )
+    c_grid = xr.Dataset(
+        {
+            "lat": grid_out["geolat"],
+            "lon": grid_out["geolon"],
+        }
+    )
 
-        c_grid = xr.Dataset(
-            {
-                "lat": grid_out["geolat"],
-                "lon": grid_out["geolon"],
-            }
-        )
+    regridder = xe.Regridder(
+        ll_grid,
+        c_grid,
+        method=method,
+    )
 
-        regridder = xe.Regridder(
-            ll_grid,
-            c_grid,
-            method=method,
-        )
+    # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
+    # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
 
-        # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
-        # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
+    out = regridder(grid_in)
 
-        out = regridder(grid_in)
+    if "Time" not in out.coords:
+        out = out.expand_dims("Time", axis=0)
 
-        if "Time" not in out.coords:
-            out = out.expand_dims("Time", axis=0)
+    out.attrs = grid_out.attrs
+    out_coords = set(out.coords)
+    for c in out_coords:
+        if c in grid_out.coords:
+            out[c].attrs = grid_out[c].attrs
+        else:
+            out = out.drop_vars(c)
 
-        out.attrs = grid_out.attrs
-        out_coords = set(out.coords)
-        for c in out_coords:
-            if c in grid_out.coords:
-                out[c].attrs = grid_out[c].attrs
-            else:
-                out = out.drop_vars(c)
+    out["Time"] = grid_out["Time"]
 
-        out["Time"] = grid_out["Time"]
+    new_dims = [d for d in grid_out.dims if d in out.dims]
+    out = out.transpose(*new_dims)
 
-        new_dims = [d for d in grid_out.dims if d in out.dims]
-        out = out.transpose(*new_dims)
+    out.attrs = grid_out.attrs
 
-        out.attrs = grid_out.attrs
-
-        return out
-
-    for i in range(11):
-        try:
-            return _to_fv3_grid(grid_in, grid_out, method)
-        except Exception:
-            if i == 10:
-                raise
-            time.sleep(np.random.uniform(i, 60 + i))
+    return out
 
 
 def load_grid(filename: Path, tile: int) -> xr.Dataset:
