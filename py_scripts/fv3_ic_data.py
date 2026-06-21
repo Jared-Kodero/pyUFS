@@ -1,30 +1,15 @@
 from __future__ import annotations
 
-import os
-import re
-import shutil
-import subprocess
-import tarfile
 import time
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
 import xarray as xr
-from fv3_namelists import update_table_files
-from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log
-from fv3_state import merge_saved_state, save_state, state
+from fv3_state import state
 from fv3_utils import run_cmd
 from pyproj import Proj
-
-# Matches ens / ENS / ensemble / ENSEMBLE / mem / MEM / member / MEMBER
-# followed by exactly two digits. Group 1 captures the digits.
-_ENS_DIR_PATTERN = re.compile(
-    r"(?:ens(?:emble)?|mem(?:ber)?)(\d{2})",
-    flags=re.IGNORECASE,
-)
-_ENS_PREFIXES = ("ens", "ENS", "ensemble", "ENSEMBLE", "mem", "MEM", "member", "MEMBER")
 
 
 def _wget(url: str, output_path: Path) -> bool:
@@ -214,272 +199,25 @@ def validate_hrrr_bounds(tile: int) -> str:
     return "GFS"
 
 
-def ic_only():
-    files_to_rm = []
-    for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
-        files_to_rm.extend(state.home.glob(pattern))
-    subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
-    Path(state.home / "ic.only").touch()
-    save_state()
+def init_external_ic() -> bool:
+    """
+    Verify that the working directory already holds a complete, user-staged
+    set of initial-condition inputs. This performs validation only and copies
+    nothing.
 
-
-def _unpack_case_tarball(src: Path) -> Path:
-
-    unpack_name = src.parent.name
-    unpack_root = state.home / "case.tar.gz"
-    unpack_dir = unpack_root / unpack_name
-
-    shutil.rmtree(unpack_dir, ignore_errors=True)
-    unpack_dir.mkdir(parents=True, exist_ok=True)
-
-    _tarball = unpack_root / src.name
-    shutil.copy2(src, _tarball)
-
-    log.info(f"IC source tarball: {src}")
-    log.info(f"Unpacking IC source tarball to: {unpack_dir}")
-
-    try:
-        with tarfile.open(_tarball, mode="r:*") as tf:
-            tf.extractall(unpack_dir)
-    finally:
-        _tarball.unlink(missing_ok=True)
-
-    return unpack_dir
-
-
-def _is_unpacked_case(path: Path) -> bool:
-    if not path.is_dir():
+    Returns True only if FIXED, GRID, IC, and INPUT each exist under
+    state.home and are non-empty. Otherwise logs the offending directories
+    and returns False.
+    """
+    required = ("FIXED", "GRID", "IC", "INPUT")
+    missing = [
+        d
+        for d in required
+        if not (state.home / d).is_dir() or not any((state.home / d).iterdir())
+    ]
+    if missing:
+        log.error(
+            f"Incomplete IC staging in {state.home}: {', '.join(missing)} missing or empty"
+        )
         return False
-
-    fixed = path / "FIXED"
-    grid = path / "GRID"
-
-    if not fixed.is_dir() or not any(fixed.iterdir()):
-        return False
-
-    if not grid.is_dir() or not any(grid.iterdir()):
-        return False
-
-    candidate = path / "IC" / "INPUT"
-
-    if candidate.is_dir() and any(candidate.iterdir()):
-        return True
-
-    return False
-
-
-def _validate_ic_case(path: Path, src_type: str = "case") -> None:
-    """
-    Validate that a resolved IC source is an unpacked case containing:
-        - non-empty FIXED
-        - non-empty GRID
-        - non-empty INPUT or IC/INPUT
-    """
-
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Specified IC source case path does not exist:\n{path}"
-        )
-
-    if not path.is_dir():
-        raise ValueError(f"Specified IC source case path is not a directory:\n{path}")
-
-    fixed = path / "FIXED"
-    grid = path / "GRID"
-
-    if not fixed.is_dir() or not any(fixed.iterdir()):
-        raise FileNotFoundError(
-            f"Specified IC source case is not a valid unpacked case.\nExpected non-empty FIXED directory under:\n\t{fixed}"
-        )
-
-    if not grid.is_dir() or not any(grid.iterdir()):
-        raise FileNotFoundError(
-            f"Specified IC source case is not a valid unpacked case.\nExpected non-empty GRID directory under:\n\t{grid}"
-        )
-
-    if src_type == "case":
-        input_dir = "IC/INPUT"
-    elif src_type == "external":
-        input_dir = "INPUT"
-
-    input_candidate = path / input_dir
-
-    if input_candidate.is_dir() and any(input_candidate.iterdir()):
-        return
-
-    expected = "\n".join(f"\t{p}" for p in [input_candidate])
-
-    raise FileNotFoundError(
-        f"Specified IC source case has no initial condition files.\nExpected non-empty files under one of:\n{expected}"
-    )
-
-
-def _resolve_case_dir_or_tarball(src: Path) -> Path:
-    if not src.exists():
-        raise FileNotFoundError(f"Specified IC source case path does not exist:\n{src}")
-
-    if src.is_file():
-        if not tarfile.is_tarfile(str(src)):
-            raise ValueError(f"Specified IC source file is not a tarball:\n{src}")
-
-        return _unpack_case_tarball(src)
-
-    if not src.is_dir():
-        raise ValueError(f"Specified IC source case path is not a directory:\n{src}")
-
-    if _is_unpacked_case(src):
-        return src
-
-    case_tarball = src / "case.tar.gz"
-
-    if case_tarball.is_file():
-        if not tarfile.is_tarfile(str(case_tarball)):
-            raise ValueError(
-                f"Specified IC source file is not a tarball:\n{case_tarball}"
-            )
-
-        return _unpack_case_tarball(case_tarball)
-
-    msg = "\n".join(
-        [
-            "Invalid IC source case.",
-            f"Source path:\n\t{src}",
-            "Expected one of the following:",
-            f"\t1. An unpacked case directory containing:\n\t   {src / 'FIXED'}\n\t   {src / 'GRID'}\n\t   {src / 'IC' / 'INPUT'}",
-            f"\t2. A tarball at:\n\t   {src / 'case.tar.gz'}",
-            "Root-level INPUT is not valid for ic_source_type='case' because it may contain staged runtime or restart files.",
-            f"If the IC files are intentionally stored directly under:\n\t{src}\n",
-            "\tset ic_source_type: external",
-        ]
-    )
-
-    raise FileNotFoundError(msg)
-
-
-def _resolve_ic_source_path(src: Path) -> tuple[Path, bool]:
-
-    ens_id_str = f"{state.ensemble_id:02d}"
-
-    if not src.exists():
-        raise FileNotFoundError(f"Specified IC source case path does not exist:\n{src}")
-
-    if not state.ensemble_run:
-        resolved = _resolve_case_dir_or_tarball(src)
-        _validate_ic_case(resolved)
-        return resolved
-
-    if src.is_file():
-        match = _ENS_DIR_PATTERN.fullmatch(src.parent.name)
-        if match is None:
-            msg = "Expected IC source tarball for ensemble run to be under a directory named "
-            msg = msg + f"{{{'/'.join(_ENS_PREFIXES)}}} followed by 2 digits, "
-            msg = msg + f"got {src.parent.name}"
-            raise ValueError(msg)
-
-        if state.paired_ensembles and match.group(1) != ens_id_str:
-            raise ValueError(
-                f"Expected IC source tarball under ensemble id {ens_id_str}, got {src.parent.name}"
-            )
-
-        resolved = _resolve_case_dir_or_tarball(src)
-        _validate_ic_case(resolved)
-        return resolved
-
-    if not src.is_dir():
-        raise ValueError(f"Specified IC source case path is not a directory:\n{src}")
-
-    src_match = _ENS_DIR_PATTERN.fullmatch(src.name)
-
-    if src_match is not None:
-        if state.paired_ensembles and src_match.group(1) != ens_id_str:
-            raise ValueError(
-                f"Expected IC source directory ensemble id {ens_id_str}, got {src.name}"
-            )
-        candidate_paths = [src]
-    else:
-        candidate_paths = [src]
-        for child in sorted(src.iterdir()):
-            if not child.is_dir():
-                continue
-            m = _ENS_DIR_PATTERN.fullmatch(child.name)
-            if m is not None and m.group(1) == ens_id_str:
-                candidate_paths.append(child)
-
-    errors: list[str] = []
-    for candidate in candidate_paths:
-        try:
-            resolved = _resolve_case_dir_or_tarball(candidate)
-            _validate_ic_case(resolved)
-            return resolved
-        except (FileNotFoundError, ValueError) as exc:
-            errors.append(f"{candidate}: {exc}")
-
-    raise FileNotFoundError(
-        "No valid IC source case found. Tried:\n" + "\n".join(errors)
-    )
-
-
-def init_external_ic() -> None:
-    """
-    Copy IC data from an existing case into the working directory,
-    preserving symlinks and mimicking `cp -rf` semantics.
-    """
-
-    src = state.get("ic_source_path", None)
-    src = Path(src) if src is not None else None
-    ic_src_type = state.get("ic_source_type", "case").lower()
-    if ic_src_type not in ["case", "external"]:
-        raise ValueError(
-            f"Invalid IC source type: {ic_src_type}. Expected 'case' or 'external'."
-        )
-
-    if not src:
-        merge_saved_state()
-        return
-
-    log.info("Skipping Grid and IC generation; using existing files")
-    log.info(f"Using IC data from case: {state.get('ic_source_path')}")
-
-    if ic_src_type == "case":
-        src = _resolve_ic_source_path(src)
-        src_ic = src / "IC" / "INPUT"
-    else:
-        src_ic = Path(src)
-        _validate_ic_case(src_ic, src_type="external")
-
-    log.info(f"Resolved IC source directory: {src_ic}")
-
-    if not src.exists() or not any(src.iterdir()):
-        msg = f"Directory is empty: {src.resolve()}\n"
-        msg = msg + "No initial condition files detected"
-        msg = msg + f"Ensure files are placed in:\n\t{src_ic}"
-        raise ValueError(msg)
-
-    subprocess.run(["cp", "-rf", f"{src}/.", f"{state.home}/"], check=True)
-
-    for d in ["INPUT", "HIST", "RESTART", "LOGS"]:
-        p = state.home / d
-        subprocess.run(["rm", "-rf", str(p)], check=True)
-        p.mkdir(parents=True, exist_ok=True)
-
-    if ic_src_type == "case":
-        subprocess.run(["cp", "-rf", f"{src_ic}/.", f"{state.home}/INPUT/"], check=True)
-
-    dirs_to_rm = list((state.home / "IC").glob("R*"))
-    dirs_to_rm = dirs_to_rm + [state.home / "IC" / "INPUT"]
-
-    files_to_rm = []
-    for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
-        files_to_rm.extend(state.home.glob(pattern))
-
-    subprocess.run(["rm", "-rf", *map(str, dirs_to_rm)], check=True)
-    subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
-    subprocess.run(["rm", "-rf", str(state.home / "case.tar.gz")], check=True)
-
-    run_id = os.environ.get("CURR_RUN_ID", "0")
-    (state.home / "run.id").write_text(str(run_id))
-
-    merge_saved_state()
-
-    update_table_files()
-    calc_cpu_alloc(state.input)
+    return True

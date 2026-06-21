@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import copy
 import os
 import shutil
 from pathlib import Path
 
-from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log, sort_paths
-from fv3_state import compute_checksum, merge_saved_state, save_state, state
+from fv3_state import state
 from fv3_utils import cp, rename
 
 
@@ -107,100 +105,3 @@ def stage_files() -> None:
 
     shutil.rmtree(state.tmp, ignore_errors=True)
     Path(state.tmp).mkdir(parents=True, exist_ok=True)
-
-    cache_ic_files()
-
-
-def cache_ic_files():
-
-    if not state.cached_ic:
-        return False
-
-    save_state()
-    cache_dir = state.scratch_dir / ".cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-
-    checksum = compute_checksum(state)
-    cache_subdir = cache_dir / checksum
-    cache_subdir.mkdir(parents=True, exist_ok=True)
-    for dir in [state.grid, state.input]:
-        dest = cache_subdir / dir.name
-        if dest.exists():
-            shutil.rmtree(dest)
-        shutil.copytree(dir, dest)
-
-    _keys_to_remove = (
-        "n_cpus",
-        "checksum",
-        "n_nodes",
-        "node_list",
-        "n_cpus_per_node",
-        "multi_node",
-        "total_pes",
-        "global_pes",
-        "grid_pes",
-        "case_name",
-        "case_description",
-        "description",
-        "restart_no",
-        "resubmit",
-        "total_restarts",
-        "total_run_hours",
-        "run_nhours",
-        "continue_run",
-        "warm_start",
-        "ensemble_id",
-        "n_ensembles",
-        "ensemble_run",
-        "paired_ensembles",
-        "archive_data",
-        "cached_ic",
-        "ic_gen",
-        "ic_only",
-        "sm_perturbations",
-        "update_nml_only",
-        "fv3_debug",
-        "shield_exe",
-    )
-
-    cached_cfg = copy.deepcopy(state)
-
-    for k in _keys_to_remove:
-        cached_cfg.pop(k, None)
-
-    state_yaml_cache = cache_subdir / checksum
-
-    save_state(cached_cfg, path=state_yaml_cache)
-
-    log.info("Cached IC files. Set `ic_cache: false` to disable IC caching.")
-
-
-def cached_ic_files():
-    if not state.cached_ic:
-        return False
-
-    cache_dir = state.scratch_dir / ".cache"
-    checksum = compute_checksum(state)
-
-    grid_dir = cache_dir / checksum / state.grid.name
-    input_dir = cache_dir / checksum / state.input.name
-    state_yaml_src = cache_dir / checksum / checksum
-    if not grid_dir.exists() or not input_dir.exists() or not state_yaml_src.exists():
-        return False
-
-    for src, dest in [(grid_dir, state.grid), (input_dir, state.input)]:
-        if dest.exists():
-            shutil.rmtree(dest)
-        shutil.copytree(src, dest)
-
-    state_yaml_dest = state.home / "state.yaml"
-    shutil.copy(state_yaml_src, state_yaml_dest)
-
-    merge_saved_state()
-    calc_cpu_alloc(state.input)
-    save_state()
-
-    log.info(
-        "Loaded cached IC files. Set `ic_cache: false` in run_config.yaml to disable cached IC loading."
-    )
-    return True
