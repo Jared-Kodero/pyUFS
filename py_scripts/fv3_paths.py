@@ -44,18 +44,11 @@ def configure_directories(params: FV3State) -> dict:
         else:
             path.unlink()
 
-    if not (params.warm_start):
+    if not params.warm_start:
         for item in case_paths["home"].iterdir():
             _clear(item)
-
-    elif params.update_nml_only:
-        if params.warm_start:
-            keys = ["restarts"]
-        else:
-            keys = ["hist", "logs", "output", "restarts"]
-
-        for key in keys:
-            _clear(case_paths[key])
+    else:
+        _clear(case_paths["restarts"])
 
     for k, d in case_paths.items():
         d.mkdir(parents=True, exist_ok=True)

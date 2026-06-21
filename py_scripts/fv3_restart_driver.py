@@ -20,7 +20,6 @@ def check_prev_state(params: FV3State) -> None:
 
     if not prev_state:
         params.restart_no = 0
-        params.update_nml_only = False
 
         resubmit = int(os.getenv("CASE_RESUBMIT_COUNT", 0))
         params.resubmit = resubmit
@@ -43,8 +42,6 @@ def check_prev_state(params: FV3State) -> None:
     # ------------------------------------------------------------
 
     if params.get("warm_start", False):
-        params.update_nml_only = True
-
         prev_restart = prev_state.get("restart_no", 0)
         restart_no = prev_restart + 1
         params.restart_no = restart_no
@@ -68,13 +65,6 @@ def check_prev_state(params: FV3State) -> None:
 
     if isinstance(run_hours, list):
         params.run_nhours = run_hours[0]
-
-    ic_and_grid = (
-        bool(prev_state.get("ic_and_grid_generated", False))
-        and prev_state.get("checksum") == checksum
-    )
-
-    params.update_nml_only = bool(ic_and_grid)
 
 
 def restart_driver():
