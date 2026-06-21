@@ -87,7 +87,7 @@ def get_IC(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
     date = datetime.strftime("%Y%m%d")
     year = datetime.strftime("%Y")
     hour = datetime.strftime("%H")
-    root_dir = state.home / "IC" / external_model
+    root_dir = state.ic_data / external_model
     root_dir.mkdir(parents=True, exist_ok=True)
 
     if external_model == "GFS":
@@ -150,7 +150,7 @@ def get_IC(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
 
 def validate_hrrr_bounds(tile: int) -> str:
 
-    geo_hrrr = xr.open_dataset(state.fix_am / "geo_em.d01.nc_HRRRX")
+    geo_hrrr = xr.open_dataset(state.fixed_am / "geo_em.d01.nc_HRRRX")
 
     # HRRR uses a sphere with radius 6370km usually in WRF/HRRR setups
     proj_hrrr = Proj(
@@ -203,9 +203,9 @@ def validate_hrrr_bounds(tile: int) -> str:
 def ic_only():
     files_to_rm = []
     for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
-        files_to_rm.extend(state.home.glob(pattern))
+        files_to_rm.extend(state.case_home.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
-    Path(state.home / "ic.only").touch()
+    Path(state.case_home / "ic.only").touch()
     save_state()
 
 
@@ -216,18 +216,19 @@ def init_external_ic() -> bool:
     nothing.
 
     Returns True only if FIXED, GRID, IC, and INPUT each exist under
-    state.home and are non-empty. Otherwise logs the offending directories
+    state.case_home and are non-empty. Otherwise logs the offending directories
     and returns False.
     """
     required = ("FIXED", "GRID", "IC", "INPUT")
     missing = [
         d
         for d in required
-        if not (state.home / d).is_dir() or not any((state.home / d).iterdir())
+        if not (state.case_home / d).is_dir()
+        or not any((state.case_home / d).iterdir())
     ]
     if missing:
         log.error(
-            f"Incomplete IC staging in {state.home}: {', '.join(missing)} missing or empty"
+            f"Incomplete IC staging in {state.case_home}: {', '.join(missing)} missing or empty"
         )
         return False
     return True

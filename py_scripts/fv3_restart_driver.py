@@ -74,7 +74,7 @@ def restart_driver():
         prev_state[k] = v
     state.update(dict(prev_state))
 
-    for file in state.home.glob("*"):
+    for file in state.case_home.glob("*"):
         if str(file).endswith((".out")):
             file.unlink()
 

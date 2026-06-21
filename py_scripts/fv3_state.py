@@ -114,7 +114,7 @@ def save_state(cfg: dict = None, path: Path = None):
         return
 
     if path is None:
-        path = Path(paths["home"]) / "state.yaml"
+        path = Path(paths["case_home"]) / "state.yaml"
 
     data = {}
     if path.exists():
@@ -135,7 +135,7 @@ def load_state():
     """
     Load the previous state from a YAML file, if it exists
     """
-    path = Path(paths["home"]) / "state.yaml"
+    path = Path(paths["case_home"]) / "state.yaml"
     if not path.exists():
         return FV3State({})
 

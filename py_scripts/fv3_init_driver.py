@@ -12,7 +12,7 @@ from sm_perturbations import apply_perturbations
 
 
 def init_driver():
-    os.chdir(state.home)
+    os.chdir(state.case_home)
 
     if not state.ic_gen:
         init_external_ic()
@@ -45,10 +45,10 @@ def init_driver():
             jdim=state.jdim,
             delx=state.delx,
             dely=state.dely,
-            orog_dir=state.fix / "orog",
+            orog_dir=state.fixed_dir / "orog",
             tmp=state.tmp,
             exe_dir=state.ufs_exe,
-            fix_dir=state.fix,
+            fix_dir=state.fixed_dir,
         )
 
         # Generate ICs
@@ -56,7 +56,7 @@ def init_driver():
         ensemble_config()
         ensemble_config()
 
-    log.info(f"Staged diag files: {state.home}")
+    log.info(f"Staged diag files: {state.case_home}")
     log.info(f"Staged grid files: {state.grid}")
     log.info(f"Staged ic files: {state.input}")
     log.info(f"Staged fixed files: {state.fixed}")
@@ -66,7 +66,7 @@ def init_driver():
         ic_only()
         return
 
-    os.chdir(state.home)
+    os.chdir(state.case_home)
     log.info("Init Run")
     update_nml_configs()
     apply_perturbations()

@@ -12,7 +12,7 @@ def run_global_cycle(
     c_res: str,
     fhour: str = "00",
     exec_dir: Path = None,
-    fix_am: Path = None,
+    fixed_am: Path = None,
     tmp_dir: Path = None,
     tmp_ic_dir: Path = None,
     global_cycle: Path = None,
@@ -60,7 +60,7 @@ def run_global_cycle(
         Root of repository (default: /nwprod2).
     exec_dir : Path
         Executables directory (default: $basedir/gfs_ver/exec).
-    fix_am : Path
+    fixed_am : Path
         Directory containing climatology GRIBs (default: $basedir/gfs_ver/fix/am).
     fix_fv3 : Path
         Directory containing FV3 orog/grid files (default: $basedir/gfs_ver/fix/orog/$case).
@@ -89,32 +89,34 @@ def run_global_cycle(
     # Namelist fort.35 (NAMSFC)
     namsfc = {
         "NAMSFC": {
-            "FNGLAC": str(fix_am / "global_glacier.2x2.grb"),
-            "FNMXIC": str(fix_am / "global_maxice.2x2.grb"),
-            "FNTSFC": str(fix_am / "RTGSST.1982.2012.monthly.clim.grb"),
-            "FNSNOC": str(fix_am / "global_snoclim.1.875.grb"),
+            "FNGLAC": str(fixed_am / "global_glacier.2x2.grb"),
+            "FNMXIC": str(fixed_am / "global_maxice.2x2.grb"),
+            "FNTSFC": str(fixed_am / "RTGSST.1982.2012.monthly.clim.grb"),
+            "FNSNOC": str(fixed_am / "global_snoclim.1.875.grb"),
             "FNZORC": "igbp",
             "FNALBC": str(
-                fix_am / f"global_snowfree_albedo.bosu.t{jcap}.{lonb}.{latb}.rg.grb"
+                fixed_am / f"global_snowfree_albedo.bosu.t{jcap}.{lonb}.{latb}.rg.grb"
             ),
-            "FNALBC2": str(fix_am / "global_albedo4.1x1.grb"),
-            "FNAISC": str(fix_am / "IMS-NIC.blended.ice.monthly.clim.grb"),
-            "FNTG3C": str(fix_am / "global_tg3clim.2.6x1.5.grb"),
-            "FNVEGC": str(fix_am / "global_vegfrac.0.144.decpercent.grb"),
-            "FNVETC": str(fix_am / f"global_vegtype.igbp.t{jcap}.{lonb}.{latb}.rg.grb"),
+            "FNALBC2": str(fixed_am / "global_albedo4.1x1.grb"),
+            "FNAISC": str(fixed_am / "IMS-NIC.blended.ice.monthly.clim.grb"),
+            "FNTG3C": str(fixed_am / "global_tg3clim.2.6x1.5.grb"),
+            "FNVEGC": str(fixed_am / "global_vegfrac.0.144.decpercent.grb"),
+            "FNVETC": str(
+                fixed_am / f"global_vegtype.igbp.t{jcap}.{lonb}.{latb}.rg.grb"
+            ),
             "FNSOTC": str(
-                fix_am / f"global_soiltype.statsgo.t{jcap}.{lonb}.{latb}.rg.grb"
+                fixed_am / f"global_soiltype.statsgo.t{jcap}.{lonb}.{latb}.rg.grb"
             ),
             "FNSMCC": str(
-                fix_am / f"global_soilmgldas.statsgo.t{jcap}.{lonb}.{latb}.grb"
+                fixed_am / f"global_soilmgldas.statsgo.t{jcap}.{lonb}.{latb}.grb"
             ),
-            "FNVMNC": str(fix_am / "global_shdmin.0.144x0.144.grb"),
-            "FNVMXC": str(fix_am / "global_shdmax.0.144x0.144.grb"),
-            "FNSLPC": str(fix_am / "global_slope.1x1.grb"),
+            "FNVMNC": str(fixed_am / "global_shdmin.0.144x0.144.grb"),
+            "FNVMXC": str(fixed_am / "global_shdmax.0.144x0.144.grb"),
+            "FNSLPC": str(fixed_am / "global_slope.1x1.grb"),
             "FNABSC": str(
-                fix_am / f"global_mxsnoalb.uariz.t{jcap}.{lonb}.{latb}.rg.grb"
+                fixed_am / f"global_mxsnoalb.uariz.t{jcap}.{lonb}.{latb}.rg.grb"
             ),
-            "FNMSKH": str(fix_am / "global_slmask.t1534.3072.1536.grb"),
+            "FNMSKH": str(fixed_am / "global_slmask.t1534.3072.1536.grb"),
             "FNTSFA": str(tmp_ic_dir / "sstgrb"),
             "FNACNA": str(tmp_ic_dir / "engicegrb"),
             "FNSNOA": str(tmp_ic_dir / "snogrb"),

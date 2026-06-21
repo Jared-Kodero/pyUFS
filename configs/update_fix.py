@@ -103,15 +103,15 @@ def safe_recreate_symlink(src: Path, dest: Path) -> None:
 
 
 def recreate_symlinks(fix_root: Path) -> None:
-    fix_am = fix_root / "am"
+    fixed_am = fix_root / "am"
 
-    for f in fix_am.rglob("global_*"):
+    for f in fixed_am.rglob("global_*"):
         if not f.is_file():
             continue
         if not f.name.startswith(SYMLINK_TARGETS):
             continue
 
-        dest = fix_am / f.name.replace("global_", "", 1)
+        dest = fixed_am / f.name.replace("global_", "", 1)
         safe_recreate_symlink(f, dest)
 
 
@@ -125,7 +125,7 @@ def main():
 
     pwd = Path.cwd()
     fix_raw = pwd / ".fix_raw"
-    fix_dir = pwd / "fix"
+    fix_dir = pwd / "fixed_dir"
 
     fix_raw.mkdir(exist_ok=True)
     fix_dir.mkdir(exist_ok=True)
