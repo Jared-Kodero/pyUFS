@@ -54,7 +54,6 @@ def init_driver():
         # Generate ICs
         run_chgres_cube()
         ensemble_config()
-        ensemble_config()
 
     log.info(f"Staged diag files: {state.case_home}")
     log.info(f"Staged grid files: {state.grid}")

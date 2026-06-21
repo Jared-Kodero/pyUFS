@@ -63,11 +63,17 @@ def run_filter_topo(
         filter_topo = Path(exec_dir) / "filter_topo"
         # Processing all tiles (uniform/stretch) or coarse tiles only
         mosaic_grid = f"C{res}_mosaic.nc"
-        # grid_files = f"C{res}_grid.tile[1-6].nc"
-        # topo_files = f"oro.C{res}.tile[1-6].nc"
-        grid_files = [f"C{res}_grid.tile{t}.nc" for t in range(1, 7)]
-        topo_files = [f"oro.C{res}.tile{t}.nc" for t in range(1, 7)]
-        topo_file = f"oro.C{res}"
+
+        if gtype not in ["regional_gfdl", "regional_esg"]:
+            # grid_files = f"C{res}_grid.tile[1-6].nc"
+            # topo_files = f"oro.C{res}.tile[1-6].nc"
+            grid_files = [f"C{res}_grid.tile{t}.nc" for t in range(1, 7)]
+            topo_files = [f"oro.C{res}.tile{t}.nc" for t in range(1, 7)]
+            topo_file = f"oro.C{res}"
+        else:  # regional grids only have tile 1
+            grid_files = [f"C{res}_grid.tile7.nc"]
+            topo_files = [f"oro.C{res}.tile7.nc"]
+            topo_file = f"oro.C{res}"
 
         # Copy mosaic file
         mosaic_src = grid_dir / mosaic_grid
