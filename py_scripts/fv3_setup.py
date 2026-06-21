@@ -116,10 +116,7 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Description: {params.description}")
     run_logs.append("Initial run mode selected")
 
-    if params.update_nml_only:
-        run_logs.append("`update_nml_only` flag is set to true.")
-    else:
-        run_logs.append("Full Grid/IC regeneration will be performed.")
+    run_logs.append("Full Grid/IC regeneration will be performed.")
 
     if state.ensemble_run:
         run_logs.append(f"Ensemble run [{state.ensemble_id}/{state.n_ensembles}]")
@@ -173,10 +170,6 @@ def preprocess_input():
 
     # Derive warm_start from restart_no (single source of truth)
     params.warm_start = (params.restart_no or 0) > 0
-
-    # Enforce invariant: init runs can never be NML-only
-    if not params.warm_start:
-        params.update_nml_only = False
 
     # Now decide which block to print
     if not params.warm_start:
