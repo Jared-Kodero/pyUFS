@@ -78,17 +78,18 @@ def handle_errors(exc_type, value, tb):
         except Exception:
             return p
 
-    frames = [
+    user_frames = [
         f
         for f in traceback.extract_tb(tb)
         if "py_scripts" in _norm_path(f.filename) and f.filename.endswith(".py")
     ]
+    sys_frames = [f for f in traceback.extract_tb(tb)]
 
-    if not frames:
+    if not user_frames:
         log.error(f"{exc_type.__qualname__}: {value}")
         return
 
-    frame = frames[-1]
+    frame = user_frames[-1]
 
     file_name = Path(frame.filename).name
     lineno = f"{frame.lineno}"
@@ -98,7 +99,8 @@ def handle_errors(exc_type, value, tb):
     log.error(f"{exc_type.__qualname__}: {value}")
 
     # now print frames
-    for f in frames:
+    print("\n Traceback")
+    for f in sys_frames:
         print(f)
 
 
