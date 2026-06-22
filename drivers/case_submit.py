@@ -222,7 +222,6 @@ def run(sbatch_script: Path, proc_env: dict, cwd: Path) -> int:
             ["bash", str(sbatch_script)],
             env=proc_env,
             cwd=str(cwd),
-            check=False,
         )
 
     except subprocess.SubprocessError as e:
