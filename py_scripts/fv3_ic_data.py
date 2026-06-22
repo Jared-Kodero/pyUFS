@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -7,8 +8,10 @@ from typing import Literal
 
 import numpy as np
 import xarray as xr
+from fv3_namelists import update_table_files
+from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log
-from fv3_state import save_state, state
+from fv3_state import load_fv3_state, save_fv3_state, state
 from fv3_utils import run_cmd
 from pyproj import Proj
 
@@ -205,7 +208,7 @@ def ic_only():
         files_to_rm.extend(state.case_home.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
     Path(state.case_home / "ic.only").touch()
-    save_state()
+    save_fv3_state()
 
 
 def init_external_ic() -> bool:
@@ -218,15 +221,28 @@ def init_external_ic() -> bool:
     state.case_home and are non-empty. Otherwise logs the offending directories
     and returns False.
     """
+
+    ic_dir = state.external_ic_dir or Path(state.case_home)
+    ic_dir = Path(ic_dir)
     required = ("FIXED", "GRID", "IC", "INPUT")
     missing = [
         d
         for d in required
-        if not (state.case_home / d).is_dir()
-        or not any((state.case_home / d).iterdir())
+        if not (ic_dir / d).is_dir() or not any((ic_dir / d).iterdir())
     ]
     if missing:
         raise FileNotFoundError(
             f"Incomplete IC staging in {state.case_home}: {', '.join(missing)} missing or empty"
         )
+
+    os.system(f"cp -rf {ic_dir}/* {state.case_home}/")
+
+    if state.external_ic_dir:
+        load_fv3_state(merge=True)
+        update_table_files()
+        calc_cpu_alloc(state.input)
+
+    log.info(
+        f"Copied external IC data from {state.external_ic_dir} to {state.case_home}"
+    )
     return True

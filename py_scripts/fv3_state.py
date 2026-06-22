@@ -91,16 +91,7 @@ def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
     return hashlib.sha256(hash_data_str.encode("utf-8")).hexdigest()
 
 
-def merge_saved_state():
-    """Merge current and previous states"""
-
-    load_state()
-    new_state = FV3State({**prev_state, **state})
-    state.update(new_state)
-    save_state()
-
-
-def save_state(cfg: dict = None, path: Path = None):
+def save_fv3_state(cfg: dict = None, path: Path = None):
     """
     Save the current state to a YAML file
     """
@@ -131,13 +122,14 @@ def save_state(cfg: dict = None, path: Path = None):
         yaml.safe_dump(dict(data), f, default_flow_style=None)
 
 
-def load_state():
+def load_fv3_state(merge: bool = False):
     """
     Load the previous state from a YAML file, if it exists
     """
     path = Path(paths["case_home"]) / "state.yaml"
     if not path.exists():
-        return FV3State({})
+        log.info(f"No previous state file found at {path}. Starting with empty state.")
+        return
 
     prev_state.clear()
     with open(path, "r") as f:
@@ -147,3 +139,8 @@ def load_state():
         prev_state.update(data)
         prev_state.update(paths)
         state.update(paths)
+
+    if merge:
+        new_state = FV3State({**prev_state, **state})
+        state.update(new_state)
+        save_fv3_state()

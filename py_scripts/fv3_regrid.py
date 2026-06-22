@@ -12,13 +12,13 @@ import numpy as np
 import xarray as xr
 from derived_vars import calc_derived_vars
 from fv3_runtime import exit_code
-from fv3_state import load_state
+from fv3_state import load_fv3_state
 from fv3_state import prev_state as pstate
 from fv3_utils import cres_to_deg, env_setup
 from pyfregrid import fregrid
 
 warnings.filterwarnings("ignore")
-load_state()  # ensure pstate is populated before any function calls
+load_fv3_state()  # ensure pstate is populated before any function calls
 
 log = logging.getLogger("REGRIDDING")
 
