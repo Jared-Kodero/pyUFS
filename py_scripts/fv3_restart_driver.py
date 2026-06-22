@@ -2,7 +2,7 @@ import os
 
 from fv3_namelists import restart_config, update_table_files
 from fv3_runscripts import gen_shield_run_sh
-from fv3_state import FV3State, compute_checksum, prev_state, save_state, state
+from fv3_state import FV3State, compute_checksum, prev_state, save_fv3_state, state
 from fv3_utils import env_setup
 from sm_perturbations import apply_perturbations
 
@@ -81,5 +81,5 @@ def restart_driver():
     restart_config()
     update_table_files()
     apply_perturbations()
-    save_state()
+    save_fv3_state()
     gen_shield_run_sh()

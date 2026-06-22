@@ -9,7 +9,7 @@ import yaml
 from fv3_nesting import nest_info, validate_nests
 from fv3_paths import configure_directories, paths
 from fv3_restart_driver import check_prev_state
-from fv3_state import FV3State, load_state, log, state
+from fv3_state import FV3State, load_fv3_state, log, state
 from fv3_utils import (
     cres_to_deg,
     parse_datetime,
@@ -151,7 +151,7 @@ def preprocess_input():
             f"Insufficient CPUs for this run. Detected {py_ncpus} available, but at least 32 is required."
         )
 
-    load_state()
+    load_fv3_state()
     params = parse_input()  # Get parsed arguments
     params.warm_start = (params.restart_no or 0) > 0
 

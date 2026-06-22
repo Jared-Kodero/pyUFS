@@ -7,7 +7,7 @@ from fv3_ic_data import ic_only, init_external_ic
 from fv3_namelists import update_nml_configs
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import log
-from fv3_state import save_state, state
+from fv3_state import save_fv3_state, state
 from sm_perturbations import apply_perturbations
 
 
@@ -69,5 +69,5 @@ def init_driver():
     log.info("Init Run")
     update_nml_configs()
     apply_perturbations()
-    save_state()
+    save_fv3_state()
     gen_shield_run_sh()
