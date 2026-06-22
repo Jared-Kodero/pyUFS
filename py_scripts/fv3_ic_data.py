@@ -8,7 +8,6 @@ from typing import Literal
 
 import numpy as np
 import xarray as xr
-from fv3_namelists import update_table_files
 from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log
 from fv3_state import load_fv3_state, save_fv3_state, state
@@ -212,17 +211,10 @@ def ic_only():
 
 
 def init_external_ic() -> bool:
-    """
-    Verify that the working directory already holds a complete, user-staged
-    set of initial-condition inputs. This performs validation only and copies
-    nothing.
 
-    Returns True only if FIXED, GRID, IC, and INPUT each exist under
-    state.case_home and are non-empty. Otherwise logs the offending directories
-    and returns False.
-    """
+    ic_dir = state.external_ic_dir or state.case_home
+    ic_at_home = not state.external_ic_dir
 
-    ic_dir = state.external_ic_dir or Path(state.case_home)
     ic_dir = Path(ic_dir)
     required = ("FIXED", "GRID", "IC", "INPUT")
     missing = [
@@ -235,14 +227,15 @@ def init_external_ic() -> bool:
             f"Incomplete IC staging in {state.case_home}: {', '.join(missing)} missing or empty"
         )
 
-    os.system(f"cp -rf {ic_dir}/* {state.case_home}/")
+    if not ic_at_home:
+        os.system(f"cp -rf {ic_dir}/* {state.case_home}/")
+        log.info(
+            f"Copied external IC data from {state.external_ic_dir} to {state.case_home}"
+        )
+    else:
+        log.info(f"IC data was found directly in {state.case_home}")
 
-    if state.external_ic_dir:
-        load_fv3_state(merge=True)
-        update_table_files()
-        calc_cpu_alloc(state.input)
+    load_fv3_state(merge=True)
+    calc_cpu_alloc(state.input)
 
-    log.info(
-        f"Copied external IC data from {state.external_ic_dir} to {state.case_home}"
-    )
     return True

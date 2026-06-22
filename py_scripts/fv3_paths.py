@@ -44,11 +44,16 @@ def configure_directories(params: FV3State) -> dict:
         else:
             path.unlink()
 
-    if not params.warm_start:
+    # IC staged directly in case_home must survive the cold-start clear.
+    ic_at_home = (
+        not params.get("ic_gen", True) and params.get("external_ic_dir") is None
+    )
+
+    if params.warm_start:
+        _clear(paths["restarts"])
+    elif not ic_at_home:
         for item in paths["case_home"].iterdir():
             _clear(item)
-    else:
-        _clear(paths["restarts"])
 
     for k, d in case_paths.items():
         d.mkdir(parents=True, exist_ok=True)
