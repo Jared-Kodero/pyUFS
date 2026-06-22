@@ -193,14 +193,13 @@ def run_driver(
         halop1 = halo + 1 if halo else 4
 
         offsets = get_nest_indices(
-            parent_res=res,
-            refine_ratio=refine_ratio,
-            lon_min=lon_min,
-            lon_max=lon_max,
-            lat_min=lat_min,
-            lat_max=lat_max,
-            parent_tile=6,
+            res=res,
+            tile_idx=0,  # parent tile 6 is always tile_idx 0 for nesting
             grid_dir=None,
+            parent_tile=6,
+            i_refine_ratio=refine_ratio[0]
+            if isinstance(refine_ratio, list)
+            else refine_ratio,
         )
 
         istart_nest = offsets.istart_nest
