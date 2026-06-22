@@ -52,12 +52,6 @@ def _download_data(
             return external_model
         log.warning(f"Failed to retrieve {external_model} IC data from {source}")
 
-    if external_model == "HRRR":
-        log.warning(
-            f"Falling back to GFS IC data for {datetime} since all HRRR sources failed"
-        )
-        return get_IC(external_model="GFS")
-
     raise RuntimeError(
         f"All download sources failed for {external_model} at {datetime}.\nAttempted URLs:\n{urls}"
     )
@@ -201,7 +195,7 @@ def validate_hrrr_bounds(tile: int) -> str:
     return "GFS"
 
 
-def ic_only():
+def preprocess_only():
     files_to_rm = []
     for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
         files_to_rm.extend(state.case_home.glob(pattern))

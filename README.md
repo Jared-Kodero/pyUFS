@@ -188,8 +188,8 @@ Because `chgres_cube` handles the complex generation of the FV3 cubed-sphere geo
 
 1. **Generate Base Tiles:** Run the standard pre-processing step using the default GFS data to allow `chgres_cube` to create the grid structure and output the base `.nc` tile files. You can do this by setting 
 ```yaml
-ic_gen: true 
-ic_only: true
+generate_ic_data: true 
+preprocess_only: true
 ```
 in the run_config.yaml
 
@@ -198,8 +198,8 @@ in the run_config.yaml
 
 4. Once all the modifications are done you can update the run_config.yaml by setting
 ```yaml
-ic_gen: false
-ic_only: false
+generate_ic_data: false
+preprocess_only: false
 ```
 Then continue with the run as normal by submitting as ussual.
 
@@ -465,9 +465,9 @@ skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
 # 5. INITIAL CONDITIONS AND PREPROCESSING
 # -----------------------------------------------------------------------------
 
-ic_gen: true # Generate grid and IC files
-ic_only: false # Generate ICs and grid only, then exit
-ic_source_path: null # Source case path (REQUIRED if ic_gen = false)
+generate_ic_data: true # Generate grid and IC files
+preprocess_only: false # Generate ICs and grid only, then exit
+ic_source_path: null # Source case path (REQUIRED if generate_ic_data = false)
 ic_source_type: "case" # Options: case | external 
 chgres_config: null # CHGRES configuration (.yaml) path to chgress config
 

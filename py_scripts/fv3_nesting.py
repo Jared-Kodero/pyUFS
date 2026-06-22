@@ -253,8 +253,7 @@ def get_nest_indices(
         "nest_joffsets",
     )
 
-    if state.nesting is None:
-        state.nesting = {}
+    state.nesting = {}
 
     for k in keys:
         state.nesting.setdefault(k, [])
