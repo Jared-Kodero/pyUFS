@@ -9,7 +9,7 @@ from fv3_make_orog_gsl import run_make_orog_gsl
 from fv3_nesting import get_nest_indices
 from fv3_runtime import get_newres, log
 from fv3_shave import run_shave
-from fv3_state import save_fv3_state
+from fv3_state import save_fv3_state, state
 from fv3_utils import cp
 from sfc_climo_gen import run_sfc_climo_gen
 
@@ -192,21 +192,21 @@ def run_driver(
         tile = 7
         halop1 = halo + 1 if halo else 4
 
-        offsets = get_nest_indices(
+        get_nest_indices(
             res=res,
             tile_idx=0,  # parent tile 6 is always tile_idx 0 for nesting
             grid_dir=None,
-            parent_tile=6,
+            parent_tile=[6],
             i_refine_ratio=refine_ratio[0]
             if isinstance(refine_ratio, list)
             else refine_ratio,
         )
 
-        istart_nest = offsets.istart_nest
-        iend_nest = offsets.iend_nest
-        jstart_nest = offsets.jstart_nest
-        jend_nest = offsets.jend_nest
-        parent_tile = offsets.parent_tile
+        istart_nest = state.nesting["istart_nest"][0]
+        iend_nest = state.nesting["iend_nest"][0]
+        jstart_nest = state.nesting["jstart_nest"][0]
+        jend_nest = state.nesting["jend_nest"][0]
+        parent_tile = state.nesting["parent_tile"][0]
 
         # --- Expand halo region for regional_gfdl ---
         if gtype == "regional_gfdl":
