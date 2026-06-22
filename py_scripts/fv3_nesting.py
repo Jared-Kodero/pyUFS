@@ -40,22 +40,23 @@ def validate_nests(params: FV3State) -> list:
 
     params = get_centers(params)
     params = classify_nesting(params)
+    nest_res_km = []
 
     if params.nest_type == "same_level":
         for i, r in enumerate(refine_ratios):
-            resolution = cres_to_deg(params.res * r).km
-            nest_info.append(f"Nested tile {7 + i} resolution: {resolution:.2f} km")
+            res_km = cres_to_deg(params.res * r).km
+            nest_res_km.append(res_km)
+            nest_info.append(f"Nested tile {7 + i} resolution: {res_km:.2f} km")
     elif params.nest_type == "telescoping":
         total_refine = 1
-        nest_res_km = []
+
         for i, r in enumerate(refine_ratios):
             total_refine *= r
-            n_res = cres_to_deg(params.res * total_refine).km
+            res_km = cres_to_deg(params.res * total_refine).km
+            nest_res_km.append(res_km)
+            nest_info.append(f"Nested tile {7 + i} resolution: {res_km:.2f} km")
 
-            nest_info.append(f"Nested tile {7 + i} resolution: {n_res:.2f} km")
-            nest_res_km.append(n_res)
-
-        params.nest_res_km = nest_res_km
+    params.nest_res_km = nest_res_km
     nest_info.append(f"Nest layout type: {params.nest_type}")
     return nest_info
 
