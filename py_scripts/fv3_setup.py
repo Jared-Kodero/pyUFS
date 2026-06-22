@@ -47,9 +47,6 @@ def parse_input():
 
     # --- Parse runtime YAML ---
 
-    def _nml_match(k):
-        return k.endswith("_input_nml") or k.endswith("_nml")
-
     with open(yml_path, "r") as file:
         config = yaml.safe_load(file)
 
@@ -58,7 +55,7 @@ def parse_input():
         del config["sbatch"]
 
     for k, v in config.items():
-        if k not in params_keys and not _nml_match(k):
+        if k not in params_keys:
             msg = f"Unknown configuration key in run_config.yaml: `{k}` "
             log.info(msg + "- this key will be ignored.")
             continue
@@ -123,6 +120,10 @@ def _append_init_logs(params: FV3State) -> None:
 
     run_logs.append(f"Model initialization time: {params.init_datetime} UTC")
     run_logs.append(f"Forecast length: {params.run_nhours} hours")
+
+    if params.resubmit > 0:
+        run_logs.append(f"Total restarts: {params.total_restarts}")
+
     run_logs.append(f"Vertical levels: {params.levels}")
 
     run_logs.append(f"Grid type: {params.gtype}")
