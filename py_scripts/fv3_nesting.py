@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 from fv3_runtime import log
-from fv3_state import FV3State, save_state, state
+from fv3_state import FV3State, save_fv3_state, state
 from fv3_utils import cres_to_deg, run_cmd
 
 nest_info = []
@@ -285,7 +285,7 @@ def get_nest_indices(
     state.nesting["nest_ioffsets"] = nest_ioffsets
     state.nesting["nest_joffsets"] = nest_joffsets
 
-    save_state()
+    save_fv3_state()
 
 
 def get_nest_tele_indices(
@@ -332,4 +332,4 @@ def get_nest_tele_indices(
     nest_joffsets = [999] + [(j // 2) + 1 for j in state.nesting["jstart_nest"]]
     state.nesting["nest_ioffsets"] = nest_ioffsets
     state.nesting["nest_joffsets"] = nest_joffsets
-    save_state()
+    save_fv3_state()

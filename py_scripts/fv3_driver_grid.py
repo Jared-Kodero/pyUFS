@@ -9,7 +9,7 @@ from fv3_make_orog_gsl import run_make_orog_gsl
 from fv3_nesting import get_nest_indices
 from fv3_runtime import get_newres, log
 from fv3_shave import run_shave
-from fv3_state import save_state
+from fv3_state import save_fv3_state
 from fv3_utils import cp
 from sfc_climo_gen import run_sfc_climo_gen
 
@@ -396,4 +396,4 @@ def run_driver(
         raise ValueError(f"Unsupported grid type: {gtype}")
 
     # set flag indicating grid generation complete
-    save_state()  # Save configuration state
+    save_fv3_state()  # Save configuration state

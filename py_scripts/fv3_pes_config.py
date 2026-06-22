@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 from fv3_runtime import read_namelist, sort_paths
-from fv3_state import save_state, state
+from fv3_state import save_fv3_state, state
 
 grid_dir: Path = None
 
@@ -132,7 +132,7 @@ def calc_nest_pes() -> None:
     state.io_layout = layouts["io_layout"]
     state.blocksize = layouts["blocksize"]
 
-    save_state()
+    save_fv3_state()
 
 
 def allocate_pes(
