@@ -138,48 +138,6 @@ add_lake: false # Activate lake model
 make_gsl_orog: false # Generate GSL orography fields
 
 # -----------------------------------------------------------------------------
-# 10. NAMELIST SETTINGS
-# -----------------------------------------------------------------------------
-# Optional namelist overrides applied after the default namelist is generated.
-#
-# Accepted values:
-#   - null
-#   - path to a .yaml, .yml, or .nml file
-#   - mapping with namelist sections and key-value pairs
-#
-# Override precedence:
-#   1. global_input_nml applies to the parent/global namelist only.
-#   2. nestXX_input_nml applies the same overrides to every configured nest.
-#   3. nestNN_input_nml applies overrides to one specific nest and takes
-#      precedence over nestXX_input_nml for that nest.
-#
-# Nest numbering:
-#   - Nest-specific keys start at nest02_input_nml.
-#   - For two configured nests, the valid nest-specific keys are:
-#       nest02_input_nml
-#       nest03_input_nml
-#
-# Example:
-#   global_input_nml: path/to/global_input.yaml
-#   nestXX_input_nml: path/to/common_nest_input.yaml
-#   nest02_input_nml: path/to/nest02_input.nml
-#   nest03_input_nml: path/to/nest03_input.yaml
-#
-# Example mapping:
-#   global_input_nml:
-#     gfs_physics_nml:
-#       do_deep: false
-#       imfdeepcnv: -1
-#
-# Notes:
-#   - Overrides are shallow. A provided key replaces the generated value in the
-#     matching namelist section.
-#   - Empty sections are ignored.
-#
-global_input_nml: null
-nestXX_input_nml: null
-
-# -----------------------------------------------------------------------------
 # 11. LAND SURFACE PERTURBATIONS
 # -----------------------------------------------------------------------------
 # Apply controlled perturbations to soil-state variables for ensemble spread

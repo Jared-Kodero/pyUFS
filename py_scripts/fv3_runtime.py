@@ -111,7 +111,7 @@ def handle_errors(exc_type, value, tb):
     log.error(f"{exc_type.__qualname__}: {value}")
 
     # now print frames
-    print("\n Traceback")
+    print("\nTraceback")
     for f in sys_frames:
         print(f)
 
