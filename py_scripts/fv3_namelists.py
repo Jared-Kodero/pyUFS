@@ -127,6 +127,7 @@ def update_global_nml(
 
     nml_template_path = state.configs / "input_nml.yaml"
     parent_save_path = state.case_home / "input.nml"
+    user_nml = state.run_dir / "input"
 
     nml = read_namelist(nml_template_path)
     nml = common_configs(nml)
@@ -169,7 +170,7 @@ def update_global_nml(
     nml = update_namsfc(nml)
 
     # check for nml overrides if user provided external nml
-    nml = namelist_overrides(state.global_input_nml, nml, "global")
+    nml = namelist_overrides(user_nml, nml, "global")
 
     with open(parent_save_path, "w") as f:
         f90nml.write(nml, f)
@@ -194,6 +195,7 @@ def update_nest_nml(
     save_paths = [
         state.case_home / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
     ]
+    user_nmls = [state.run_dir / f"input_nest{i:02d}" for i in range(2, n_nests + 2)]
     tiles = [7 + i for i in range(n_nests)]
 
     nest_pes = state.grid_pes  # includes parent tile pes
@@ -208,7 +210,9 @@ def update_nest_nml(
             "Mismatch between number of nests, nest resolutions, tiles, and refine ratios."
         )
 
-    for i, (out_file, tile) in enumerate(zip(save_paths, tiles), start=1):
+    for i, (out_file, user_nml, tile) in enumerate(
+        zip(save_paths, user_nmls, tiles), start=1
+    ):
         nml = read_namelist(nest_nml_template_path)
         nml = common_configs(nml)
         nml = disable_deep_convection(nml, tile, f"nest{i + 1:02d}")
@@ -230,8 +234,7 @@ def update_nest_nml(
 
         nml = update_namsfc(nml)
 
-        overide_obj = state.get(f"nest{i + 1:02d}_input_nml") or state.nestXX_input_nml
-        nml = namelist_overrides(overide_obj, nml, f"nest{i + 1:02d}")
+        nml = namelist_overrides(user_nml, nml, f"nest{i + 1:02d}")
 
         with open(out_file, "w") as f:
             f90nml.write(nml, f)
@@ -239,36 +242,29 @@ def update_nest_nml(
     return 0
 
 
-def namelist_overrides(overide_obj: str | dict, nml: dict, name: str):
+def namelist_overrides(path: Path, nml: dict, name: str):
 
-    if not overide_obj:
-        return nml
+    suffixes = (".nml", ".yaml", ".yml")
 
-    if isinstance(overide_obj, (dict)):
-        override_nml = overide_obj
-        src = f"run_config.yaml : {name}_input_nml"
-
-    elif isinstance(overide_obj, (str, Path)):
-        overide_file = Path(overide_obj)
-        src = str(overide_file)
-
-        if not Path(overide_file).exists(follow_symlinks=True):
-            log.info(f"Namelist file: {overide_file} does not exist !")
-            return nml
-
-        override_nml = read_namelist(overide_file)
+    for suffix in suffixes:
+        _path = Path(path).with_suffix(suffix)
+        if not _path.exists():
+            continue
+        override_nml = read_namelist(_path)
 
         if not override_nml:
-            log.info(f"Namelist file: {overide_file} is empty !")
+            log.info(f"Namelist file: {path} is empty !")
             return nml
 
-    log.info(f"Applying {name} nml overrides from: {src}")
+        log.info(f"Applying {name} nml overrides from: {path}")
 
-    for section, entries in override_nml.items():
-        if not entries:
-            continue
+        for section, entries in override_nml.items():
+            if not entries:
+                continue
 
-        nml.setdefault(section, {}).update(entries)
+            nml.setdefault(section, {}).update(entries)
+
+        break  # Exit after the first matching suffix is found
 
     return nml
 
