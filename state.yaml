@@ -1,5 +1,5 @@
 add_lake: false
-blocksize: [ 32, 32, 32, 32 ]
+blocksize: [32, 32, 32, 32]
 case_description: ""
 case_name: test_case7
 checksum: 9eb159090f3a7b8e2338c5ba3d26e802d82a4464bcd066401b6f41de6bbb19ee
@@ -24,66 +24,66 @@ global_input_nml:
 global_ngrid_cells: 221184
 global_pes: 48
 global_res_km: 104.36
-grid_pes: [ 48, 16, 128, 64 ]
+grid_pes: [48, 16, 128, 64]
 gtype: nest
 halo: 3
 ic_and_grid_generated: true
-ic_gen: true
-ic_only: false
+generate_ic_data: true
+preprocess_only: false
 ic_source_type: case
 idim: 200
 init_datetime: "2025-09-22 06:00:00"
 io_layout:
-  - [ 1, 1 ]
-  - [ 1, 1 ]
-  - [ 1, 1 ]
-  - [ 1, 1 ]
+  - [1, 1]
+  - [1, 1]
+  - [1, 1]
+  - [1, 1]
 jdim: 200
-k_split: [ 1, 2, 2, 2 ]
+k_split: [1, 2, 2, 2]
 lake_cutoff: 0.2
-lat_max: [ 60, 55, 47 ]
-lat_min: [ 25, 32, 38 ]
+lat_max: [60, 55, 47]
+lat_min: [25, 32, 38]
 layout:
-  - [ 2, 4 ]
-  - [ 4, 4 ]
-  - [ 8, 16 ]
-  - [ 8, 8 ]
+  - [2, 4]
+  - [4, 4]
+  - [8, 16]
+  - [8, 8]
 levels: 64
-lon_max: [ -47, -57, -67 ]
-lon_min: [ -125, -95, -85 ]
+lon_max: [-47, -57, -67]
+lon_min: [-125, -95, -85]
 make_gsl_orog: false
-model_start_date: [ 2025, 9, 22, 6, 0, 0 ]
+model_start_date: [2025, 9, 22, 6, 0, 0]
 multi_node: true
 n_cpus: 256
 n_cpus_per_node: 32
 n_ensembles: 1
 n_nests: 3
 n_nodes: 8
-n_split: [ 3, 6, 6, 10 ]
+n_split: [3, 6, 6, 10]
 nest02_input_nml:
   gfs_physics_nml: { lsm: 1 }
 nest03_input_nml:
   gfs_physics_nml: { lsm: 1 }
 nest04_input_nml:
   gfs_physics_nml: { lsm: 2 }
-nest_ngrid_cells: [ 214016, 851968, 582528 ]
-nest_res_km: [ 26.09, 6.52, 3.26 ]
+nest_ngrid_cells: [214016, 851968, 582528]
+nest_res_km: [26.09, 6.52, 3.26]
 nest_type: telescoping
 nesting:
-  iend_nest: [ 172, 364, 778 ]
-  istart_nest: [ 21, 109, 335 ]
-  jend_nest: [ 134, 282, 650 ]
-  jstart_nest: [ 47, 75, 323 ]
-  nest_ioffsets: [ 999, 11, 55, 168 ]
-  nest_joffsets: [ 999, 24, 38, 162 ]
-  parent_tile: [ 6, 7, 8 ]
+  iend_nest: [172, 364, 778]
+  istart_nest: [21, 109, 335]
+  jend_nest: [134, 282, 650]
+  jstart_nest: [47, 75, 323]
+  nest_ioffsets: [999, 11, 55, 168]
+  nest_joffsets: [999, 24, 38, 162]
+  parent_tile: [6, 7, 8]
 node_list: node[1703,1705,1707-1708,1715-1716,1718-1719]
-npx: [ 97, 305, 513, 445 ]
-npy: [ 97, 177, 417, 329 ]
-ntiles: [ 6, 1, 1, 1 ]
+npx: [97, 305, 513, 445]
+npy: [97, 177, 417, 329]
+ntiles: [6, 1, 1, 1]
 paired_ensembles: false
 parent_tile: 6
-refine_ratio: [ 4, 4, 2 ]
+refine_ratio: [4, 4, 2]
 res: 96
 restart_no: 0
 resubmit: 0

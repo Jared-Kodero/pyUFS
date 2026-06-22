@@ -60,8 +60,8 @@ def parse_input():
     for k, v in config.items():
         if k not in params_keys and not _nml_match(k):
             msg = f"Unknown configuration key in run_config.yaml: `{k}` "
-            msg = msg + f"\nKey must be one of: {list(params_keys.keys())}"
-            raise KeyError(msg)
+            log.info(msg + "- this key will be ignored.")
+            continue
         input_params[k] = v
 
     input_params.run_config = Path(yml_path)
@@ -153,7 +153,6 @@ def preprocess_input():
 
     load_fv3_state()
     params = parse_input()  # Get parsed arguments
-    params.warm_start = (params.restart_no or 0) > 0
 
     params.n_cpus = state.n_cpus  # Update n_cpus based on available CPUs
     params.global_res_km = cres_to_deg(params.res).km

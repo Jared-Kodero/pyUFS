@@ -44,18 +44,15 @@ def configure_directories(params: FV3State) -> dict:
         else:
             path.unlink()
 
-    # IC staged directly in case_home must survive the cold-start clear.
-    ic_at_home = (
-        not params.get("ic_gen", True) and params.get("external_ic_dir") is None
-    )
-
     if params.warm_start:
         _clear(paths["restarts"])
-    elif not ic_at_home:
-        for item in paths["case_home"].iterdir():
-            _clear(item)
+        _clear(paths["hist"])
 
-    for k, d in case_paths.items():
+    else:
+        _clear(paths["output"])
+        _clear(paths["hist"])
+
+    for _, d in case_paths.items():
         d.mkdir(parents=True, exist_ok=True)
 
     return paths
@@ -86,18 +83,18 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
     archive_index = restart_no - 1
 
     if archive_index == 0:
-        prev_IC = archive_dir / "INPUT"
+        prev_ic_data = archive_dir / "INPUT"
     else:
-        prev_IC = archive_dir / f"R{archive_index:03d}_INPUT"
+        prev_ic_data = archive_dir / f"R{archive_index:03d}_INPUT"
 
     if not prev_model_restart.exists() or not any(prev_model_restart.iterdir()):
         raise FileNotFoundError(
             f"Restart directory missing or empty: {prev_model_restart}"
         )
 
-    if prev_IC.exists():
+    if prev_ic_data.exists():
         raise FileExistsError(
-            f"{prev_IC} already exists; restart counter inconsistent."
+            f"{prev_ic_data} already exists; restart counter inconsistent."
         )
 
     if not prev_input_data.exists():
@@ -106,7 +103,7 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
         )
 
     # Archive previous INPUT
-    prev_input_data.rename(prev_IC)
+    prev_input_data.rename(prev_ic_data)
 
     # Promote RESTART -> INPUT
     prev_model_restart.rename(curr_input_data)
