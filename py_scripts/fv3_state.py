@@ -39,6 +39,8 @@ env_vars = {
     "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
     "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
     "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE_FLAG", 0))),
+    "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", 0)),
+    "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", 0)),
     "ufs_utils": Path(__file__).resolve().parent.parent,
     "configs": Path(__file__).resolve().parent.parent / "configs",
 }

@@ -181,7 +181,7 @@ def get_config():
 
     sbatch_time = f"{sbatch_time}:00:00"
     n_ensembles = user_cfg.get("n_ensembles", 0)
-    resubmit = user_cfg.get("resubmit", 0)
+    resubmit_max = user_cfg.get("resubmit", 0)
     archive_data = int(user_cfg.get("archive_data", False))
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
     case_name = user_cfg.get("case_name") or env_case_name
@@ -205,7 +205,8 @@ def get_config():
         "SBATCH_NTASKS_PER_NODE": sbatch_ntasks_per_node,
         "CASE_ENSEMBLES": n_ensembles,
         "CASE_SKIP_ENSEMBLES": skip_ensembles,
-        "CASE_RESUBMIT": resubmit,
+        "CASE_RESUBMIT_INDEX": 0,
+        "CASE_RESUBMIT_MAX": resubmit_max,
         "CASE_ARCHIVE": archive_data,
         "CASE_NAME": case_name,
         **paths,
