@@ -77,13 +77,13 @@ def get_paths(cfg: dict):
 
 
 def get_sbatch_runtime_flags(cfg: dict) -> dict:
-    nnodes = cfg["SBATCH_NNODES"]
-    ntasks_per_node = cfg["SBATCH_NTASKS_PER_NODE"]
-    exclusive = cfg["SBATCH_EXCLUSIVE_NODE"]
-    use_constraint = cfg["SBATCH_NODE_CONSTRAINT"]
-    sbatch_ntasks = cfg["SBATCH_NTASKS"]
+    nnodes = cfg["CASE_NNODES"]
+    ntasks_per_node = cfg["CASE_NTASKS_PER_NODE"]
+    exclusive = cfg["CASE_EXCLUSIVE_NODE"]
+    use_constraint = cfg["CASE_NODE_CONSTRAINT"]
+    sbatch_ntasks = cfg["CASE_NTASKS"]
 
-    mem = cfg["SBATCH_MEM"]
+    mem = cfg["CASE_MEM"]
 
     if mem > sbatch_ntasks * 2:  # at least 2GB per task
         mem_per_cpu = mem // sbatch_ntasks
@@ -119,11 +119,11 @@ def get_sbatch_runtime_flags(cfg: dict) -> dict:
     exclusive_flag = "--exclusive" if exclusive == 1 else ""
 
     flags = {
-        "SBATCH_MEMORY_FLAG": memory_flag,
-        "SBATCH_EXCLUSIVE_NODE": exclusive,
-        "SBATCH_MULTI_NODE_FLAG": multi_node,
-        "SBATCH_NODE_CONSTRAINT_FLAG": node_constraint_flag,
-        "SBATCH_NODE_EXCLUSIVE_FLAG": exclusive_flag,
+        "CASE_MEMORY_FLAG": memory_flag,
+        "CASE_EXCLUSIVE_NODE": exclusive,
+        "CASE_MULTI_NODE_FLAG": multi_node,
+        "CASE_NODE_CONSTRAINT_FLAG": node_constraint_flag,
+        "CASE_NODE_EXCLUSIVE_FLAG": exclusive_flag,
     }
     return flags
 
@@ -194,16 +194,16 @@ def get_config():
     paths = get_paths(mach_cfg)
 
     env = {
-        "SBATCH_MEM": sbatch_mem,
-        "SBATCH_TIME_LIMIT": sbatch_time,
-        "SBATCH_NNODES": sbatch_nnodes,
-        "SBATCH_OUTPUT": sbatch_output,
-        "SBATCH_PARTITION": sbatch_partition,
-        "SBATCH_NTASKS": sbatch_ntasks_total,
-        "SBATCH_EXCLUSIVE_NODE": sbatch_exclusive,
-        "SBATCH_CPUS_PER_TASK": sbatch_cpu_per_task,
-        "SBATCH_NODE_CONSTRAINT": sbatch_constraint,
-        "SBATCH_NTASKS_PER_NODE": sbatch_ntasks_per_node,
+        "CASE_MEM": sbatch_mem,
+        "CASE_TIME_LIMIT": sbatch_time,
+        "CASE_NNODES": sbatch_nnodes,
+        "CASE_OUTPUT": sbatch_output,
+        "CASE_PARTITION": sbatch_partition,
+        "CASE_NTASKS": sbatch_ntasks_total,
+        "CASE_EXCLUSIVE_NODE": sbatch_exclusive,
+        "CASE_CPUS_PER_TASK": sbatch_cpu_per_task,
+        "CASE_NODE_CONSTRAINT": sbatch_constraint,
+        "CASE_NTASKS_PER_NODE": sbatch_ntasks_per_node,
         "CASE_ENSEMBLES": n_ensembles,
         "CASE_SKIP_ENSEMBLES": skip_ensembles,
         "CASE_RESUBMIT_INDEX": 0,
@@ -246,7 +246,7 @@ def main():
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir
 
     n_ensembles = int(env["CASE_ENSEMBLES"])
-    sbatch_output = Path(env["SBATCH_OUTPUT"])
+    sbatch_output = Path(env["CASE_OUTPUT"])
     sbatch_script = ufs_utils_dir / "drivers" / "sbatch.sh"
     skipped_ensembles = env["CASE_SKIP_ENSEMBLES"]
 

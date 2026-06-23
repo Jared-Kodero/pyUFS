@@ -57,8 +57,8 @@ def parse_input():
     for k, v in config.items():
         if k not in params_keys:
             msg = f"Unknown configuration key in run_config.yaml: `{k}` "
-            log.info(msg + "- this key will be ignored.")
-            continue
+            msg = msg + f"\nKey must be one of:\n{list(params_keys.keys())}"
+            raise KeyError(msg)
         input_params[k] = v
 
     input_params.run_config = Path(yml_path)
@@ -114,6 +114,11 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append("Initial run mode selected")
 
     run_logs.append("Full Grid/IC regeneration will be performed.")
+
+    if params.preprocess_only:
+        run_logs.append(
+            "Preprocess-only mode selected. Will exit after preprocessing IC data."
+        )
 
     if state.ensemble_run:
         run_logs.append(f"Ensemble run [{state.ensemble_id}/{state.n_ensembles}]")

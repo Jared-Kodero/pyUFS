@@ -88,11 +88,13 @@ $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
 if (( $(<"$EXIT_CODE_FILE") == 0 && CASE_PREPROCESS_ONLY == 1 )); then
     $ON_SUCCESS
+    rm -f "$CASE_DATA_SYMLINK"
+    ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
     echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
     exit 0
 fi
 
-if (( SBATCH_MULTI_NODE_FLAG == 1 )) || [[ -f "$SHIELD_NATIVE" ]]; then
+if (( CASE_MULTI_NODE_FLAG == 1 )) || [[ -f "$SHIELD_NATIVE" ]]; then
     SHIELD="$WORK_DIR/shield"
 else
     SHIELD="$SHIELD_PREFIX $WORK_DIR/shield"
@@ -115,6 +117,23 @@ if (( SYNC == 1 )); then
 fi
 
 
+elapsed_hours () {
+    awk -v start="$1" -v end="$2" 'BEGIN {printf "%.2f", (end - start)/3600}'
+}
+
+if (( EXIT_CODE == 0 )); then
+    if (( CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
+        msg="Restart ${CASE_RESUBMIT_INDEX} completed"
+        elapsed=$(elapsed_hours "$RUN_START_TIME" "$RUN_END_TIME")
+    else
+        msg="Case $SLURM_JOB_NAME completed"
+        elapsed=$(elapsed_hours "$CASE_RUN_START_TIME" "$(date +%s)")
+    fi
+
+    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
+fi
+
+
 if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
     CASE_OUT="$CASE_DIR/OUTPUT"
     rm -rf "$CASE_DIR"/IC/R*_INPUT
@@ -133,7 +152,7 @@ if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
         rm -rf "$CASE_ARCHIVE_DIR"/grid_spec*
         rm -rf "$CASE_OUT"
         rm -rf "$CASE_DIR"/HIST
-        cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/run_config.yaml"
+        cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/state.yaml"
 
         TARFILE="$ARCHIVE_DIR/case.tar.gz"
 
@@ -142,8 +161,11 @@ if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
 
             rm -rf "$CASE_DIR"
             rm -f "$CASE_DATA_SYMLINK"
+            ln -s "$CASE_ARCHIVE_DIR" "$CASE_DATA_SYMLINK"
 
             echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $CASE_ARCHIVE_DIR"
+
+            exit 0
         else
             echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - ERROR - Failed to archive case directory: $CASE_DIR"
             rm -f "$TARFILE"
@@ -154,35 +176,18 @@ if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
 fi
 
 
-elapsed_hours () {
-    awk -v start="$1" -v end="$2" 'BEGIN {printf "%.2f", (end - start)/3600}'
-}
-
-if (( EXIT_CODE == 0 )); then
-    if (( CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
-        msg="Restart ${CASE_RESUBMIT_INDEX} completed"
-        elapsed=$(elapsed_hours "$RUN_START_TIME" "$RUN_END_TIME")
-    else
-        msg="Case $SLURM_JOB_NAME completed"
-        elapsed=$(elapsed_hours "$CASE_RUN_START_TIME" "$(date +%s)")
-    fi
-
-    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
-fi
-
 if (( EXIT_CODE == 0 && CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
     SLURM_OPEN_MODE="append"
-    SBATCH_TIME_LIMIT=$(squeue -j "$SLURM_JOB_ID" -h -o "%l")
+    CASE_TIME_LIMIT=$(squeue -j "$SLURM_JOB_ID" -h -o "%l")
     CASE_RESUBMIT_INDEX=$((CASE_RESUBMIT_INDEX + 1))
     source "$UFS_UTILS_DIR/drivers/sbatch.sh"
     scontrol top "$JOB_ID"
+    exit 0
 fi
 
 
+exit $EXIT_CODE
 
-rm -f "$CASE_DATA_SYMLINK"
-ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
-exit "$EXIT_CODE"
 
 
 

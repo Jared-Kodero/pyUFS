@@ -18,9 +18,9 @@ def stage_files() -> None:
     chgres_cube = state.tmp / "chgres_cube"
     subdirs = [d.name for d in chgres_cube.iterdir() if d.is_dir()]
     nest_tile_dirs = sorted(
-        [d for d in subdirs if d.startswith("tile")], key=sort_paths
+        [d for d in subdirs if d.startswith("nest")], key=sort_paths
     )
-    nest_indices = [f"{i:02d}" for i in range(2, len(nest_tile_dirs) + 2)]
+    nest_indices = [str(Path(d).name.replace("nest", "")) for d in nest_tile_dirs]
     nest_dict = dict(zip(nest_tile_dirs, nest_indices))
 
     if n_nests > 0 and len(nest_tile_dirs) != n_nests:
@@ -43,16 +43,19 @@ def stage_files() -> None:
         cp(f, dest)
 
     # Now process nests
-    for tile_dir, nest_idx in nest_dict.items():
-        nest_dir = chgres_cube / tile_dir
+    for nest_dir, nest_idx in nest_dict.items():
+        nest_dir = chgres_cube / nest_dir
         nest_files = nest_dir.glob("*.nc")
+        tile = int(nest_idx) + 5
+
         for f in nest_files:
             if "tile" in f.name and "mosaic" not in f.name:
                 kind = "atm" if "atm" in f.name else "sfc"
                 name = "gfs" if kind == "atm" else "sfc"
-                dest = state.input / f"{name}_data.nest{nest_idx}.{tile_dir}.nc"
+                dest = state.input / f"{name}_data.nest{nest_idx}.tile{tile}.nc"
             else:
                 continue
+
             cp(f, dest)
 
     fix_sfc_files = (state.tmp / "ic" / "fix_sfc").glob("*")
@@ -81,19 +84,22 @@ def stage_files() -> None:
     shutil.rmtree(fix_sfc_dest, ignore_errors=True)
     fix_sfc_src.rename(fix_sfc_dest)
 
-    # Rename Oro files in ic_dir
+    # Rename global orography files
     for f in state.input.glob("*oro*.tile*.nc"):
-        parent = Path(f.parent)
         tile_str = f.stem.split(".")[-1]
-        if n_nests > 0 and tile_str in nest_tile_dirs:
-            nest_idx = nest_dict[tile_str]
-            new_file = parent / f"oro_data.nest{nest_idx}.{tile_str}.nc"
-        else:
-            new_file = parent / f"oro_data.{tile_str}.nc"
 
-        if new_file.exists():
-            continue
-        rename(f, new_file)
+        # Global domain owns tiles 1 through 6.
+        if tile_str in {f"tile{i}" for i in range(1, 7)}:
+            new_file = state.input / f"oro_data.{tile_str}.nc"
+            rename(f, new_file)
+
+    # Rename nested orography files
+    for nest_dir, nest_idx in nest_dict.items():
+        tile = int(nest_idx) + 5
+
+        for f in state.input.glob(f"*oro*.tile{tile}.nc"):
+            new_file = state.input / f"oro_data.nest{nest_idx}.tile{tile}.nc"
+            rename(f, new_file)
 
     # for file in INPUT, if "grid" in file name,or mosaic in file name, move to GRID dir
     for f in state.input.glob("*"):

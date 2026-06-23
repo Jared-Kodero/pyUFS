@@ -380,6 +380,7 @@ def regrid():
         log.info("Run Completed Successfully!")
 
     static_path = Path(state.case_home) / "STATIC"
+
     static_path.mkdir(parents=True, exist_ok=True)
 
     for f in Path(state.hist).glob("*"):
