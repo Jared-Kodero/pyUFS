@@ -106,58 +106,85 @@ class ChgresCubeConfig:
     wam_cold_start: bool = False
 
 
-def load_yml(n_tiles: int, chgres_config: str) -> dict:
+def load_yml(n_tiles: int) -> dict:
     """Load and validate a YAML configuration for CHGRES with normal tiles."""
 
-    if not chgres_config:
-        log.info("No chgres_cube configuration provided. Using default settings.")
-        chgres_config = state.configs / "chgres_cube_default.yaml"
-    else:
-        log.info(f"Using provided chgres_cube configuration: {chgres_config}")
+    fort_41 = Path(state.run_dir / "fort.41")
+    yml_41 = Path(state.run_dir / "chgres_cube.yaml")
+    fort_41_exists = fort_41.exists()
+    yml_41_exists = yml_41.exists()
 
-    yc = read_namelist(chgres_config)
+    config_path = fort_41 if fort_41_exists else yml_41 if yml_41_exists else None
+
+    if config_path:
+        cfg = read_namelist(config_path)
+
+        valid_keys = ["global", "regional", "nestXX"] + [
+            f"nest{nest_idx:02d}" for nest_idx in range(2, 2 + n_tiles)
+        ]
+
+        invalid_keys = [k for k in cfg if k not in valid_keys]
+        if invalid_keys:
+            raise KeyError(
+                f"{config_path}: invalid keys {invalid_keys} Expected one or more of {valid_keys}."
+            )
+
+    else:
+        cfg = {
+            "global": {
+                "external_model": "GFS",
+                "convert_atm": True,
+                "convert_sfc": True,
+                "convert_nst": False,
+            },
+            "nestXX": {
+                "external_models": [
+                    {
+                        "external_model": "HRRR",
+                        "convert_atm": True,
+                        "convert_sfc": False,
+                        "convert_nst": False,
+                    },
+                    {
+                        "external_model": "GFS",
+                        "convert_atm": False,
+                        "convert_sfc": True,
+                        "convert_nst": False,
+                    },
+                ]
+            },
+        }
 
     # -------------------------
     # Valid keys
     # -------------------------
 
-    valid_keys = ["global", "regional", "tileX"] + [
-        f"tile{i}" for i in range(7, 7 + n_tiles)
-    ]
-
-    invalid_keys = [k for k in yc if k not in valid_keys]
-    if invalid_keys:
-        raise KeyError(
-            f"{chgres_config}: invalid keys {invalid_keys} Expected one or more of {valid_keys}."
-        )
-
     # -------------------------
     # Handle zero-tile case
     # -------------------------
     if n_tiles == 0:
-        return {k: v for k, v in yc.items() if not k.startswith("tile")}
+        return {k: v for k, v in cfg.items() if not k.startswith("nest")}
 
     # -------------------------
-    # Expand tileX template
+    # Expand nestXX template
     # -------------------------
-    tileX = yc.pop("tileX", None)
+    nestXX = cfg.pop("nestXX", None)
 
-    tiles = {}
-    for i in range(n_tiles):
-        tile = 7 + i
-        key = f"tile{tile}"
-        if key in yc:
-            tiles[key] = yc[key]
-        elif tileX is not None:
-            tiles[key] = copy.deepcopy(tileX)
+    nests = {}
+    for nest_idx in range(2, 2 + n_tiles):
+        key = f"nest{nest_idx:02d}"
+
+        if key in cfg:
+            nests[key] = cfg[key]
+        elif nestXX is not None:
+            nests[key] = copy.deepcopy(nestXX)
         else:
-            raise KeyError(f"Missing configuration for {key} and no tileX provided.")
-
+            raise KeyError(f"Missing configuration for {key} and no nestXX provided.")
     # -------------------------
     # Assemble output
     # -------------------------
-    out = {k: v for k, v in yc.items() if not k.startswith("tile")}
-    out.update(tiles)
+    out = {k: v for k, v in cfg.items() if not k.startswith("nest")}
+    out.update(nests)
 
     return out
 
@@ -165,7 +192,7 @@ def load_yml(n_tiles: int, chgres_config: str) -> dict:
 def run_chgres_cube() -> None:
     env_setup()
 
-    yml_configs = load_yml(state.n_nests, state.chgres_config)
+    yml_configs = load_yml(state.n_nests)
     state.external_ic_source = {}
 
     # Determine IC directory based on run_chgres_only flag
@@ -219,9 +246,9 @@ def run_chgres_cube() -> None:
             else:
                 mosaic = ic_dir / f"C{state.res}_mosaic.nc"
 
-        elif domain.startswith("tile"):
-            tile = int(domain.replace("tile", ""))
-            nest_idx = f"{tile - 5:02d}"
+        elif domain.startswith("nest"):
+            nest_idx = domain.replace("nest", "")
+            tile = int(nest_idx) + 5
             mosaic = ic_dir / f"C{state.res}_nested{nest_idx}_mosaic.nc"
             orog = [f"oro.C{state.res}.tile{tile}.nc"]
 
@@ -243,28 +270,34 @@ def run_chgres_cube() -> None:
         # --------------------
 
         multi_external_models = yml_cfg.get("external_models")
+
         if multi_external_models:
             for ext_model_cfg in multi_external_models:
-                ext_model = ext_model_cfg.get("external_model")
-                ext_model = apply_config_settings(
-                    domain,
-                    tile,
-                    n_cpus,
-                    ext_model,
-                    ext_model_cfg,
-                    domain_f41,
+                requested_model = ext_model_cfg["external_model"]
+
+                # Fresh namelist state for every source-model conversion.
+                # This prevents HRRR-specific settings from leaking into GFS.
+                model_f41 = copy.deepcopy(domain_f41)
+
+                apply_config_settings(
+                    domain=domain,
+                    tile=tile,
+                    n_cpus=n_cpus,
+                    ext_model=requested_model,
+                    yml_cfg=ext_model_cfg,
+                    domain_f41=model_f41,
                 )
-                if ext_model == "GFS":
-                    break
         else:
-            ext_model = yml_cfg.get("external_model") or f41.external_model
-            ext_model = apply_config_settings(
-                domain,
-                tile,
-                n_cpus,
-                ext_model,
-                yml_cfg,
-                domain_f41,
+            requested_model = yml_cfg.get("external_model") or f41.external_model
+            model_f41 = copy.deepcopy(domain_f41)
+
+            apply_config_settings(
+                domain=domain,
+                tile=tile,
+                n_cpus=n_cpus,
+                ext_model=requested_model,
+                yml_cfg=yml_cfg,
+                domain_f41=model_f41,
             )
 
     # set flag indicating IC generation complete
@@ -274,58 +307,80 @@ def run_chgres_cube() -> None:
 
 def apply_config_settings(
     domain: str,
-    tile: int,
+    tile: int | None,
     n_cpus: int,
     ext_model: str,
     yml_cfg: dict,
     domain_f41: dict,
 ) -> str:
-    if ext_model == "HRRR" and domain.startswith(("tile", "regional")):
-        ext_model = validate_hrrr_bounds(tile)
+    requested_model = ext_model.upper()
 
-        if ext_model == "HRRR":
-            varmap_file = state.fixed_dir / "varmap_tables" / "GSDphys_var_map.txt"
-            domain_f41.geogrid_file_input_grid = state.fixed_am / "geo_em.d01.nc_HRRRX"
-            domain_f41.varmap_file = varmap_file
-        else:
-            # Revert to GFS  settings
-            yml_cfg["convert_sfc"] = True
-            yml_cfg["convert_atm"] = True
+    # Resolve the actual model to use.
+    if requested_model == "HRRR":
+        if tile is None or tile < 7:
+            raise ValueError(
+                f"HRRR ICs are only supported for nested/regional domains, got {domain}"
+            )
 
-    elif ext_model == "GFS":
-        pass
+        resolved_model = validate_hrrr_bounds(tile)
+
+    elif requested_model == "GFS":
+        resolved_model = "GFS"
 
     else:
-        raise NotImplementedError("Only GFS and HRRR external models are supported")
+        raise NotImplementedError(
+            f"Only GFS and HRRR external models are supported, got {requested_model}"
+        )
 
-    data_dir, data_file = get_IC(ext_model)
+    # Set model-specific defaults before applying YAML overrides.
+    if resolved_model == "HRRR":
+        domain_f41.varmap_file = (
+            state.fixed_dir / "varmap_tables" / "GSDphys_var_map.txt"
+        )
+        domain_f41.geogrid_file_input_grid = state.fixed_am / "geo_em.d01.nc_HRRRX"
+
+    elif resolved_model == "GFS":
+        domain_f41.varmap_file = (
+            state.fixed_dir / "varmap_tables" / "GFSphys_var_map.txt"
+        )
+        domain_f41.geogrid_file_input_grid = None
+
+    # Apply all YAML values except external_model.
+    # external_model must reflect resolved_model, not the requested model.
+    for key, value in yml_cfg.items():
+        if key == "external_model" or value is None:
+            continue
+        domain_f41[key] = value
+
+    domain_f41.external_model = resolved_model
+
+    data_dir, data_file = get_IC(resolved_model)
     domain_f41.data_dir_input_grid = data_dir
     domain_f41.grib2_file_input_grid = data_file
 
-    # Override with any YAML-specified values
-    for k, v in yml_cfg.items():
-        if v is not None:
-            domain_f41[k] = v
+    # Record provenance only after all settings are finalized.
+    if domain not in state.external_ic_source:
+        state.external_ic_source[domain] = {
+            "atm": None,
+            "sfc": None,
+            "nst": None,
+        }
 
-        if domain not in state.external_ic_source:
-            state.external_ic_source[domain] = {"atm": None, "sfc": None, "nst": None}
-        if domain_f41.convert_atm:
-            state.external_ic_source[domain]["atm"] = ext_model
-        if domain_f41.convert_sfc:
-            state.external_ic_source[domain]["sfc"] = ext_model
-        if domain_f41.convert_nst:
-            state.external_ic_source[domain]["nst"] = ext_model
+    if domain_f41.convert_atm:
+        state.external_ic_source[domain]["atm"] = resolved_model
 
-    chgres_exe(domain_f41, n_cpus, domain, ext_model)
+    if domain_f41.convert_sfc:
+        state.external_ic_source[domain]["sfc"] = resolved_model
 
-    return ext_model
+    if domain_f41.convert_nst:
+        state.external_ic_source[domain]["nst"] = resolved_model
+
+    chgres_exe(domain_f41, n_cpus, domain, resolved_model)
+
+    return resolved_model
 
 
-def chgres_exe(input_dict: dict, n_cpus: int, id_name: str, ext_model: str) -> None:
-    if id_name.startswith("tile"):
-        name = f"nest tile {int(id_name[4:])}"
-    else:
-        name = str(id_name)
+def chgres_exe(input_dict: dict, n_cpus: int, domain: str, ext_model: str) -> None:
 
     # check if we are converting atm, sfc, nst or any combination
     converts = []
@@ -339,10 +394,10 @@ def chgres_exe(input_dict: dict, n_cpus: int, id_name: str, ext_model: str) -> N
 
     chgres_cube = state.ufs_exe / "chgres_cube"
 
-    tmp_dir = state.tmp / "chgres_cube" / id_name
+    tmp_dir = state.tmp / "chgres_cube" / domain
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    log_file = state.logs / f"chgres_cube_{id_name}.log"
+    log_file = state.logs / f"chgres_cube_{domain}.log"
 
     # Any instances in fort_41 that are PathLike, convert to str
     for key, value in input_dict.items():
@@ -361,7 +416,7 @@ def chgres_exe(input_dict: dict, n_cpus: int, id_name: str, ext_model: str) -> N
     if result != 0:
         log.error(msgs)
         raise RuntimeError(
-            f"chgres_cube failed : {ext_model},  {str(name)},  {converts}"
+            f"chgres_cube failed : {ext_model},  {str(domain)},  {converts}"
         )
 
 

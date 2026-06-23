@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import yaml
@@ -22,9 +23,125 @@ logging.basicConfig(
 
 class FV3State(dict):
     __slots__ = ()
+
+    add_lake: bool
+    archive_data: bool
+    archive_dir: Path
+    blocksize: list[int]
+
+    case_description: str
+    case_dir: Path
+    case_home: Path
+    case_name: str
+    checksum: str
+    configs: Path
+    continue_run: bool
+
+    delx: float
+    dely: float
+    description: str
+    do_deep: bool
+    dt_atmos: int
+    dt_ocean: int
+
+    ensemble_id: int
+    ensemble_run: bool
+    external_ic_dir: Path | None
+    external_ic_source: dict[str, dict[str, str | None]]
+
+    fixed: Path
+    fixed_am: Path
+    fixed_dir: Path
+    forecast_hour: int
+    fv3_debug: bool
+
+    generate_ic_data: bool
+    global_ngrid_cells: int
+    global_pes: int
+    global_res_km: float
+    grid: Path
+    grid_pes: list[int]
+    gtype: str
+
+    halo: int
+    hist: Path
+
+    ic_data: Path
+    idim: int
+    init_datetime: pd.Timestamp
+    input: Path
+    io_layout: list[list[int]]
+
+    jdim: int
+
+    k_split: list[int]
+    lake_cutoff: float
+    lat_max: list[int]
+    lat_min: list[int]
+    layout: list[list[int]]
+    levels: int
+    logs: Path
+    lon_max: list[int]
+    lon_min: list[int]
+
+    make_gsl_orog: bool
+    multi_node: bool
+
+    n_cpus: int
+    n_cpus_per_node: int
+    n_ensembles: int
+    n_nests: int
+    n_nodes: int
+    n_split: list[int]
+
+    nest_ngrid_cells: list[int]
+    nest_res_km: list[float]
+    nest_type: str
+    nesting: dict[str, list[int]]
+
+    npx: list[int]
+    npy: list[int]
+    ntiles: list[int]
+
+    output: Path
+
+    parent_tile: int
+    preprocess_only: bool
+
+    refine_ratio: list[int]
+    res: int
+    restart_no: int
+    restarts: Path
+    resubmit: int
+    resubmit_idx: int
+    run_config: Path
+    run_dir: Path
+    run_nhours: int
+
+    scratch_dir: Path
+    shield_exe: str
+    sm_perturbations: dict
+    stretch_factor: float
+
+    target_lat: float
+    target_lon: float
+    tmp: Path
+    total_pes: int
+    total_restarts: int
+    total_run_hours: int
+
+    ufs_exe: Path
+    ufs_utils: Path
+
+    warm_start: bool
+
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
-    __getattr__ = dict.get
+
+    def __getattr__(self, name) -> Any:
+        if name in self:
+            return self[name]
+        return None
 
 
 state = FV3State({})
@@ -32,12 +149,12 @@ prev_state = FV3State({})
 
 env_vars = {
     "case_name": os.getenv("CASE_NAME"),
-    "n_cpus": int(os.environ.get("SBATCH_NTASKS")),
-    "n_nodes": int(os.environ.get("SBATCH_NNODES", 1)),
+    "n_cpus": int(os.environ.get("CASE_NTASKS")),
+    "n_nodes": int(os.environ.get("CASE_NNODES", 1)),
     "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
     "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
-    "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
-    "multi_node": bool(int(os.getenv("SBATCH_MULTI_NODE_FLAG", 0))),
+    "n_cpus_per_node": int(os.environ.get("CASE_NTASKS_PER_NODE")),
+    "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", 0))),
     "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", 0)),
     "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", 0)),
     "ufs_utils": Path(__file__).resolve().parent.parent,
