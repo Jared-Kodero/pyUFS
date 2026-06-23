@@ -78,39 +78,40 @@ export APPTAINER_BINDPATH=$(printf "%s" "$CONTAINER_BINDPATH" | base64 -d)
 
 FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
+SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
+
 ON_SUCCESS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
 ON_FAILURE="rsync -a "$WORK_DIR/" "$CASE_DIR/""
 
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
-if [ "$(cat "$EXIT_CODE_FILE")" -eq 0 ] && [ -f "$WORK_DIR/ic.only" ]; then
-    $ON_SUCCESS && rm -f "$WORK_DIR/ic.only"
+
+if (( $(<"$EXIT_CODE_FILE") == 0 && CASE_PREPROCESS_ONLY == 1 )); then
+    $ON_SUCCESS
     echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
     exit 0
 fi
 
-
-if [[ "$SBATCH_MULTI_NODE_FLAG" ==  1 ]] || [[ -f "$SHIELD_NATIVE" ]]; then
+if (( SBATCH_MULTI_NODE_FLAG == 1 )) || [[ -f "$SHIELD_NATIVE" ]]; then
     SHIELD="$WORK_DIR/shield"
 else
-    SHIELD="apptainer exec $SHIELD_SIF $WORK_DIR/shield"
+    SHIELD="$SHIELD_PREFIX $WORK_DIR/shield"
 fi
-
 
 RUN_START_TIME=$(date +%s)
 
-
-[ "$(cat "$EXIT_CODE_FILE")" -eq 0 ] && $SHIELD
-[ "$(cat "$EXIT_CODE_FILE")" -eq 0 ] && $FREGRID
+(( $(<"$EXIT_CODE_FILE") == 0 )) && $SHIELD
+(( $(<"$EXIT_CODE_FILE") == 0 )) && $FREGRID
 
 
 RUN_END_TIME=$(date +%s)
 
 
-EXIT_CODE=$(cat "$EXIT_CODE_FILE")
+EXIT_CODE=$(<"$EXIT_CODE_FILE")
+
 if (( SYNC == 1 )); then
-    [ "$EXIT_CODE" -eq 0 ] && $ON_SUCCESS
-    [ "$EXIT_CODE" -ne 0 ] && $ON_FAILURE
+    (( EXIT_CODE == 0 )) && $ON_SUCCESS
+    (( EXIT_CODE != 0 )) && $ON_FAILURE
 fi
 
 

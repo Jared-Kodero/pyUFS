@@ -13,7 +13,7 @@ import xarray as xr
 from derived_vars import calc_derived_vars
 from fv3_runtime import exit_code
 from fv3_state import load_fv3_state
-from fv3_state import prev_state as pstate
+from fv3_state import prev_state as state
 from fv3_utils import cres_to_deg, env_setup
 from pyfregrid import fregrid
 
@@ -24,7 +24,7 @@ log = logging.getLogger("REGRIDDING")
 
 
 def get_stream_handles() -> list[str]:
-    path = Path(pstate.case_home) / "diag_table"
+    path = Path(state.case_home) / "diag_table"
     handles = []
 
     with open(path) as f:
@@ -203,17 +203,17 @@ def call_fregrid(
     if name == "GLOBAL":
         tiles_type = "global"
         input_file = stream_path.name
-        hist_ds_file = pstate.hist / f"{input_file}.tile6.nc"
+        hist_ds_file = state.hist / f"{input_file}.tile6.nc"
 
     else:
         tiles_type = "nest"
         input_file = stream_path.stem  # removes .nc
-        hist_ds_file = pstate.hist / f"{input_file}.nc"
+        hist_ds_file = state.hist / f"{input_file}.nc"
 
     with xr.open_dataset(hist_ds_file) as ds:
         data_vars = list(ds.data_vars)
 
-    fregrid_out = pstate.tmp / "fregrid" / "out"
+    fregrid_out = state.tmp / "fregrid" / "out"
     fregrid_out.mkdir(parents=True, exist_ok=True)
 
     cmd = {
@@ -221,7 +221,7 @@ def call_fregrid(
         "nlon": nx,
         "nlat": ny,
         "input_file": input_file,
-        "input_dir": pstate.hist,
+        "input_dir": state.hist,
         "interp_method": "conserve_order1",
         "standard_dimension": True,
         "lonBegin": lon_begin,
@@ -254,8 +254,8 @@ def call_fregrid(
 
         ds = post_process(ds, data_attrs, dim_attrs)
 
-        case = pstate.get("case_description") or ""
-        description = pstate.get("description") or ""
+        case = state.get("case_description") or ""
+        description = state.get("description") or ""
 
         ds.attrs = {
             "tile_type": name,
@@ -266,16 +266,16 @@ def call_fregrid(
 
         ds.to_netcdf(output_file)
 
-    shutil.rmtree(pstate.tmp / "fregrid")
+    shutil.rmtree(state.tmp / "fregrid")
 
 
 def regrid_global_tiles(streams: list, c_res: int):
-    if pstate.gtype == "nest":
-        g_input_mosaic = pstate.case_home / "GRID" / f"C{c_res}_coarse_mosaic.nc"
+    if state.gtype == "nest":
+        g_input_mosaic = state.case_home / "GRID" / f"C{c_res}_coarse_mosaic.nc"
     else:
-        g_input_mosaic = pstate.case_home / "GRID" / f"C{c_res}_mosaic.nc"
+        g_input_mosaic = state.case_home / "GRID" / f"C{c_res}_mosaic.nc"
 
-    step = cres_to_deg(pstate.res).deg
+    step = cres_to_deg(state.res).deg
 
     lon_begin = -180.0
     lon_end = 180.0
@@ -287,12 +287,10 @@ def regrid_global_tiles(streams: list, c_res: int):
 
     for stream in streams:
         input_file = stream
-        output_file = pstate.output / Path(f"{stream}.global.nc").name
+        output_file = state.output / Path(f"{stream}.global.nc").name
 
-        if pstate.restart_no == 0 and not pstate.continue_run:
-            output_file = Path(
-                str(output_file).replace(f"_{pstate.restart_no:03d}", "")
-            )
+        if state.restart_no == 0 and not state.continue_run:
+            output_file = Path(str(output_file).replace(f"_{state.restart_no:03d}", ""))
 
         call_fregrid(
             g_input_mosaic,
@@ -310,30 +308,30 @@ def regrid_global_tiles(streams: list, c_res: int):
 
 
 def regrid_nest_tiles(streams: list, c_res: int):
-    if pstate.gtype != "nest":
+    if state.gtype != "nest":
         return
 
-    refine_ratio = pstate.refine_ratio
+    refine_ratio = state.refine_ratio
     for i in range(len(refine_ratio)):
         nest = i + 1
         nest_idx = i + 2
         tile = 6 + nest
 
-        if pstate.nest_type == "telescoping":
+        if state.nest_type == "telescoping":
             n_step = cres_to_deg(c_res * np.prod(refine_ratio[: i + 1])).deg
         else:
             n_step = cres_to_deg(c_res * refine_ratio[i]).deg
 
-        lon_min = pstate.lon_min[i]
-        lon_max = pstate.lon_max[i]
-        lat_min = pstate.lat_min[i]
-        lat_max = pstate.lat_max[i]
+        lon_min = state.lon_min[i]
+        lon_max = state.lon_max[i]
+        lat_min = state.lat_min[i]
+        lat_max = state.lat_max[i]
 
         nx = int(np.round(abs(lon_max - lon_min) / n_step))
         ny = int(np.round(abs(lat_max - lat_min) / n_step))
 
         input_mosaic = (
-            pstate.case_home / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
+            state.case_home / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
         )
 
         if not input_mosaic.exists():
@@ -342,11 +340,11 @@ def regrid_nest_tiles(streams: list, c_res: int):
 
         for stream in streams:
             input_file = f"{stream}.nest{nest_idx:02d}.tile{tile}.nc"
-            output_file = pstate.output / Path(f"{stream}.tile{tile}.nc").name
+            output_file = state.output / Path(f"{stream}.tile{tile}.nc").name
 
-            if pstate.restart_no == 0 and not pstate.continue_run:
+            if state.restart_no == 0 and not state.continue_run:
                 output_file = Path(
-                    str(output_file).replace(f"_{pstate.restart_no:03d}", "")
+                    str(output_file).replace(f"_{state.restart_no:03d}", "")
                 )
 
             call_fregrid(
@@ -368,30 +366,30 @@ def regrid():
     env_setup()
     log.info("Regridding FV3 hist files to regular lat-lon grid")
     streams = get_stream_handles()
-    regrid_global_tiles(streams, pstate.res)
-    regrid_nest_tiles(streams, pstate.res)
+    regrid_global_tiles(streams, state.res)
+    regrid_nest_tiles(streams, state.res)
 
-    if pstate.resubmit == 0:
+    if state.resubmit_idx == state.resubmit:
         merge_outputs(
-            pstate.output,
+            state.output,
             streams,
-            pstate.n_nests,
-            pstate.run_nhours,
-            pstate.total_restarts,
+            state.n_nests,
+            state.run_nhours,
+            state.total_restarts,
         )
         log.info("Run Completed Successfully!")
 
-    static_path = Path(pstate.case_home) / "STATIC"
+    static_path = Path(state.case_home) / "STATIC"
     static_path.mkdir(parents=True, exist_ok=True)
 
-    for f in Path(pstate.hist).glob("*"):
+    for f in Path(state.hist).glob("*"):
         if "spec" in f.name or "static" in f.name:
             dest = static_path / f.name
             if dest.exists():
                 continue
             f.rename(dest)
 
-    shutil.rmtree(pstate.tmp)
+    shutil.rmtree(state.tmp)
 
 
 if __name__ == "__main__":
