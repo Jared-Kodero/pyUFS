@@ -200,7 +200,6 @@ def preprocess_only():
     for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
         files_to_rm.extend(state.case_home.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
-    Path(state.case_home / "ic.only").touch()
     save_fv3_state()
 
 

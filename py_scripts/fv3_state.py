@@ -34,7 +34,6 @@ env_vars = {
     "case_name": os.getenv("CASE_NAME"),
     "n_cpus": int(os.environ.get("SBATCH_NTASKS")),
     "n_nodes": int(os.environ.get("SBATCH_NNODES", 1)),
-    "node_list": os.environ.get("SLURM_NODELIST"),
     "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
     "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
     "n_cpus_per_node": int(os.environ.get("SBATCH_NTASKS_PER_NODE")),
