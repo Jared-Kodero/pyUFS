@@ -183,6 +183,7 @@ def get_config():
     n_ensembles = user_cfg.get("n_ensembles", 0)
     resubmit_max = user_cfg.get("resubmit", 0)
     archive_data = int(user_cfg.get("archive_data", False))
+    preprocess_only = int(user_cfg.get("preprocess_only", False))
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
     case_name = user_cfg.get("case_name") or env_case_name
     skip_ensembles = user_cfg.get("skip_ensembles", None)
@@ -208,6 +209,7 @@ def get_config():
         "CASE_RESUBMIT_INDEX": 0,
         "CASE_RESUBMIT_MAX": resubmit_max,
         "CASE_ARCHIVE": archive_data,
+        "CASE_PREPROCESS_ONLY": preprocess_only,
         "CASE_NAME": case_name,
         **paths,
     }
