@@ -1,0 +1,233 @@
+# -----------------------------------------------------------------------------
+# chgres_cube configuration template
+#
+# Set paths and input options for the target grid and external input dataset.
+# Keep the tracer lists in identical order: tracers[i] maps to tracers_input[i].
+# -----------------------------------------------------------------------------
+
+config:
+  # ---------------------------------------------------------------------------
+  # Target grid definition
+  # ---------------------------------------------------------------------------
+
+  # Output mosaic file for the target FV3 cube-sphere grid.
+  mosaic_file_target_grid: null
+
+  # Directory containing fixed surface fields for the target grid.
+  fix_dir_target_grid: null
+
+  # Directory containing target-grid orography files.
+  orog_dir_target_grid: null
+
+  # Orography filename for each cube-sphere tile.
+  # These files are resolved relative to orog_dir_target_grid unless full paths
+  # are supplied.
+  orog_files_target_grid:
+    - _oro_data.tile1.nc
+    - _oro_data.tile2.nc
+    - _oro_data.tile3.nc
+    - _oro_data.tile4.nc
+    - _oro_data.tile5.nc
+    - _oro_data.tile6.nc
+
+  # Target vertical-coordinate definition. Replace {levels} with the desired
+  # number of vertical model levels.
+  vcoord_file_target_grid: global_hyblev.l{levels}.txt
+
+  # ---------------------------------------------------------------------------
+  # Input data definition
+  # ---------------------------------------------------------------------------
+
+  # Directory containing atmospheric, surface, or nested input data.
+  data_dir_input_grid: null
+
+  # Atmospheric input files, file pattern, or workflow-defined file list.
+  atm_files_input_grid: null
+
+  # Surface input files, file pattern, or workflow-defined file list.
+  sfc_files_input_grid: null
+
+  # Input GRIB2 file. Required only when input_type uses GRIB2 data.
+  grib2_file_input_grid: null
+
+  # WPS geogrid file. Required only for regional-grid definitions.
+  geogrid_file_input_grid: null
+
+  # Variable mapping file that defines input-to-output field correspondences.
+  varmap_file: null
+
+  # WAM physics parameter file. Required only when wave-atmosphere coupling is
+  # enabled.
+  wam_parm_file: null
+
+  # Input dataset format, for example:
+  # gaussian_nemsio, gaussian_netcdf, grib2
+  input_type: null
+
+  # Name of the external model providing the input fields, for example:
+  # GFS, FV3, FV3LAM, HRRR
+  external_model: null
+
+  # ---------------------------------------------------------------------------
+  # Cycle time
+  # ---------------------------------------------------------------------------
+
+  # Analysis or forecast cycle valid time in UTC.
+  # Format: YYYY/MM/DD/HH
+  cycle_year: null
+  cycle_mon: null
+  cycle_day: null
+  cycle_hour: null
+
+  # ---------------------------------------------------------------------------
+  # Conversion controls
+  # ---------------------------------------------------------------------------
+
+  # Enable conversion of atmospheric fields.
+  convert_atm: true
+
+  # Enable conversion of land, sea-ice, and other surface fields.
+  convert_sfc: true
+
+  # Enable conversion of near-surface temperature (NST) fields.
+  convert_nst: true
+
+  # ---------------------------------------------------------------------------
+  # Tracer configuration
+  # ---------------------------------------------------------------------------
+
+  # Output tracer names expected by the target model.
+  tracers:
+    - sphum
+    - liq_wat
+    - o3mr
+    - ice_wat
+    - rainwat
+    - snowwat
+    - graupel
+
+  # Corresponding tracer names in the input dataset.
+  # The ordering must exactly match the tracers list above.
+  tracers_input:
+    - spfh
+    - clwmr
+    - o3mr
+    - icmr
+    - rwmr
+    - snmr
+    - grle
+
+  # ---------------------------------------------------------------------------
+  # Regional-domain controls
+  # ---------------------------------------------------------------------------
+
+  # Set to 0 for a global grid. Use the workflow-supported regional setting for
+  # limited-area domains.
+  regional: 0
+
+  # Number of halo grid cells used for boundary processing.
+  halo_bndy: 0
+
+  # Number of halo grid cells used to blend lateral boundaries.
+  halo_blend: 0
+
+  # ---------------------------------------------------------------------------
+  # Land-surface and climatological fields
+  # ---------------------------------------------------------------------------
+
+  # Number of soil layers written to output soil temperature and moisture fields.
+  nsoill_out: 4
+
+  # Use climatological fields rather than input-model fields where true.
+  sotyp_from_climo: true # Soil type
+  vgtyp_from_climo: true # Vegetation type
+  vgfrc_from_climo: true # Vegetation fraction
+  lai_from_climo: true # Leaf area index
+  minmax_vgfrc_from_climo: true # Minimum and maximum vegetation fraction
+
+  # Derive deep-soil temperature (tg3) from soil data.
+  tg3_from_soil: false
+
+  # Optional Thompson microphysics climatology file.
+  thomp_mp_climo_file: null
+
+  # Set true for a WAM cold start; false for a warm start.
+  wam_cold_start: false
+
+# =============================================================================
+# Example 1: Global domain using GFS for atmospheric and surface fields
+# =============================================================================
+#
+# global:
+#   external_model: GFS
+#   convert_atm: true
+#   convert_sfc: true
+#   convert_nst: false
+
+# =============================================================================
+# Example 2: Nested domain using separate external models by field category
+#
+# Use this form when one model supplies atmospheric fields and another supplies
+# surface fields for the same nested domain.
+# =============================================================================
+#
+# nestXX:
+#   external_models:
+#     - external_model: HRRR
+#       convert_atm: true
+#       convert_sfc: false
+#       convert_nst: false
+#
+#     - external_model: GFS
+#       convert_atm: false
+#       convert_sfc: true
+#       convert_nst: false
+
+# =============================================================================
+# Example 3: Global domain plus one nested domain
+#
+# Replace nest02 with the required nested-domain identifier. In configurations
+# that use sequential cube-sphere tiles, nest numbering typically begins at 01.
+# =============================================================================
+#
+# global:
+#   external_model: GFS
+#   convert_atm: true
+#   convert_sfc: true
+#   convert_nst: false
+#
+# nest02:
+#   external_model: HRRR
+#   convert_atm: true
+#   convert_sfc: false
+#   convert_nst: false
+#
+#   # Add any nest-specific overrides below. For example:
+#   # regional: 1
+#   # halo_bndy: 3
+#   # halo_blend: 10
+
+# =============================================================================
+# Example 4: One external model for atmospheric fields and another for surface
+# fields in a specific nest
+# =============================================================================
+#
+# nest02:
+#   external_models:
+#     - external_model: HRRR
+#       convert_atm: true
+#       convert_sfc: false
+#       convert_nst: false
+#
+#     - external_model: GFS
+#       convert_atm: false
+#       convert_sfc: true
+#       convert_nst: false
+#
+# Notes:
+# - Replace XX or 02 with the workflow-supported nest identifier.
+# - Do not enable the same conversion category for multiple external models
+#   unless the workflow explicitly supports field-level merging.
+# - Add any options from this template beneath global, nestXX, or an
+#   external_models entry only where supported by the chgres_cube workflow.
+

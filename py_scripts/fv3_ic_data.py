@@ -192,6 +192,7 @@ def validate_hrrr_bounds(tile: int) -> str:
 
     if is_contained:
         return "HRRR"
+
     return "GFS"
 
 
