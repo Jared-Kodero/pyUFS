@@ -91,9 +91,9 @@ def disable_deep_convection(nml: dict, tile: int, name: str):
         return nml
 
     nml["gfs_physics_nml"]["do_deep"] = False
-    nml["gfs_physics_nml"]["imfdeepcnv"] = 2  # -1
+    nml["gfs_physics_nml"]["imfdeepcnv"] = -1  # 2
     nml["gfs_physics_nml"]["shal_cnv"] = True
-    nml["gfs_physics_nml"]["imfshalcnv"] = 2  # -1
+    nml["gfs_physics_nml"]["imfshalcnv"] = -1  # 2
 
     log.info(f"{name} deep convection disabled ({res_km:.2f} km)")
 

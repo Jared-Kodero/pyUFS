@@ -57,7 +57,7 @@ def _download_data(
     )
 
 
-def get_IC(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
+def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
     """
     Get initialization data for the specified external model
 
@@ -210,7 +210,12 @@ def init_external_ic() -> bool:
     ic_at_home = not state.external_ic_dir
 
     ic_dir = Path(ic_dir)
-    required = ("FIXED", "GRID", "IC", "INPUT")
+    required = ("FIXED", "GRID", "INPUT")
+
+    # state.file
+
+    yml_cfg = state.case_home / "state.yml"
+
     missing = [
         d
         for d in required
@@ -228,6 +233,11 @@ def init_external_ic() -> bool:
         )
     else:
         log.info(f"IC data was found directly in {state.case_home}")
+
+    if not yml_cfg.exists():
+        raise FileNotFoundError(
+            f"Missing state.yml in {state.case_home}. Cannot load FV3 state."
+        )
 
     load_fv3_state(merge=True)
     calc_cpu_alloc(state.input)

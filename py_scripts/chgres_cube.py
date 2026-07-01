@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 import f90nml
-from fv3_ic_data import get_IC, validate_hrrr_bounds
+from fv3_ic_data import get_ic_data, validate_hrrr_bounds
 from fv3_runtime import get_launcher, log, read_namelist
 from fv3_stage_data import stage_files
 from fv3_state import FV3State, state
@@ -354,7 +354,7 @@ def apply_config_settings(
 
     domain_f41.external_model = resolved_model
 
-    data_dir, data_file = get_IC(resolved_model)
+    data_dir, data_file = get_ic_data(resolved_model)
     domain_f41.data_dir_input_grid = data_dir
     domain_f41.grib2_file_input_grid = data_file
 
