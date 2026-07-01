@@ -5,7 +5,7 @@ import xarray as xr
 from fv3_runtime import log
 from fv3_state import compute_checksum, state
 
-ensemble_amp = 0.01  # perturbation std = 1% of each level's spatial std
+ENSEMBLE_AMP = 1e-3
 
 
 def _get_stds(in_file: Path, target_vars: set) -> dict:
@@ -47,7 +47,7 @@ def _gen_ensemble(
     out_file: Path,
     target_vars: set,
     rng: np.random.Generator,
-    dx: float,
+    dx: float,  # nest resolution in km,
 ):
     """
     Generate ensemble members by adding small perturbations to the input data. for GFDL SHiELD, 3km convective run
@@ -65,7 +65,7 @@ def _gen_ensemble(
                 layer = da.isel(lev=z)
                 coord_val = da.lev.values[z]
                 delta = _get_delta(
-                    stds[v][z] * ensemble_amp,
+                    stds[v][z] * ENSEMBLE_AMP,
                     rng,
                     shape=layer.shape,
                     dims=layer.dims,
@@ -93,7 +93,6 @@ def ensemble_config():
         return
 
     if state.ensemble_id == 1:
-        log.info(f"Skipping ensemble generation for ensemble  {state.ensemble_id}")
         return  # 1 member is the control, so no need to perturb
 
     log.info(f"Generating ensemble member for ensemble {state.ensemble_id}")

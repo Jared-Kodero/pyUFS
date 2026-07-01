@@ -182,7 +182,6 @@ def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
         "lat_min",
         "lat_max",
         "init_datetime",
-        "chgres_config",
     ]
 
     if hash_keys is not None:
