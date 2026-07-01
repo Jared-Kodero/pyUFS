@@ -126,11 +126,6 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
     # rename plev to level if it exists
     if "plev" in ds.coords or "plev" in ds.dims:
         ds = ds.rename({"plev": "level"})
-        ds["level"].attrs = {
-            "units": "hPa",
-            "standard_name": "pressure_level",
-        }
-
         ds = ds.sortby("level", ascending=False)
 
     for var in ds.data_vars:
@@ -148,12 +143,19 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
         ds[dim].attrs.update(dim_attrs.get(dim, {}))
 
     ds["lat"].attrs = {
+        "axis": "Y",
         "standard_name": "latitude",
         "units": "degrees_north",
     }
     ds["lon"].attrs = {
+        "axis": "X",
         "standard_name": "longitude",
         "units": "degrees_east",
+    }
+    ds["level"].attrs = {
+        "axis": "Z",
+        "standard_name": "pressure_level",
+        "units": "hPa",
     }
 
     ds = ds.transpose(..., "lat", "lon")

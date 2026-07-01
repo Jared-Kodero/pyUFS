@@ -76,17 +76,17 @@ def get_paths(cfg: dict):
     return cfg
 
 
-def get_sbatch_runtime_flags(cfg: dict) -> dict:
+def get_runtime_flags(cfg: dict) -> dict:
     nnodes = cfg["CASE_NNODES"]
     ntasks_per_node = cfg["CASE_NTASKS_PER_NODE"]
     exclusive = cfg["CASE_EXCLUSIVE_NODE"]
     use_constraint = cfg["CASE_NODE_CONSTRAINT"]
-    sbatch_ntasks = cfg["CASE_NTASKS"]
+    n_tasks = cfg["CASE_NTASKS"]
 
     mem = cfg["CASE_MEM"]
 
-    if mem > sbatch_ntasks * 2:  # at least 2GB per task
-        mem_per_cpu = mem // sbatch_ntasks
+    if mem > n_tasks * 2:  # at least 2GB per task
+        mem_per_cpu = mem // n_tasks
     else:
         mem_per_cpu = None
         mem = None
@@ -158,28 +158,23 @@ def read_yaml(path: Path):
 def get_config():
     user_cfg = read_yaml(RUN_CFG_PATH)
     mach_cfg = read_yaml(MACHINE_CFG_PATH)
+    walltime = int(user_cfg.get("walltime", 48))
+    n_nodes = int(user_cfg.get("n_nodes", 2))
+    n_tasks = int(user_cfg.get("n_cpus", 96))
+    logfile = user_cfg.get("logfile", "shield_driver")
+    partition = user_cfg.get("partition", "batch")
+    exclusive = int(user_cfg.get("exclusive_node", False))
+    constraint = int(user_cfg.get("constraint_node", False))
+    cpu_per_task = int(user_cfg.get("cpus_per_task", 1))
+    mem = int(user_cfg.get("mem", 0))
 
-    default_sbatch = mach_cfg.get("sbatch", {})
-    user_sbatch = user_cfg.get("sbatch", {})
-    cfg = {**default_sbatch, **user_sbatch}
+    ntasks_per_node = n_tasks // n_nodes
+    ntasks_total = ntasks_per_node * n_nodes
 
-    sbatch_time = cfg["time"]
-    sbatch_nnodes = max(cfg["nnodes"], 1)
-    sbatch_ntasks = max(cfg["ntasks"], 36)
-    sbatch_output = cfg["output"]
-    sbatch_partition = cfg["partition"]
-    sbatch_exclusive = int(cfg["exclusive"])
-    sbatch_constraint = int(cfg["constraint"])
-    sbatch_cpu_per_task = max(cfg["cpus_per_task"], 1)
-    sbatch_mem = cfg.get("mem", 0)
+    if walltime > 48:
+        walltime = 48
 
-    sbatch_ntasks_per_node = sbatch_ntasks // sbatch_nnodes
-    sbatch_ntasks_total = sbatch_ntasks_per_node * sbatch_nnodes
-
-    if sbatch_time > 48:
-        sbatch_time = 48
-
-    sbatch_time = f"{sbatch_time}:00:00"
+    walltime = f"{walltime}:00:00"
     n_ensembles = user_cfg.get("n_ensembles", 0)
     resubmit_max = user_cfg.get("resubmit", 0)
     archive_data = int(user_cfg.get("archive_data", False))
@@ -194,16 +189,16 @@ def get_config():
     paths = get_paths(mach_cfg)
 
     env = {
-        "CASE_MEM": sbatch_mem,
-        "CASE_TIME_LIMIT": sbatch_time,
-        "CASE_NNODES": sbatch_nnodes,
-        "CASE_OUTPUT": sbatch_output,
-        "CASE_PARTITION": sbatch_partition,
-        "CASE_NTASKS": sbatch_ntasks_total,
-        "CASE_EXCLUSIVE_NODE": sbatch_exclusive,
-        "CASE_CPUS_PER_TASK": sbatch_cpu_per_task,
-        "CASE_NODE_CONSTRAINT": sbatch_constraint,
-        "CASE_NTASKS_PER_NODE": sbatch_ntasks_per_node,
+        "CASE_MEM": mem,
+        "CASE_TIME_LIMIT": walltime,
+        "CASE_NNODES": n_nodes,
+        "CASE_OUTPUT": logfile,
+        "CASE_PARTITION": partition,
+        "CASE_NTASKS": ntasks_total,
+        "CASE_EXCLUSIVE_NODE": exclusive,
+        "CASE_CPUS_PER_TASK": cpu_per_task,
+        "CASE_NODE_CONSTRAINT": constraint,
+        "CASE_NTASKS_PER_NODE": ntasks_per_node,
         "CASE_ENSEMBLES": n_ensembles,
         "CASE_SKIP_ENSEMBLES": skip_ensembles,
         "CASE_RESUBMIT_INDEX": 0,
@@ -214,15 +209,15 @@ def get_config():
         **paths,
     }
 
-    env.update(get_sbatch_runtime_flags(env.copy()))
+    env.update(get_runtime_flags(env.copy()))
 
     return env
 
 
-def run(sbatch_script: Path, proc_env: dict, cwd: Path) -> int:
+def run(script: Path, proc_env: dict, cwd: Path) -> int:
     try:
         subprocess.run(
-            ["bash", str(sbatch_script)],
+            ["bash", str(script)],
             env=proc_env,
             cwd=str(cwd),
         )
@@ -246,8 +241,8 @@ def main():
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir
 
     n_ensembles = int(env["CASE_ENSEMBLES"])
-    sbatch_output = Path(env["CASE_OUTPUT"])
-    sbatch_script = ufs_utils_dir / "drivers" / "sbatch.sh"
+    logfile = Path(env["CASE_OUTPUT"])
+    script = ufs_utils_dir / "drivers" / "sbatch.sh"
     skipped_ensembles = env["CASE_SKIP_ENSEMBLES"]
 
     jobs = [i for i in range(n_ensembles)]
@@ -257,7 +252,7 @@ def main():
         slurm_job_name = f"{case_parent_dir}.{case_dir}"
         case_name = env["CASE_NAME"]
         case_data_symlink = case_pwd / "run"
-        case_log_file = sbatch_output.with_suffix(".log")
+        case_log_file = logfile.with_suffix(".log")
 
         iter_env = {
             **env,
@@ -269,7 +264,7 @@ def main():
             "CASE_LOG_FILE": str(case_log_file),
         }
         proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
-        run(sbatch_script, proc_env, case_pwd)
+        run(script, proc_env, case_pwd)
         logger.info("Success! Case Submitted")
 
     else:
@@ -287,7 +282,7 @@ def main():
             slurm_job_name = f"{case_parent_dir}.{case_dir}.MEM{mem_id}"
             case_name = f"{env['CASE_NAME']}/mem{mem_id}"
             case_data_symlink = case_pwd / f"mem{mem_id}"
-            case_log_file = sbatch_output.with_suffix(f".{mem_id}.log")
+            case_log_file = logfile.with_suffix(f".{mem_id}.log")
 
             iter_env = {
                 **env,
@@ -300,7 +295,7 @@ def main():
             }
 
             proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
-            run(sbatch_script, proc_env, case_pwd)
+            run(script, proc_env, case_pwd)
             logger.info(f"Submitted ensemble {ensemble_id}/{n_ensembles}")
 
         logger.info("Success! Case Submitted")

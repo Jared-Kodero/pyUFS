@@ -1,14 +1,4 @@
 # machine_config.yaml
-sbatch:
-  exclusive: false
-  constraint: false
-  cpus_per_task: 1
-  time: 48
-  nnodes: 2
-  ntasks: 64
-  partition: "batch"
-  output: "shield_driver"
-
 paths:
   jobtmp: /jobtmp/$USER/gfdl_shield
   scratch: /oscar/scratch/$USER/models/gfdl_shield
@@ -21,9 +11,10 @@ paths:
   shield_root: /oscar/data/deeps/shared/gfdl_shield
   archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
   containers_root: /oscar/data/deeps/shared/gfdl_shield/containers
-  container_bindpath: [ "/oscar", "/sss", "/users", "/jobtmp" ]
+  container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"]
 
-modules: [ "hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf" ]
+modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"]
 launchers:
-  srun: [ "srun", "--mpi=pmix", "--distribution=block:block", "--cpu-bind=cores -n" ]
-  mpirun: [ "mpirun", "-np" ]
+  srun:
+    ["srun", "--mpi=pmix", "--distribution=block:block", "--cpu-bind=cores -n"]
+  mpirun: ["mpirun", "-np"]

@@ -37,13 +37,10 @@
 
 # Soil moisture
  "gfs_sfc", "SOILW1", "soilw1", "HIST/fv3_hist.XX", "all", .false., "none", 2
- "gfs_sfc", "SOILW2", "soilw2", "HIST/fv3_hist.XX", "all", .false., "none", 2
 
 
 # Soil temperature
  "gfs_sfc", "SOILT1", "soilt1", "HIST/fv3_hist.XX", "all", .false., "none", 2
- "gfs_sfc", "SOILT2", "soilt2", "HIST/fv3_hist.XX", "all", .false., "none", 2
-
 
 # Column-integrated soil water
  "gfs_phys", "soilm", "soilm", "HIST/fv3_hist.XX", "all", .false., "none", 2
