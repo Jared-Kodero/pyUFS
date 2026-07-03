@@ -61,15 +61,15 @@ def init_driver():
     log.info(f"Staged ic files: {state.input}")
     log.info(f"Staged fixed files: {state.fixed}")
     log.info(f"Staged mosaic files: {state.grid}")
-    log.info(f"Log files will be written to: {state.logs}")
 
     if state.preprocess_only:
         preprocess_only()
         return
 
     os.chdir(state.work_dir)
-    log.info("Init Run")
     update_nml_configs()
     apply_perturbations()
     save_fv3_state()
     gen_shield_run_sh()
+
+    log.info("Starting init Run")

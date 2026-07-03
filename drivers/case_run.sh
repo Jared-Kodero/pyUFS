@@ -127,8 +127,7 @@ if (( EXIT_CODE == 0 )); then
         elapsed=$(elapsed_hours "$CASE_RUN_START_TIME" "$(date +%s)")
         echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
     fi
-
-    
+fi
 
 
 if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then

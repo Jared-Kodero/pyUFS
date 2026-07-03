@@ -1,5 +1,4 @@
 import math
-from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -14,78 +13,6 @@ BASE_TIMINGS = {
     1152: {"dt": 150, "k_split": 2, "n_split": 6},
     3072: {"dt": 90, "k_split": 2, "n_split": 10},
 }
-
-
-def _get_user_timings(name: Literal["global", "nest"], nml: dict, nest=None) -> dict:
-    timings = {}
-    if name == "global":
-        if state.k_split is not None:
-            timings["k_split"] = state.k_split[0]
-        else:
-            timings["k_split"] = nml["fv_core_nml"]["k_split"]
-        if state.n_split is not None:
-            timings["n_split"] = state.n_split[0]
-        else:
-            timings["n_split"] = nml["fv_core_nml"]["n_split"]
-
-        if state.dt_atmos is not None:
-            timings["dt_atmos"] = state.dt_atmos
-            timings["dt_ocean"] = state.dt_ocean
-        else:
-            timings["dt_atmos"] = nml["coupler_nml"]["dt_atmos"]
-            timings["dt_ocean"] = nml["coupler_nml"]["dt_ocean"]
-
-    elif name == "nest":
-        if nest is None:
-            raise ValueError("nest must be provided for nest timing overrides")
-
-        nest_idx = nest - 1  # zero-based index
-
-        nests_k_split = None
-        nests_n_split = None
-
-        if state.k_split is not None:
-            nests_k_split = state.k_split[1:]
-        if state.n_split is not None:
-            nests_n_split = state.n_split[1:]
-
-        if nests_k_split is not None and len(nests_k_split) > nest_idx:
-            timings["k_split"] = nests_k_split[nest_idx]
-        else:
-            timings["k_split"] = nml["fv_core_nml"]["k_split"]
-
-        if nests_n_split is not None and len(nests_n_split) > nest_idx:
-            timings["n_split"] = nests_n_split[nest_idx]
-        else:
-            timings["n_split"] = nml["fv_core_nml"]["n_split"]
-
-    return timings
-
-
-def apply_user_timings(
-    nml: dict, name: Literal["global", "nest"], nest: int = None
-) -> dict:
-    # check for user timing overrides suplied in cli args or config
-    timings_overrides = _get_user_timings(name, nml, nest)
-    if not timings_overrides:
-        return nml
-
-    if nest is None:
-        dt_atmos = timings_overrides.get("dt_atmos")
-        dt_ocean = timings_overrides.get("dt_ocean")
-        if dt_atmos is not None:
-            nml["coupler_nml"]["dt_atmos"] = dt_atmos
-        if dt_ocean is not None:
-            nml["coupler_nml"]["dt_ocean"] = dt_ocean
-
-    n_split = timings_overrides.get("n_split")
-    k_split = timings_overrides.get("k_split")
-    if n_split is not None:
-        nml["fv_core_nml"]["n_split"] = n_split
-    if k_split is not None:
-        nml["fv_core_nml"]["k_split"] = k_split
-
-    return nml
 
 
 def _extrapolate_dt(C: int) -> int:
@@ -117,7 +44,7 @@ def _cres_timing(C: int) -> dict:
         }
 
 
-def get_first_guess_timings() -> dict:
+def get_best_guess_timings() -> dict:
     c_res = state.res
     n_nests = state.n_nests
     refine_ratio = state.refine_ratio
@@ -155,8 +82,33 @@ def get_first_guess_timings() -> dict:
     return {
         "dt_atmos": dt,
         "dt_ocean": dt,
-        "global_k_split": optimum_k[0],
-        "global_n_split": optimum_n[0],
-        "nest_k_splits": optimum_k[1:],
-        "nest_n_splits": optimum_n[1:],
+        "k_split": optimum_k,
+        "n_split": optimum_n,
     }
+
+
+def get_timings() -> dict:
+
+    best_guess_timings = get_best_guess_timings()
+    dt_atmos = state.dt_atmos or best_guess_timings["dt_atmos"]
+    dt_ocean = state.dt_ocean or best_guess_timings["dt_ocean"]
+    k_split = state.k_split or best_guess_timings["k_split"]
+    n_split = state.n_split or best_guess_timings["n_split"]
+
+    if len(k_split) != state.n_nests + 1:
+        raise ValueError(
+            f"Length of k_split ({len(k_split)}) does not match number of domains ({state.n_nests + 1})"
+        )
+    if len(n_split) != state.n_nests + 1:
+        raise ValueError(
+            f"Length of n_split ({len(n_split)}) does not match number of domains ({state.n_nests + 1})"
+        )
+
+    timings = {}
+
+    timings["dt_atmos"] = dt_atmos
+    timings["dt_ocean"] = dt_ocean
+    timings["k_split"] = k_split
+    timings["n_split"] = n_split
+
+    return timings
