@@ -266,7 +266,7 @@ def namelist_overrides(path: Path, nml: dict, name: str):
 def update_fixed_files():
     dt = state.init_datetime
     year = dt.year
-    fix_dirs = [state.fix / "am", state.fix_src / "lut"]
+    fix_dir = state.fix_src / "am"
 
     required_files = [
         "aerosol.dat",
@@ -283,35 +283,27 @@ def update_fixed_files():
     missing_files = []
 
     for name in required_files:
-        found = None
-        for fix_dir in fix_dirs:
-            candidate = fix_dir / name
-            if candidate.exists():
-                found = candidate
-                break
-            else:
-                # Attempt fuzzy match if file not found
-                matches = list(fix_dir.glob(f"*{name}"))
-                if matches:
-                    found = matches[0]
-                    break
-
-        if found:
+        file = fix_dir / name
+        if file.exists():
             dest = state.fix / name
             if not dest.exists():
-                cp(found, dest)
+                cp(file, dest)
+
             link = Path(state.input) / name
             link.unlink(missing_ok=True)
+
             rel_target = os.path.relpath(dest, start=state.input)
             link.symlink_to(rel_target)
-
         else:
-            missing_files.append(name)
+            missing_files.append(file)
 
     if missing_files:
-        raise FileNotFoundError(
-            "The following files were not found: " + ", ".join(missing_files)
-        )
+        url = "https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/am/"
+        print("Missing required file(s):")
+        for f in missing_files:
+            print(f"  - {f}")
+        print(f"Please download them from\n\t{url}\nand place them in\n\t{fix_dir}.")
+        raise FileNotFoundError("Missing required fixed files. See above for details.")
 
 
 def update_table_files():

@@ -44,8 +44,7 @@ def gen_shield_container_scripts(
         modules = "\n".join(f"module load {m}" for m in native_modules)
 
         cfg = dict(
-            stdout_path=log_file,
-            stderr_path=log_file,
+            log_file=log_file,
             exe=state.shield_exe,
             modules=modules,
             launcher=native_launcher,
@@ -55,8 +54,7 @@ def gen_shield_container_scripts(
 
     else:
         cfg = dict(
-            stdout_path=log_file,
-            stderr_path=log_file,
+            log_file=log_file,
             exe="SHiELD_nh.prod.64bit.x",
             modules=modules,
             launcher=container_launcher,
