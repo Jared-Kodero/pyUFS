@@ -7,6 +7,7 @@ import numpy as np
 import xarray as xr
 from fv3_runtime import read_namelist, sort_paths
 from fv3_state import save_fv3_state, state
+from fv3_timings import get_timings
 
 grid_dir: Path = None
 
@@ -103,14 +104,40 @@ def calc_nest_pes() -> None:
     if check_user_define_pes():
         return
 
+    timings = get_timings()
+    k_split = timings["k_split"]
+    n_split = timings["n_split"]
+
     global_base_pes = 6 * max(1, state.res // 96)
+    global_subcycles = k_split[0] * n_split[0]
+
+    # Preserve the original total weight so allocate_pes() continues to
+    # interpret the sum of weights consistently with available CPUs.
+    original_total_weight = global_base_pes
+
     nest_base_pes = []
 
-    for n_cells in state.nest_ngrid_cells:
-        nest_i_base_pe = int((n_cells * global_base_pes) / state.global_ngrid_cells)
-        nest_base_pes.append(nest_i_base_pe)
+    for nest_index, n_cells in enumerate(state.nest_ngrid_cells, start=1):
+        area_weight = n_cells * global_base_pes / state.global_ngrid_cells
+
+        nest_subcycles = k_split[nest_index] * n_split[nest_index]
+
+        # Relative dynamics work per cell, normalized by the global grid.
+        timestep_factor = nest_subcycles / global_subcycles
+
+        nest_weight = area_weight * timestep_factor
+
+        nest_base_pes.append(nest_weight)
+        original_total_weight += area_weight
 
     weights = [global_base_pes] + nest_base_pes
+
+    # Rescale only the magnitude, not the global:nest ratios.
+    scaled_total_weight = sum(weights)
+
+    weights = [
+        int(weight * original_total_weight / scaled_total_weight) for weight in weights
+    ]
     valid = np.array([16, 32, 64, 128, 256], dtype=np.int64)
 
     final_pes = allocate_pes(
