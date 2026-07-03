@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 from collections import namedtuple
+from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -11,47 +12,89 @@ from fv3_paths import paths
 log = logging.getLogger("PREPROCESS")
 
 
+@contextmanager
+def redirect_streams(
+    stdout: Path | None = None,
+    stderr: Path | None = None,
+):
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
+    out_file = None
+    err_file = None
+
+    try:
+        if stdout == stderr and stdout is not None:
+            out_file = open(stdout, "a")
+            err_file = out_file
+
+        else:
+            if stdout:
+                out_file = open(stdout, "a")
+
+            if stderr:
+                err_file = open(stderr, "a")
+
+        if out_file:
+            sys.stdout = out_file
+
+        if err_file:
+            sys.stderr = err_file
+
+        yield out_file, err_file
+
+    finally:
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
+
+        if out_file:
+            out_file.close()
+
+        if err_file and err_file is not out_file:
+            err_file.close()
+
+
 def run_cmd(
-    cmd: list,
+    cmd: list[str],
     *,
     stdin: object = None,
-    cwd: Path = None,
-    env: dict = None,
-    log_file: Path = None,
-    msgs: str = None,
+    cwd: Path | None = None,
+    env: dict | None = None,
+    stdout: Path | None = None,
+    stderr: Path | None = None,
+    msgs: str | None = None,
     **kwargs,
 ) -> tuple[int, str]:
 
-    out_file = open(log_file, "a") if log_file else None
+    log_path = stdout or stderr
+
     if not msgs:
-        msgs = f"See full log at {log_file}" if log_file else ""
+        msgs = f"See full log at {log_path}" if log_path else ""
 
     try:
-        result = subprocess.run(
-            cmd,
-            check=True,
-            text=True,
-            stdin=stdin,
-            cwd=cwd,
-            env=env,
-            stdout=out_file,
-            stderr=out_file,
-        )
+        with redirect_streams(stdout, stderr) as (_stdout, _stderr):
+            result = subprocess.run(
+                cmd,
+                check=True,
+                text=True,
+                stdin=stdin,
+                cwd=cwd,
+                env=env,
+                stdout=_stdout,
+                stderr=_stderr,
+            )
 
         return result.returncode, ""
 
     except subprocess.CalledProcessError as exc:
         if kwargs.get("warn_on_error", True):
             log.warning("Command failed: %s", " ".join(cmd))
+
         return exc.returncode, f"{type(exc).__name__}: {exc}\n{msgs}"
 
     except Exception as exc:
         log.warning("Exception running command: %s", " ".join(cmd))
         return 1, f"{type(exc).__name__}: {exc}\n{msgs}"
-
-    finally:
-        if out_file:
-            out_file.close()
 
 
 def rename(src: str | Path, dest: str | Path):
@@ -64,7 +107,7 @@ def rename(src: str | Path, dest: str | Path):
         dest.unlink()
 
     cmd = ["mv", "-v", str(src), str(dest)]
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(f"Failed to rename file: {src} to {dest}")
@@ -80,7 +123,7 @@ def cp(src: str | Path, dest: str | Path):
     dest = Path(dest).resolve()
 
     cmd = ["cp", "-v", "-rf", str(src), str(dest)]
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(f"Failed to copy file: {src} to {dest}")

@@ -147,7 +147,9 @@ def run_emcsfc_snow(
     comout = tmp_ic_dir / "emcsfc_snow"
     comout.mkdir(parents=True, exist_ok=True)
 
-    result, msgs = run_cmd([str(snow_exec)], cwd=comout, log_file=log_file)
+    result, msgs = run_cmd(
+        [str(snow_exec)], cwd=comout, stdout=log_file, stderr=log_file
+    )
 
     if result != 0:
         log.error(msgs)

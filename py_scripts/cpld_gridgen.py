@@ -133,7 +133,8 @@ def run_gridgen(
     result, msgs = run_cmd(
         cmd,
         cwd=outdir,
-        log_file=log_file,
+        stdout=log_file,
+        stderr=log_file,
     )
     if result != 0:
         log.error(msgs)
@@ -171,7 +172,7 @@ def run_gridgen(
                 "-G",
                 f"latlon={dims}#lon_typ=grn_ctr#lat_typ=cap",
             ]
-            result, msgs = run_cmd(cmd, log_file=log_file)
+            result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
             if result != 0:
                 log.error(msgs)
                 raise RuntimeError(f"Failed to generate scrip file for {grid}")
@@ -180,7 +181,7 @@ def run_gridgen(
         fs = outdir / f"Ct.mx{resname}_SCRIP_land.nc"
         fd = outdir / f"mesh.mx{resname}.nc"
         cmd = [*get_launcher(1), "ESMF_Scrip2Unstruct", str(fs), str(fd), "0"]
-        result, msgs = run_cmd(cmd, log_file=log_file)
+        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
         if result != 0:
             log.error(msgs)
             raise RuntimeError("Failed to generate ice mesh file")
@@ -189,7 +190,7 @@ def run_gridgen(
         fs = outdir / f"grid_cice_NEMS_mx{resname}.nc"
         fd = outdir / f"kmtu_cice_NEMS_mx{resname}.nc"
         cmd = ["ncks", "-O", "-v", "kmt", str(fs), str(fd)]
-        result, msgs = run_cmd(cmd, log_file=log_file)
+        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
         if result != 0:
             log.error(msgs)
             raise RuntimeError("Failed to generate kmt file")

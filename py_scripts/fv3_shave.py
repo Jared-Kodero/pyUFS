@@ -36,10 +36,10 @@ def run_single_shave(
         f.write(f"{idim} {jdim} {halo} '{in_grid}' '{out_grid}'\n")
 
     with open(in_orog_txt, "r") as fin:
-        run_cmd(cmd, stdin=fin, cwd=tmp_dir, log_file=log_file)
+        run_cmd(cmd, stdin=fin, cwd=tmp_dir, stdout=log_file, stderr=log_file)
 
     with open(in_grid_txt, "r") as fin:
-        run_cmd(cmd, stdin=fin, cwd=tmp_dir, log_file=log_file)
+        run_cmd(cmd, stdin=fin, cwd=tmp_dir, stdout=log_file, stderr=log_file)
 
     # Copy outputs to final filenames
     out_orog_final = tmp_ic_dir / f"C{res}_oro_data.tile{tile}.{halo_tag}.nc"

@@ -62,7 +62,7 @@ def _run_make_orog_gsl(
 
         with open("grid_info.dat", "r") as fin:
             cmd = [f"{orog_gsl}"]
-            result, msgs = run_cmd(cmd, stdin=fin, log_file=log_file)
+            result, msgs = run_cmd(cmd, stdin=fin, stdout=log_file, stderr=log_file)
 
         if result != 0:
             log.error(msgs)

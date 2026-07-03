@@ -116,7 +116,7 @@ def run_filter_topo(
 
         cmd = [f"{filter_topo}"]
 
-        result, msgs = run_cmd(cmd, log_file=log_file)
+        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
         if result != 0:
             log.error(msgs)
             raise RuntimeError("Filtering topography failed")
