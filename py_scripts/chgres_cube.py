@@ -217,8 +217,10 @@ def run_chgres_cube() -> None:
     f41.cycle_hour = state.init_datetime.hour
     f41.orog_dir_target_grid = ic_dir
     f41.fix_dir_target_grid = ic_dir / "fix_sfc"
-    f41.vcoord_file_target_grid = state.fixed_am / f"global_hyblev.l{state.levels}.txt"
-    f41.varmap_file = state.fixed_dir / "varmap_tables" / "GFSphys_var_map.txt"
+    f41.vcoord_file_target_grid = (
+        state.fix / "am" / f"global_hyblev.l{state.levels}.txt"
+    )
+    f41.varmap_file = state.fix_src / "varmap_tables" / "GFSphys_var_map.txt"
 
     # Create symlinks for fix files
     link_fix_files(state.res, f41)
@@ -334,15 +336,11 @@ def apply_config_settings(
 
     # Set model-specific defaults before applying YAML overrides.
     if resolved_model == "HRRR":
-        domain_f41.varmap_file = (
-            state.fixed_dir / "varmap_tables" / "GSDphys_var_map.txt"
-        )
-        domain_f41.geogrid_file_input_grid = state.fixed_am / "geo_em.d01.nc_HRRRX"
+        domain_f41.varmap_file = state.fix_src / "varmap_tables" / "GSDphys_var_map.txt"
+        domain_f41.geogrid_file_input_grid = state.fix / "am" / "geo_em.d01.nc_HRRRX"
 
     elif resolved_model == "GFS":
-        domain_f41.varmap_file = (
-            state.fixed_dir / "varmap_tables" / "GFSphys_var_map.txt"
-        )
+        domain_f41.varmap_file = state.fix_src / "varmap_tables" / "GFSphys_var_map.txt"
         domain_f41.geogrid_file_input_grid = None
 
     # Apply all YAML values except external_model.

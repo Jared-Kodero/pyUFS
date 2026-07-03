@@ -10,12 +10,10 @@ if TYPE_CHECKING:
 
 env_paths = {}
 env_paths["work_dir"] = Path(os.getenv("WORK_DIR"))
-env_paths["fixed_dir"] = Path(os.getenv("FIX_DIR"))
-env_paths["fixed_am"] = env_paths["fixed_dir"] / "am"
+env_paths["fix_src"] = Path(os.getenv("FIX_SRC"))
 env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
 env_paths["run_dir"] = Path(os.getenv("CASE_PWD"))
 env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
-env_paths["scratch_dir"] = Path(os.getenv("SCRATCH_DIR"))
 env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
 
 
@@ -24,13 +22,11 @@ case_paths["tmp"] = env_paths["work_dir"] / "TMP"
 case_paths["hist"] = env_paths["work_dir"] / "HIST"
 case_paths["grid"] = env_paths["work_dir"] / "GRID"
 case_paths["logs"] = env_paths["work_dir"] / "LOGS"
-case_paths["fixed"] = env_paths["work_dir"] / "FIXED"
+case_paths["fix"] = env_paths["work_dir"] / "FIXED"
 case_paths["input"] = env_paths["work_dir"] / "INPUT"
 case_paths["output"] = env_paths["work_dir"] / "OUTPUT"
 case_paths["restarts"] = env_paths["work_dir"] / "RESTART"
 case_paths["ic_data"] = env_paths["work_dir"] / "IC"
-preproces_logs = case_paths["logs"] / "preprocess"
-case_paths["logs"] = preproces_logs
 
 paths = {**env_paths, **case_paths}
 
@@ -130,9 +126,8 @@ def parse_dirs(cfg: dict) -> dict:
 
     dir_keys = (
         "jobtmp",
-        "scratch_dir",
         "case_root",
-        "fix_dir",
+        "fix_src",
         "ufs_utils",
         "archive_root",
         "shield_image",

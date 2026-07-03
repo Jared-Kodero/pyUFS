@@ -145,7 +145,7 @@ def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
 
 def validate_hrrr_bounds(tile: int) -> str:
 
-    geo_hrrr = xr.open_dataset(state.fixed_am / "geo_em.d01.nc_HRRRX")
+    geo_hrrr = xr.open_dataset(state.fix / "am" / "geo_em.d01.nc_HRRRX")
 
     # HRRR uses a sphere with radius 6370km usually in WRF/HRRR setups
     proj_hrrr = Proj(

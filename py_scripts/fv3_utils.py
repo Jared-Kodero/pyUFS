@@ -60,6 +60,9 @@ def rename(src: str | Path, dest: str | Path):
     src = Path(src).resolve()
     dest = Path(dest).resolve()
 
+    if dest.exists():
+        dest.unlink()
+
     cmd = ["mv", "-v", str(src), str(dest)]
     result, msgs = run_cmd(cmd, log_file=log_file)
     if result != 0:

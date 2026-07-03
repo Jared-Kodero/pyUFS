@@ -90,7 +90,7 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Current directory: {params.run_dir}")
     run_logs.append(f"Working directory: {params.work_dir}")
     run_logs.append(f"Archive directory: {params.archive_dir}")
-    run_logs.append(f"Fixed/static directory: {params.fixed_dir}")
+    run_logs.append(f"Fixed/static directory: {params.fix_src}")
     run_logs.append(f"Logs directory: {state.logs}")
 
     if "shield_exe" in params:

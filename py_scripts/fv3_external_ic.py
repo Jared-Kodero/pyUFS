@@ -88,7 +88,7 @@ def _validate_ic_files(res: int, gtype: str, n_nests: int) -> None:
     Verify the grid and initial-condition files required for the model to
     start. Raises FileNotFoundError naming every missing or empty file,
     grouped by directory. Fixed climatology files are not checked here:
-    update_fixed_files() stages them from fixed_dir downstream and raises
+    update_fixed_files() stages them from fix_src downstream and raises
     if any are absent.
     """
     grid_dir = Path(state.grid)
@@ -124,7 +124,7 @@ def _check_sfc_fix_provenance() -> None:
     pre-staged bundle. It is required only to regenerate surface ICs, and
     only while &namsfc supplies climatology as GRIB (FNxxx = FIXED/*.grb).
     """
-    sfc_fix = Path(state.fixed) / "fix_sfc"
+    sfc_fix = Path(state.fix) / "fix_sfc"
     if not sfc_fix.is_dir() or not any(sfc_fix.iterdir()):
         log.warning("FIXED/fix_sfc absent; needed only to regenerate surface ICs.")
 

@@ -53,9 +53,8 @@ class FV3State(dict):
     external_ic_dir: Path | None
     external_ic_source: dict[str, dict[str, str | None]]
 
-    fixed: Path
-    fixed_am: Path
-    fixed_dir: Path
+    fix: Path
+    fix_src: Path
     forecast_hour: int
     forecast_length: str
     fv3_debug: bool
@@ -124,7 +123,6 @@ class FV3State(dict):
     run_dir: Path
     run_nhours: int
 
-    scratch_dir: Path
     shield_exe: str
     sm_perturbations: dict
     stretch_factor: float
@@ -246,7 +244,7 @@ def save_fv3_state(cfg: dict = None, path: Path = None):
     data["init_datetime"] = str(data["init_datetime"])
 
     with open(path, "w") as f:
-        yaml.safe_dump(dict(data), f, default_flow_style=None)
+        yaml.safe_dump(dict(data), f, default_flow_style=None, sort_keys=False)
 
 
 def load_fv3_state(merge: bool = False):
