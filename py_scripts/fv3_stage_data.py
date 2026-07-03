@@ -78,8 +78,8 @@ def stage_files() -> None:
 
         cp(f, state.input)
 
-    # rename INPUT/fix_sfc to state.fixed/fix_sfc
-    fix_sfc_dest = state.fixed / "fix_sfc"
+    # rename INPUT/fix_sfc to state.fix/fix_sfc
+    fix_sfc_dest = state.fix / "fix_sfc"
     fix_sfc_src = state.input / "fix_sfc"
     shutil.rmtree(fix_sfc_dest, ignore_errors=True)
     fix_sfc_src.rename(fix_sfc_dest)

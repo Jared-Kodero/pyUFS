@@ -125,7 +125,7 @@ def main():
 
     pwd = Path.cwd()
     fix_raw = pwd / ".fix_raw"
-    fix_dir = pwd / "fixed_dir"
+    fix_dir = pwd / "fix_src"
 
     fix_raw.mkdir(exist_ok=True)
     fix_dir.mkdir(exist_ok=True)
