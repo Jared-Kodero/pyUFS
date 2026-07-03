@@ -20,10 +20,9 @@
 # 0. JOB ENVIRONMENT (SYSTEM)
 # -----------------------------------------------------------------------------
 
-jobtmp: /jobtmp/$USER/gfdl_shield
-scratch_dir: /oscar/scratch/$USER/models/gfdl_shield
 case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
-fix_dir: /oscar/data/deeps/shared/gfdl_shield/fix
+jobtmp: /jobtmp/$USER/gfdl_shield
+fix_src: /oscar/data/deeps/shared/gfdl_shield/fix
 ufs_utils: /oscar/data/deeps/shared/gfdl_shield/ufs_py
 shield_image: /oscar/data/deeps/shared/gfdl_shield/containers/shield.sif
 fregrid_image: /oscar/data/deeps/shared/gfdl_shield/containers/fregrid.sif

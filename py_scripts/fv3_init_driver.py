@@ -46,10 +46,10 @@ def init_driver():
             jdim=state.jdim,
             delx=state.delx,
             dely=state.dely,
-            orog_dir=state.fixed_dir / "orog",
+            orog_dir=state.fix_src / "orog",
             tmp=state.tmp,
             exe_dir=state.ufs_exe,
-            fix_dir=state.fixed_dir,
+            fix_dir=state.fix_src,
         )
 
         # Generate ICs
@@ -59,7 +59,7 @@ def init_driver():
     log.info(f"Staged diag files: {state.work_dir}")
     log.info(f"Staged grid files: {state.grid}")
     log.info(f"Staged ic files: {state.input}")
-    log.info(f"Staged fixed files: {state.fixed}")
+    log.info(f"Staged fixed files: {state.fix}")
     log.info(f"Staged mosaic files: {state.grid}")
 
     if state.preprocess_only:

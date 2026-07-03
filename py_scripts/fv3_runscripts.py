@@ -32,6 +32,8 @@ def gen_shield_container_scripts(
         raise RuntimeError(
             "Set `shield_exe` in run_config.yaml when running in multi-node mode."
         )
+    os.system(f"mkdir -p {state.logs}/preprocess")
+    os.system(f"mv {state.logs}/*.log {state.logs}/preprocess/")
 
     restart_no = state.get("restart_no", 0)
     log_file = state.logs / "shield" / f"shield_{restart_no:03d}.log"

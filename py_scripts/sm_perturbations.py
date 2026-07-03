@@ -488,7 +488,7 @@ def apply_perturbations():
     if not perturbations:
         return
 
-    sm_clim_path = Path(state.fixed_dir) / "era5" / "sm_monthly_1950_2025.nc"
+    sm_clim_path = Path(state.fix_src) / "era5" / "sm_monthly_1950_2025.nc"
 
     restart_no = state.restart_no
     total_restarts = state.total_restarts

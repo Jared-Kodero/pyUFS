@@ -215,8 +215,8 @@ def update_nest_nml(
 
         # Use first-guess timings unless overridden by user
 
-        nml["fv_core_nml"]["n_split"] = timings["n_splits"][i]
-        nml["fv_core_nml"]["k_split"] = timings["k_splits"][i]
+        nml["fv_core_nml"]["n_split"] = timings["n_split"][i]
+        nml["fv_core_nml"]["k_split"] = timings["k_split"][i]
 
         # Assign calculated values to namelist, add +1 to skip the global tile
         nml["fv_core_nml"]["npx"] = state.npx[i]
@@ -266,7 +266,7 @@ def namelist_overrides(path: Path, nml: dict, name: str):
 def update_fixed_files():
     dt = state.init_datetime
     year = dt.year
-    fix_dirs = [state.fixed_am, state.fixed_dir / "lut"]
+    fix_dirs = [state.fix / "am", state.fix_src / "lut"]
 
     required_files = [
         "aerosol.dat",
@@ -297,7 +297,7 @@ def update_fixed_files():
                     break
 
         if found:
-            dest = state.fixed / name
+            dest = state.fix / name
             if not dest.exists():
                 cp(found, dest)
             link = Path(state.input) / name
@@ -358,7 +358,7 @@ def update_table_files():
 
 def update_namsfc(nml):
 
-    am_dir = Path(state.fixed_dir) / "am"
+    am_dir = Path(state.fix_src) / "am"
 
     namsfc = {
         "fnacna": "",
@@ -406,7 +406,7 @@ def update_namsfc(nml):
 
     for key, fname in namsfc_files.items():
         src = am_dir / fname
-        dst = state.fixed / fname
+        dst = state.fix / fname
 
         if not src.exists():
             raise FileNotFoundError(src)

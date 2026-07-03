@@ -36,9 +36,8 @@ def get_paths(cfg: dict):
 
     dir_keys = (
         "jobtmp",
-        "scratch_dir",
         "case_root",
-        "fix_dir",
+        "fix_src",
         "ufs_utils",
         "archive_root",
         "shield_image",
@@ -59,15 +58,14 @@ def get_paths(cfg: dict):
                 paths[k] = base64.b64encode(paths[k].encode("utf-8")).decode("utf-8")
             continue
         paths[k] = str(Path(os.path.expandvars(paths[k])))
-        if k in ("jobtmp", "scratch_dir", "case_root", "archive_root"):
+        if k in ("jobtmp", "case_root", "archive_root"):
             if not Path(paths[k]).exists():
                 Path(paths[k]).mkdir(parents=True, exist_ok=True)
 
     data = {
         "JOBTMP_DIR": paths["jobtmp"],
-        "SCRATCH_DIR": paths["scratch_dir"],
         "CASE_ROOT_DIR": paths["case_root"],
-        "FIX_DIR": paths["fix_dir"],
+        "FIX_SRC": paths["fix_src"],
         "UFS_UTILS_DIR": paths["ufs_utils"],
         "ARCHIVE_ROOT_DIR": paths["archive_root"],
         "SHIELD_SIF": paths["shield_image"],
@@ -319,8 +317,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        sys.exit(main())
-    except Exception as e:
-        logger.error(f"An error occurred: {e}")
-        sys.exit(1)
+    main()
