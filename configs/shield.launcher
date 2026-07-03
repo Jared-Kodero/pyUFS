@@ -4,7 +4,6 @@ __MODULES__
 
 cd __WORK_DIR__ 
 
-echo "$(date '+%Y-%m-%d %H:%M') - GFDL SHIELD - INFO - Running"
 
 start_time=$(date +%s)
 

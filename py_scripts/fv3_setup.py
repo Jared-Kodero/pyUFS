@@ -22,12 +22,7 @@ run_logs = []  # Global list to accumulate log messages for the current run
 
 def print_logs():
     for i in run_logs:
-        if i.startswith("--"):
-            print(i)
-        elif "WARNING" in i:
-            log.warning(i.replace("WARNING: ", ""))
-        else:
-            log.info(i)
+        log.info(i)
 
 
 def parse_input():
@@ -51,10 +46,6 @@ def parse_input():
         config = yaml.safe_load(file)
 
     for k, v in config.items():
-        if k not in default_cfg:
-            msg = f"Unknown configuration key in run_config.yaml: `{k}` "
-            msg = msg + f"\nKey must be one of:\n{list(default_cfg.keys())}"
-            raise KeyError(msg)
         input_params[k] = v
 
     input_params.run_config = Path(yml_path)
@@ -94,12 +85,13 @@ def parse_input():
 
 
 def _append_init_logs(params: FV3State) -> None:
+    run_logs.append(f"Configuration file: {params.run_config}")
+    run_logs.append(f"Case directory: {params.case_dir}")
     run_logs.append(f"Current directory: {params.run_dir}")
     run_logs.append(f"Working directory: {params.work_dir}")
-    run_logs.append(f"Case directory: {params.case_dir}")
     run_logs.append(f"Archive directory: {params.archive_dir}")
     run_logs.append(f"Fixed/static directory: {params.fixed_dir}")
-    run_logs.append(f"Configuration file: {params.run_config}")
+    run_logs.append(f"Logs directory: {state.logs}")
 
     if "shield_exe" in params:
         run_logs.append(f"Model executable: {params.shield_exe}")

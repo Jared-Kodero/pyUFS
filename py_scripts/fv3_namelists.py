@@ -5,7 +5,7 @@ import f90nml
 import numpy as np
 from fv3_runtime import log, read_namelist
 from fv3_state import state
-from fv3_timings import apply_user_timings, get_first_guess_timings
+from fv3_timings import get_timings
 from fv3_utils import cp, cres_to_deg, env_setup
 
 
@@ -42,7 +42,7 @@ def update_nml_configs():
     state.model_start_date = current_date
 
     # Do nest namelists
-    first_guess_timings = get_first_guess_timings()
+    timings = get_timings()
 
     log.info("Generating namelist files")
 
@@ -54,7 +54,7 @@ def update_nml_configs():
         levels=state.levels,
         refine_ratios=state.refine_ratio,
         do_deep=state.do_deep,
-        first_guess_timings=first_guess_timings,
+        timings=timings,
     )
     update_nest_nml(
         res=state.res,
@@ -64,7 +64,7 @@ def update_nml_configs():
         levels=state.levels,
         refine_ratios=state.refine_ratio,
         do_deep=state.do_deep,
-        first_guess_timings=first_guess_timings,
+        timings=timings,
     )
 
     update_table_files()
@@ -120,7 +120,7 @@ def update_global_nml(
     levels: int,
     refine_ratios: list,
     do_deep: bool,
-    first_guess_timings: dict,
+    timings: dict,
 ):
 
     nml_template_path = state.configs / "input_nml.yaml"
@@ -137,12 +137,12 @@ def update_global_nml(
     nml["coupler_nml"]["hours"] = fhmax
 
     # Use first-guess timings unless overridden by user
-    nml["coupler_nml"]["dt_atmos"] = first_guess_timings["dt_atmos"]
-    nml["coupler_nml"]["dt_ocean"] = first_guess_timings["dt_ocean"]
+    nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
+    nml["coupler_nml"]["dt_ocean"] = timings["dt_ocean"]
 
     # FIX: Pull explicitly from the global keys
-    nml["fv_core_nml"]["n_split"] = first_guess_timings["global_n_split"]
-    nml["fv_core_nml"]["k_split"] = first_guess_timings["global_k_split"]
+    nml["fv_core_nml"]["n_split"] = timings["n_split"][0]
+    nml["fv_core_nml"]["k_split"] = timings["k_split"][0]
     nml["fv_core_nml"]["npx"] = state.npx[0]
     nml["fv_core_nml"]["npy"] = state.npy[0]
     nml["fv_core_nml"]["ntiles"] = state.ntiles[0]
@@ -163,8 +163,6 @@ def update_global_nml(
         del nml["fv_nest_nml"]
 
     nml = disable_deep_convection(nml, 1, "global")
-
-    nml = apply_user_timings(nml, "global")
     nml = update_namsfc(nml)
 
     # check for nml overrides if user provided external nml
@@ -184,7 +182,7 @@ def update_nest_nml(
     levels: int,
     refine_ratios: list,
     do_deep: bool,
-    first_guess_timings: dict,
+    timings: dict,
 ):
     if n_nests == 0:
         return
@@ -217,8 +215,8 @@ def update_nest_nml(
 
         # Use first-guess timings unless overridden by user
 
-        nml["fv_core_nml"]["n_split"] = first_guess_timings["nest_n_splits"][i - 1]
-        nml["fv_core_nml"]["k_split"] = first_guess_timings["nest_k_splits"][i - 1]
+        nml["fv_core_nml"]["n_split"] = timings["n_splits"][i]
+        nml["fv_core_nml"]["k_split"] = timings["k_splits"][i]
 
         # Assign calculated values to namelist, add +1 to skip the global tile
         nml["fv_core_nml"]["npx"] = state.npx[i]
@@ -227,8 +225,6 @@ def update_nest_nml(
         nml["fv_core_nml"]["layout"] = state.layout[i]
         nml["fv_core_nml"]["io_layout"] = state.io_layout[i]
         nml["atmos_model_nml"]["blocksize"] = state.blocksize[i]
-
-        nml = apply_user_timings(nml, "nest", nest=i)
 
         nml = update_namsfc(nml)
 
