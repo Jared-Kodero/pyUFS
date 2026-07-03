@@ -122,16 +122,13 @@ elapsed_hours () {
 }
 
 if (( EXIT_CODE == 0 )); then
-    if (( CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
-        msg="Restart ${CASE_RESUBMIT_INDEX} completed"
-        elapsed=$(elapsed_hours "$RUN_START_TIME" "$RUN_END_TIME")
-    else
+    if (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
         msg="Case $SLURM_JOB_NAME completed"
         elapsed=$(elapsed_hours "$CASE_RUN_START_TIME" "$(date +%s)")
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
     fi
 
-    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
-fi
+    
 
 
 if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then

@@ -31,11 +31,15 @@ class FV3State(dict):
 
     case_description: str
     case_dir: Path
-    case_home: Path
+    work_dir: Path
     case_name: str
     checksum: str
     configs: Path
     continue_run: bool
+    container_bindpath: list[str]
+    shield_image: Path
+    fregrid_image: Path
+    preprocess_image: Path
 
     delx: float
     dely: float
@@ -53,6 +57,7 @@ class FV3State(dict):
     fixed_am: Path
     fixed_dir: Path
     forecast_hour: int
+    forecast_length: str
     fv3_debug: bool
 
     generate_ic_data: bool
@@ -85,6 +90,7 @@ class FV3State(dict):
     lon_min: list[int]
 
     make_gsl_orog: bool
+    modules: list[str]
     multi_node: bool
 
     n_cpus: int
@@ -162,7 +168,11 @@ env_vars = {
 }
 
 state.update(env_vars)
-log = logging.getLogger("PREPROCESSING")
+
+if env_vars["resubmit_idx"] > 0:
+    log = logging.getLogger("RESTART")
+else:
+    log = logging.getLogger("PREPROCESS")
 
 
 def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
@@ -222,7 +232,7 @@ def save_fv3_state(cfg: dict = None, path: Path = None):
         return
 
     if path is None:
-        path = Path(paths["case_home"]) / "state.yaml"
+        path = Path(paths["work_dir"]) / "state.yaml"
 
     data = {}
     if path.exists():
@@ -230,7 +240,7 @@ def save_fv3_state(cfg: dict = None, path: Path = None):
 
     for k, v in _cfg.items():
         if isinstance(v, Path):
-            continue
+            v = str(v)
         data[k] = v
 
     data["init_datetime"] = str(data["init_datetime"])
@@ -243,7 +253,7 @@ def load_fv3_state(merge: bool = False):
     """
     Load the previous state from a YAML file, if it exists
     """
-    path = Path(paths["case_home"]) / "state.yaml"
+    path = Path(paths["work_dir"]) / "state.yaml"
     if not path.exists():
         log.info(f"No previous state file found at {path}. Starting with empty state.")
         return

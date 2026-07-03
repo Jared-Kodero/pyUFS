@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from fv3_state import FV3State
 
 env_paths = {}
-env_paths["case_home"] = Path(os.getenv("WORK_DIR"))
+env_paths["work_dir"] = Path(os.getenv("WORK_DIR"))
 env_paths["fixed_dir"] = Path(os.getenv("FIX_DIR"))
 env_paths["fixed_am"] = env_paths["fixed_dir"] / "am"
 env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
@@ -20,20 +20,24 @@ env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
 
 
 case_paths = {}
-case_paths["tmp"] = env_paths["case_home"] / "TMP"
-case_paths["hist"] = env_paths["case_home"] / "HIST"
-case_paths["grid"] = env_paths["case_home"] / "GRID"
-case_paths["logs"] = env_paths["case_home"] / "LOGS"
-case_paths["fixed"] = env_paths["case_home"] / "FIXED"
-case_paths["input"] = env_paths["case_home"] / "INPUT"
-case_paths["output"] = env_paths["case_home"] / "OUTPUT"
-case_paths["restarts"] = env_paths["case_home"] / "RESTART"
-case_paths["ic_data"] = env_paths["case_home"] / "IC"
+case_paths["tmp"] = env_paths["work_dir"] / "TMP"
+case_paths["hist"] = env_paths["work_dir"] / "HIST"
+case_paths["grid"] = env_paths["work_dir"] / "GRID"
+case_paths["logs"] = env_paths["work_dir"] / "LOGS"
+case_paths["fixed"] = env_paths["work_dir"] / "FIXED"
+case_paths["input"] = env_paths["work_dir"] / "INPUT"
+case_paths["output"] = env_paths["work_dir"] / "OUTPUT"
+case_paths["restarts"] = env_paths["work_dir"] / "RESTART"
+case_paths["ic_data"] = env_paths["work_dir"] / "IC"
+preproces_logs = case_paths["logs"] / "preprocess"
+case_paths["logs"] = preproces_logs
 
 paths = {**env_paths, **case_paths}
 
 
 def configure_directories(params: FV3State) -> dict:
+    params = parse_dirs(params)
+
     config_restart_dir({**env_paths, **case_paths}, params)
 
     def _clear(path: Path) -> None:
@@ -71,13 +75,13 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
     if not params.get("warm_start") or int(params.get("restart_no", 0)) == 0:
         return
 
-    case_home = Path(paths["case_home"])
+    work_dir = Path(paths["work_dir"])
     archive_dir = Path(paths["ic_data"])
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     prev_input_data = Path(paths["input"])
     prev_model_restart = Path(paths["restarts"])
-    curr_input_data = case_home / "INPUT"
+    curr_input_data = work_dir / "INPUT"
 
     restart_no = int(params.restart_no)
     archive_index = restart_no - 1
@@ -120,3 +124,23 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
 
                 rel_target = os.path.relpath(f, start=target.parent)
                 target.symlink_to(rel_target)
+
+
+def parse_dirs(cfg: dict) -> dict:
+
+    dir_keys = (
+        "jobtmp",
+        "scratch_dir",
+        "case_root",
+        "fix_dir",
+        "ufs_utils",
+        "archive_root",
+        "shield_image",
+        "fregrid_image",
+        "preprocess_image",
+        "containers_root",
+    )
+
+    for k in dir_keys:
+        cfg[k] = str(Path(os.path.expandvars(cfg[k])))
+    return cfg

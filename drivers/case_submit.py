@@ -19,61 +19,64 @@ except ImportError:
 
 
 SCRIPT_DIR = Path(__file__).resolve()
-MACHINE_CFG_PATH = SCRIPT_DIR.parent.parent / "configs" / "machine_config.yaml"
+DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "configs" / "run_config.yaml"
 RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
 
-for f in (MACHINE_CFG_PATH, RUN_CFG_PATH):
-    if not f.exists():
-        logger.error(f"File not found: {f}")
-        sys.exit(1)
+if not RUN_CFG_PATH.exists():
+    logger.error(f"File not found: {RUN_CFG_PATH}")
+    sys.exit(1)
+
+
+with open(DEFAULT_CFG_PATH, "r") as f:
+    DEFAULT_CFG = yaml.safe_load(f)
+DEFAULT_KEYS = DEFAULT_CFG.keys()
 
 
 def get_paths(cfg: dict):
 
-    paths = cfg.get("paths", {})
-
-    for k in (
+    dir_keys = (
         "jobtmp",
-        "scratch",
+        "scratch_dir",
         "case_root",
         "fix_dir",
         "ufs_utils",
         "archive_root",
-        "shield",
-        "fregrid",
-        "preprocess",
+        "shield_image",
+        "fregrid_image",
+        "preprocess_image",
         "containers_root",
         "container_bindpath",
-    ):
-        if k not in paths or not paths[k]:
-            logger.error(f"Missing `paths` configuration: {k} in {MACHINE_CFG_PATH}")
-            sys.exit(1)
+    )
 
-    for k, v in paths.items():
+    paths = {}
+    for k in dir_keys:
+        paths[k] = cfg.get(k, DEFAULT_CFG[k])
+
+    for k in dir_keys:
         if k == "container_bindpath":
             if isinstance(paths[k], list):
                 paths[k] = ",".join(paths[k])
                 paths[k] = base64.b64encode(paths[k].encode("utf-8")).decode("utf-8")
             continue
-        paths[k] = str(Path(os.path.expandvars(v)))
-        if k in ("jobtmp", "scratch", "case_root", "archive_root"):
+        paths[k] = str(Path(os.path.expandvars(paths[k])))
+        if k in ("jobtmp", "scratch_dir", "case_root", "archive_root"):
             if not Path(paths[k]).exists():
                 Path(paths[k]).mkdir(parents=True, exist_ok=True)
 
-    cfg = {
+    data = {
         "JOBTMP_DIR": paths["jobtmp"],
-        "SCRATCH_DIR": paths["scratch"],
+        "SCRATCH_DIR": paths["scratch_dir"],
         "CASE_ROOT_DIR": paths["case_root"],
         "FIX_DIR": paths["fix_dir"],
         "UFS_UTILS_DIR": paths["ufs_utils"],
         "ARCHIVE_ROOT_DIR": paths["archive_root"],
-        "SHIELD_SIF": paths["shield"],
-        "FREGRID_SIF": paths["fregrid"],
-        "PREPROCESS_SIF": paths["preprocess"],
+        "SHIELD_SIF": paths["shield_image"],
+        "FREGRID_SIF": paths["fregrid_image"],
+        "PREPROCESS_SIF": paths["preprocess_image"],
         "CONTAINERS_DIR": paths["containers_root"],
         "CONTAINER_BINDPATH": paths["container_bindpath"],
     }
-    return cfg
+    return data
 
 
 def get_runtime_flags(cfg: dict) -> dict:
@@ -138,6 +141,21 @@ def read_yaml(path: Path):
     try:
         with open(path, "r") as f:
             data = yaml.safe_load(f)
+
+            for k, v in data.items():
+                if k not in DEFAULT_KEYS:
+                    print(
+                        f"ERROR: Unknown configuration key in run_config.yaml: `{k}` Valid keys are:"
+                    )
+                    for k in DEFAULT_KEYS:
+                        print(f"\t- {k}")
+
+                    print(f"\nPlease check the configuration file: {path}")
+                    print(
+                        f"For description of each key, refer to the default configuration file: {DEFAULT_CFG_PATH}"
+                    )
+                    sys.exit(1)
+
     except yaml.YAMLError as e:
         if hasattr(e, "problem_mark"):
             mark = e.problem_mark
@@ -157,7 +175,6 @@ def read_yaml(path: Path):
 
 def get_config():
     user_cfg = read_yaml(RUN_CFG_PATH)
-    mach_cfg = read_yaml(MACHINE_CFG_PATH)
     walltime = int(user_cfg.get("walltime", 48))
     n_nodes = int(user_cfg.get("n_nodes", 2))
     n_tasks = int(user_cfg.get("n_cpus", 96))
@@ -186,7 +203,7 @@ def get_config():
     if not isinstance(skip_ensembles, list):
         skip_ensembles = [skip_ensembles] if skip_ensembles is not None else []
 
-    paths = get_paths(mach_cfg)
+    paths = get_paths(user_cfg)
 
     env = {
         "CASE_MEM": mem,

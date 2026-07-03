@@ -14,7 +14,7 @@ from fv3_stage_data import stage_files
 from fv3_state import FV3State, state
 from fv3_utils import cp, env_setup, run_cmd
 
-log = logging.getLogger("PREPROCESSING")
+log = logging.getLogger("PREPROCESS")
 
 
 @dataclass

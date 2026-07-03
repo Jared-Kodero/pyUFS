@@ -5,6 +5,29 @@ from fv3_utils import env_setup
 from sm_perturbations import apply_perturbations
 
 
+def format_forecast_length(nhours: int) -> str:
+    """Convert forecast length in hours to a readable string.
+
+    Months are approximated as 30 days.
+    """
+    hours_per_day = 24
+    hours_per_month = 30 * hours_per_day
+
+    months, remainder = divmod(nhours, hours_per_month)
+    days, hours = divmod(remainder, hours_per_day)
+
+    parts = []
+
+    if months:
+        parts.append(f"{months} month{'s' if months != 1 else ''}")
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours or not parts:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+
+    return " ".join(parts)
+
+
 def check_prev_state(params: FV3State) -> None:
     idx = state.resubmit_idx
     max_idx = state.resubmit
@@ -30,6 +53,8 @@ def check_prev_state(params: FV3State) -> None:
     else:
         params.total_run_hours = (max_idx + 1) * run_hours
 
+    params.forecast_length = format_forecast_length(params.total_run_hours)
+
     params.checksum = checksum
     params.restart_no = idx
     params.resubmit_idx = idx
@@ -45,7 +70,7 @@ def restart_driver():
         prev_state[k] = v
     state.update(dict(prev_state))
 
-    for file in state.case_home.glob("*"):
+    for file in state.work_dir.glob("*"):
         if str(file).endswith((".out")):
             file.unlink()
 

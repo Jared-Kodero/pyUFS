@@ -13,7 +13,7 @@ import xarray as xr
 import yaml
 from fv3_paths import paths
 
-log = logging.getLogger("PREPROCESSING")
+log = logging.getLogger("PREPROCESS")
 
 
 def get_newres(gridfile: Path) -> int:
@@ -28,7 +28,7 @@ def get_launcher(n_procs: int = None) -> list:
 
 
 def exit_code(code: int) -> None:
-    (paths["case_home"] / "exit_code").write_text(str(code))
+    (paths["work_dir"] / "exit_code").write_text(str(code))
 
 
 def open_yaml(path: Path) -> dict:
@@ -75,7 +75,7 @@ def to_list(x: object) -> list:
 
 @contextmanager
 def tmp_cwd(path: Path | str):
-    cwd = paths["case_home"]
+    cwd = paths["work_dir"]
     try:
         os.chdir(path)
         yield
@@ -84,7 +84,7 @@ def tmp_cwd(path: Path | str):
 
 
 def handle_errors(exc_type, value, tb):
-    log = logging.getLogger("ERROR_HANDLER")
+    log = logging.getLogger("ERROR.HANDLER")
 
     def _norm_path(p: str) -> str:
         try:
@@ -109,7 +109,7 @@ def handle_errors(exc_type, value, tb):
     lineno = f"{frame.lineno}"
     code_line = frame.line.strip() if frame.line else ""
 
-    log.warning(f"An error has been detected in: {file_name}: {lineno}: {code_line}")
+    log.warning(f"An error has been detected in file: {file_name},  line no: {lineno}")
     log.error(f"{exc_type.__qualname__}: {value}")
 
     # now print frames
