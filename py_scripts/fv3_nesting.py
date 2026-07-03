@@ -12,8 +12,8 @@ nest_info = []
 
 
 def get_centers(params: FV3State) -> FV3State:
-    params.target_lon = (params.lon_min[0] + params.lon_max[0]) * 0.5
-    params.target_lat = (params.lat_min[0] + params.lat_max[0]) * 0.5
+    params.target_lon = round((params.lon_min[0] + params.lon_max[0]) * 0.5, 2)
+    params.target_lat = round((params.lat_min[0] + params.lat_max[0]) * 0.5, 2)
     return params
 
 
@@ -158,6 +158,7 @@ def calc_parent_grid_index(
     lat_max: float,
     i_refine_ratio: int,
     alignment: int = 16,
+    tile: int = None,
 ):
     """
     Compute supergrid index bounds for an FV3 two-way nest.
@@ -191,6 +192,7 @@ def calc_parent_grid_index(
 
     lon_min %= 360
     lon_max %= 360
+
     mask = (lons >= lon_min) & (lons <= lon_max) & (lats >= lat_min) & (lats <= lat_max)
     j_idx, i_idx = np.where(mask)
 
@@ -238,6 +240,7 @@ def get_nest_indices(
     grid_dir: Path = None,
     parent_tile: list = None,
     i_refine_ratio: int = None,
+    tile: int = None,
 ) -> None:
     """
     normal: normal static nests each embedded directly in the same parent (global) grid.
@@ -271,6 +274,7 @@ def get_nest_indices(
         state.lat_min[i],
         state.lat_max[i],
         i_refine_ratio,
+        tile=tile,
     )
 
     state.nesting["parent_tile"].append(parent_tile[i])
@@ -320,6 +324,7 @@ def get_nest_tele_indices(
             state.lat_min[i],
             state.lat_max[i],
             i_refine_ratio,
+            tile=tile,
         )
 
         state.nesting["parent_tile"].append(parent_tile)

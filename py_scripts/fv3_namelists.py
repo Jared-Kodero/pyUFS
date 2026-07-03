@@ -11,9 +11,7 @@ from fv3_utils import cp, cres_to_deg, env_setup
 
 def restart_config():
 
-    log.info(f"Generating namelist for restart {state.restart_no}")
-
-    for f in list(state.case_home.glob("*.nml")):
+    for f in list(state.work_dir.glob("*.nml")):
         nml = read_namelist(f)
 
         nml["fv_core_nml"]["warm_start"] = True
@@ -126,7 +124,7 @@ def update_global_nml(
 ):
 
     nml_template_path = state.configs / "input_nml.yaml"
-    parent_save_path = state.case_home / "input.nml"
+    parent_save_path = state.work_dir / "input.nml"
     user_nml = state.run_dir / "input"
 
     nml = read_namelist(nml_template_path)
@@ -193,7 +191,7 @@ def update_nest_nml(
 
     nest_nml_template_path = state.configs / "input_nestXX_nml.yaml"
     save_paths = [
-        state.case_home / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
+        state.work_dir / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
     ]
     user_nmls = [state.run_dir / f"input_nest{i:02d}" for i in range(2, n_nests + 2)]
     tiles = [7 + i for i in range(n_nests)]
@@ -327,8 +325,8 @@ def update_table_files():
 
     restart_no = state.get("restart_no", 0)
 
-    diag_table_path = state.case_home / "diag_table"
-    field_table_path = state.case_home / "field_table.yaml"
+    diag_table_path = state.work_dir / "diag_table"
+    field_table_path = state.work_dir / "field_table.yaml"
 
     user_diag = state.run_dir / "diag_table"
     user_field = state.run_dir / "field_table"
