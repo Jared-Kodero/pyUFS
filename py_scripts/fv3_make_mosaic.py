@@ -24,7 +24,7 @@ def _mosaic_for_uniform_and_stretch(
         tiles,
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate mosaic")
@@ -50,7 +50,7 @@ def _mosaic_for_i_nest(
         f"C{res}_grid.tile{tile}.nc",
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(f"Failed to generate mosaic for nest tile: [{tile}]")
@@ -73,7 +73,7 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
         global_tiles,
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate coarse mosaic for global tiles")
@@ -95,7 +95,7 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
         all_tiles,
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate mosaic for global and nest tiles")
@@ -138,7 +138,7 @@ def _mosaic_for_regionalgfdl(
         f"C{new_res}_grid.tile7.nc",
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate mosaic for regional GFDL grid")
@@ -164,7 +164,7 @@ def _mosaic_for_regionalesg(
         f"C{new_res}_grid.tile7.nc",
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate mosaic for regional ESG grid")

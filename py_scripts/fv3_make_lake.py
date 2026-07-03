@@ -35,7 +35,7 @@ def _run_add_lakefrac(
     mode = "g" if gtype == "uniform" else "r"
     cmd1 = [str(inland), str(res), str(cutoff), str(rd), mode]
 
-    result, msgs = run_cmd(cmd1, log_file=log_file)
+    result, msgs = run_cmd(cmd1, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(f"Failed to generate inland mask for tile: [{tile}]")
@@ -51,7 +51,7 @@ def _run_add_lakefrac(
         f"{lake_cutoff}",
     ]
 
-    result, msgs = run_cmd(cmd2, log_file=log_file)
+    result, msgs = run_cmd(cmd2, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(

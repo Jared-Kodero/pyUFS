@@ -143,7 +143,7 @@ def gen_global_nest_parent(res: int, grid_dir: Path = None) -> Path:
         grid_dir = state.tmp / ".tmp_make_grid"
         grid_dir.mkdir(parents=True, exist_ok=True)
 
-    result, msgs = run_cmd(cmd, cwd=grid_dir, log_file=log_file)
+    result, msgs = run_cmd(cmd, cwd=grid_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate global uniform grid")

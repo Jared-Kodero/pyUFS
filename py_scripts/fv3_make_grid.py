@@ -101,7 +101,7 @@ def make_nested_grid(
             "--great_circle_algorithm",
         ]
 
-        result, msgs = run_cmd(cmd, log_file=log_file, cwd=out_dir_tmp)
+        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file, cwd=out_dir_tmp)
 
         if result != 0:
             log.error(msgs)
@@ -172,7 +172,7 @@ def make_nested_grid(
         telescope_dir = state.tmp / "telescoping"
         telescope_dir.mkdir(parents=True, exist_ok=True)
 
-        result, msgs = run_cmd(cmd, cwd=telescope_dir, log_file=log_file)
+        result, msgs = run_cmd(cmd, cwd=telescope_dir, stdout=log_file, stderr=log_file)
         if result != 0:
             log.error(msgs)
             raise RuntimeError("Failed to generate telescoped nested grids")
@@ -202,7 +202,7 @@ def make_uniform_grid(make_hgrid: str, nlon: int, res: int):
     ]
 
     log.info(f"Generating uniform grid: C{res}")
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate uniform grid")
@@ -239,7 +239,7 @@ def make_stretched_grid(
         "--great_circle_algorithm",
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate stretched grid")
@@ -298,7 +298,7 @@ def make_regional_gfdl_grid(
         "--great_circle_algorithm",
     ]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate regional GFDL grid")
@@ -307,7 +307,7 @@ def make_regional_gfdl_grid(
 
     cmd = [f"{global_equiv_resol}", f"{grid_file}"]
 
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to run global equiv resol")
@@ -357,7 +357,7 @@ def make_regional_esg_grid(
 
     grid_file = out_dir / "regional_grid.nc"
     cmd = [f"{global_equiv_resol}", f"{grid_file}"]
-    result, msgs = run_cmd(cmd, log_file=log_file)
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to run global equiv resol")
