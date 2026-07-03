@@ -218,7 +218,7 @@ def run_chgres_cube() -> None:
     f41.orog_dir_target_grid = ic_dir
     f41.fix_dir_target_grid = ic_dir / "fix_sfc"
     f41.vcoord_file_target_grid = (
-        state.fix / "am" / f"global_hyblev.l{state.levels}.txt"
+        state.fix_src / "am" / f"global_hyblev.l{state.levels}.txt"
     )
     f41.varmap_file = state.fix_src / "varmap_tables" / "GFSphys_var_map.txt"
 
@@ -410,7 +410,7 @@ def chgres_exe(input_dict: dict, n_cpus: int, domain: str, ext_model: str) -> No
     # Run chgres_cube
 
     cmd = [*get_launcher(n_cpus), f"{chgres_cube}"]
-    result, msgs = run_cmd(cmd, cwd=tmp_dir, log_file=log_file)
+    result, msgs = run_cmd(cmd, cwd=tmp_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(

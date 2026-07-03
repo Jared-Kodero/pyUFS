@@ -80,7 +80,7 @@ def _run_single_sfc_climo(
         f90nml.write(config_dict, f)
 
     cmd = [*get_launcher(n_cpus), f"{sfc_climo_gen}"]
-    result, msgs = run_cmd(cmd, cwd=tmp_dir, log_file=log_file)
+    result, msgs = run_cmd(cmd, cwd=tmp_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to generate sfc climatology")

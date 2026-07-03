@@ -184,7 +184,7 @@ def run_global_cycle(
     else:
         log_file = state.logs / "global_cycle.log"
 
-    result, msgs = run_cmd(cmd, cwd=tmp_dir, log_file=log_file)
+    result, msgs = run_cmd(cmd, cwd=tmp_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError("Failed to run global_cycle")
