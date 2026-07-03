@@ -2,20 +2,23 @@ import logging
 import os
 from pathlib import Path
 
-import yaml
 from fv3_state import state
 
-log = logging.getLogger("PREPROCESSING")
+log = logging.getLogger("PREPROCESS")
 
 
 def gen_shield_run_sh() -> None:
-    machine_settings = state.configs / "machine_config.yaml"
-    with open(machine_settings, "r") as f:
-        mach_settings = yaml.safe_load(f)
-
-    native_modules = mach_settings["modules"]
-    native_launcher = " ".join(mach_settings["launchers"]["srun"])
-    container_launcher = " ".join(mach_settings["launchers"]["mpirun"])
+    slurm_mpi_launcher = [
+        "srun",
+        "--mpi=pmix",
+        "--distribution=block:block",
+        "--cpu-bind=cores",
+        "-n",
+    ]
+    mpi_launcher = ["mpirun", "-np"]
+    native_modules = state.modules
+    native_launcher = " ".join(slurm_mpi_launcher)
+    container_launcher = " ".join(mpi_launcher)
 
     gen_shield_container_scripts(native_modules, native_launcher, container_launcher)
     if state.restart_no == 0:
@@ -31,7 +34,8 @@ def gen_shield_container_scripts(
         )
 
     restart_no = state.get("restart_no", 0)
-    log_file = state.logs / f"shield_{restart_no:03d}.log"
+    log_file = state.logs / "shield" / f"shield_{restart_no:03d}.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     modules = ""
 
     if state.shield_exe:
@@ -44,7 +48,7 @@ def gen_shield_container_scripts(
             launcher=native_launcher,
         )
 
-        (state.case_home / "shield.native").touch()
+        (state.work_dir / "shield.native").touch()
 
     else:
         cfg = dict(
@@ -55,7 +59,7 @@ def gen_shield_container_scripts(
         )
 
     write_shield_sh(
-        exit_code=state.case_home / "exit_code",
+        exit_code=state.work_dir / "exit_code",
         **cfg,
     )
 
@@ -64,7 +68,7 @@ def write_shield_sh(
     exe: str, log_file: Path, exit_code: Path, modules: str, launcher: str
 ) -> None:
     template_path = state.configs / "shield.launcher"
-    output_path = state.case_home / "shield"
+    output_path = state.work_dir / "shield"
 
     # read template
     with open(template_path, "r") as f:
@@ -72,7 +76,7 @@ def write_shield_sh(
 
     # replace placeholders
     content = content.replace("__MODULES__", str(modules))
-    content = content.replace("__RUNDIR__", str(state.case_home))
+    content = content.replace("__WORK_DIR__", str(state.work_dir))
     content = content.replace("__LAUNCHER__", str(launcher))
     content = content.replace("__TOTAL_PES__", str(state.total_pes))
     content = content.replace("__EXECUTABLE__", str(exe))

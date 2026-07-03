@@ -60,6 +60,7 @@ def make_nested_grid(
             grid_dir=out_dir,
             parent_tile=parent_tile,
             i_refine_ratio=i_refine_ratio,
+            tile=tile,
         )
 
         istart_nest = ",".join(map(str, state.nesting["istart_nest"]))

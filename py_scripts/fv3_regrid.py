@@ -20,11 +20,11 @@ from pyfregrid import fregrid
 warnings.filterwarnings("ignore")
 load_fv3_state()  # ensure pstate is populated before any function calls
 
-log = logging.getLogger("REGRIDDING")
+log = logging.getLogger("REGRIDDER")
 
 
 def get_stream_handles() -> list[str]:
-    path = Path(state.case_home) / "diag_table"
+    path = Path(state.work_dir) / "diag_table"
     handles = []
 
     with open(path) as f:
@@ -273,9 +273,9 @@ def call_fregrid(
 
 def regrid_global_tiles(streams: list, c_res: int):
     if state.gtype == "nest":
-        g_input_mosaic = state.case_home / "GRID" / f"C{c_res}_coarse_mosaic.nc"
+        g_input_mosaic = state.work_dir / "GRID" / f"C{c_res}_coarse_mosaic.nc"
     else:
-        g_input_mosaic = state.case_home / "GRID" / f"C{c_res}_mosaic.nc"
+        g_input_mosaic = state.work_dir / "GRID" / f"C{c_res}_mosaic.nc"
 
     step = cres_to_deg(state.res).deg
 
@@ -333,7 +333,7 @@ def regrid_nest_tiles(streams: list, c_res: int):
         ny = int(np.round(abs(lat_max - lat_min) / n_step))
 
         input_mosaic = (
-            state.case_home / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
+            state.work_dir / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
         )
 
         if not input_mosaic.exists():
@@ -366,7 +366,6 @@ def regrid_nest_tiles(streams: list, c_res: int):
 
 def regrid():
     env_setup()
-    log.info("Regridding FV3 hist files to regular lat-lon grid")
     streams = get_stream_handles()
     regrid_global_tiles(streams, state.res)
     regrid_nest_tiles(streams, state.res)
@@ -381,7 +380,7 @@ def regrid():
         )
         log.info("Run Completed Successfully!")
 
-    static_path = Path(state.case_home) / "STATIC"
+    static_path = Path(state.work_dir) / "STATIC"
 
     static_path.mkdir(parents=True, exist_ok=True)
 

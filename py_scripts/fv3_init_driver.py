@@ -3,7 +3,8 @@ import os
 from chgres_cube import run_chgres_cube
 from fv3_driver_grid import run_driver
 from fv3_ensemble_driver import ensemble_config
-from fv3_ic_data import init_external_ic, preprocess_only
+from fv3_external_ic import init_external_ic
+from fv3_ic_data import preprocess_only
 from fv3_namelists import update_nml_configs
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import log
@@ -12,7 +13,7 @@ from sm_perturbations import apply_perturbations
 
 
 def init_driver():
-    os.chdir(state.case_home)
+    os.chdir(state.work_dir)
 
     if not state.generate_ic_data:
         init_external_ic()
@@ -55,17 +56,18 @@ def init_driver():
         run_chgres_cube()
         ensemble_config()
 
-    log.info(f"Staged diag files: {state.case_home}")
+    log.info(f"Staged diag files: {state.work_dir}")
     log.info(f"Staged grid files: {state.grid}")
     log.info(f"Staged ic files: {state.input}")
     log.info(f"Staged fixed files: {state.fixed}")
     log.info(f"Staged mosaic files: {state.grid}")
+    log.info(f"Log files will be written to: {state.logs}")
 
     if state.preprocess_only:
         preprocess_only()
         return
 
-    os.chdir(state.case_home)
+    os.chdir(state.work_dir)
     log.info("Init Run")
     update_nml_configs()
     apply_perturbations()

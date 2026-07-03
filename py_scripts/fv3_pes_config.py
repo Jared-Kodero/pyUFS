@@ -156,6 +156,12 @@ def allocate_pes(
     weights = np.asarray(weights, dtype=np.float64)
     valid = np.asarray(valid_nest_pes, dtype=np.int64)
 
+    min_required = sum(weights)
+    if min_required > ncpus:
+        raise ValueError(
+            f"Insufficient CPUs for PE allocation: ncpus={ncpus}, but at least {min_required} is needed!"
+        )
+
     global_valid = np.arange(6, ncpus + 1, 6, dtype=np.int64)
 
     choices = [global_valid] + [valid] * (len(weights) - 1)

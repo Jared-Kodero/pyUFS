@@ -199,14 +199,14 @@ def validate_hrrr_bounds(tile: int) -> str:
 def preprocess_only():
     files_to_rm = []
     for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
-        files_to_rm.extend(state.case_home.glob(pattern))
+        files_to_rm.extend(state.work_dir.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
     save_fv3_state()
 
 
 def init_external_ic() -> bool:
 
-    ic_dir = state.external_ic_dir or state.case_home
+    ic_dir = state.external_ic_dir or state.work_dir
     ic_at_home = not state.external_ic_dir
 
     ic_dir = Path(ic_dir)
@@ -214,7 +214,7 @@ def init_external_ic() -> bool:
 
     # state.file
 
-    yml_cfg = state.case_home / "state.yml"
+    yml_cfg = state.work_dir / "state.yml"
 
     missing = [
         d
@@ -223,20 +223,20 @@ def init_external_ic() -> bool:
     ]
     if missing:
         raise FileNotFoundError(
-            f"Incomplete IC staging in {state.case_home}: {', '.join(missing)} missing or empty"
+            f"Incomplete IC staging in {state.work_dir}: {', '.join(missing)} missing or empty"
         )
 
     if not ic_at_home:
-        os.system(f"cp -rf {ic_dir}/* {state.case_home}/")
+        os.system(f"cp -rf {ic_dir}/* {state.work_dir}/")
         log.info(
-            f"Copied external IC data from {state.external_ic_dir} to {state.case_home}"
+            f"Copied external IC data from {state.external_ic_dir} to {state.work_dir}"
         )
     else:
-        log.info(f"IC data was found directly in {state.case_home}")
+        log.info(f"IC data was found directly in {state.work_dir}")
 
     if not yml_cfg.exists():
         raise FileNotFoundError(
-            f"Missing state.yml in {state.case_home}. Cannot load FV3 state."
+            f"Missing state.yml in {state.work_dir}. Cannot load FV3 state."
         )
 
     load_fv3_state(merge=True)

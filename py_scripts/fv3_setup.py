@@ -37,7 +37,7 @@ def parse_input():
     default_config_path = state.configs / "run_config.yaml"
 
     with open(default_config_path, "r") as f:
-        params_keys = yaml.safe_load(f)
+        default_cfg = yaml.safe_load(f)
 
     # --- Resolve runtime config path ---
     yml_path = paths["run_dir"] / "run_config.yaml"
@@ -50,14 +50,10 @@ def parse_input():
     with open(yml_path, "r") as file:
         config = yaml.safe_load(file)
 
-    if "sbatch" in params_keys or "sbatch" in config:
-        del params_keys["sbatch"]
-        del config["sbatch"]
-
     for k, v in config.items():
-        if k not in params_keys:
+        if k not in default_cfg:
             msg = f"Unknown configuration key in run_config.yaml: `{k}` "
-            msg = msg + f"\nKey must be one of:\n{list(params_keys.keys())}"
+            msg = msg + f"\nKey must be one of:\n{list(default_cfg.keys())}"
             raise KeyError(msg)
         input_params[k] = v
 
@@ -65,7 +61,7 @@ def parse_input():
     if "res" in input_params and input_params.res is not None:
         input_params.res = parse_resolution(input_params.res)
 
-    for k, v in params_keys.items():
+    for k, v in default_cfg.items():
         if v is None:
             continue  # skip undefined defaults
 
@@ -99,7 +95,7 @@ def parse_input():
 
 def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Current directory: {params.run_dir}")
-    run_logs.append(f"Working directory: {params.case_home}")
+    run_logs.append(f"Working directory: {params.work_dir}")
     run_logs.append(f"Case directory: {params.case_dir}")
     run_logs.append(f"Archive directory: {params.archive_dir}")
     run_logs.append(f"Fixed/static directory: {params.fixed_dir}")
@@ -124,10 +120,10 @@ def _append_init_logs(params: FV3State) -> None:
         run_logs.append(f"Ensemble run [{state.ensemble_id}/{state.n_ensembles}]")
 
     run_logs.append(f"Model initialization time: {params.init_datetime} UTC")
-    run_logs.append(f"Forecast length: {params.run_nhours} hours")
-
     if params.resubmit > 0:
         run_logs.append(f"Total restarts: {params.total_restarts}")
+    run_logs.append(f"Forecast length per restart: {params.run_nhours} hours")
+    run_logs.append(f"Total forecast length: {params.forecast_length}")
 
     run_logs.append(f"Vertical levels: {params.levels}")
 
@@ -147,7 +143,7 @@ def _append_init_logs(params: FV3State) -> None:
 
 
 def _append_restart_logs(params: FV3State) -> None:
-    run_logs.append(f"Restart number: {params.restart_no}")
+    run_logs.append(f"Restart = {params.restart_no}")
 
 
 def preprocess_input():

@@ -249,15 +249,14 @@ gtype: uniform
 levels: 64
 continue_run: false
 fv3_debug: false
-shield_exe: null
-sbatch:
-  exclusive: false # Run with exclusive node access (true/false)
-  constraint: false # Node constraints (e.g., "24-core", "32-core")
-  cpus_per_task: 1 # Number of CPU cores per task
-  time: 12 # Maximum wall time (HH)
-  nnodes: 3 # Number of nodes
-  ntasks: 48 # Total number of tasks (e.g., MPI ranks)
-
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
+constraint_node: false # Node constraints (e.g., "24-core", "32-core")
+exclusive_node: false # Run with exclusive node access (true/false)
+walltime: 12 # Maximum wall time (HH)
+n_nodes: 2  # Number of nodes
+n_cpus: 96 # Total number of tasks (e.g., MPI ranks)
+partition: batch
+n_cpus_per_task: 1
 ```
 
 ### Example Nested run_config.yml
@@ -274,13 +273,14 @@ lon_min: [-125,-95]
 lon_max: [-47,-57]
 lat_min: [25,32]
 lat_max: [60,55]
-sbatch:
-  exclusive: false # Run with exclusive node access (true/false)
-  constraint: false # Node constraints (e.g., "24-core", "32-core")
-  cpus_per_task: 1 # Number of CPU cores per task
-  time: 12 # Maximum wall time (HH)
-  nnodes: 3 # Number of nodes
-  ntasks: 48 # Total number of tasks (e.g., MPI ranks)
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
+constraint_node: false # Node constraints (e.g., "24-core", "32-core")
+exclusive_node: false # Run with exclusive node access (true/false)
+walltime: 12 # Maximum wall time (HH)
+n_nodes: 2  # Number of nodes
+n_cpus: 96 # Total number of tasks (e.g., MPI ranks)
+partition: batch
+n_cpus_per_task: 1
 ```
 
 
@@ -355,15 +355,13 @@ levels: 64
 continue_run: false
 archive_data: true
 shield_exe: /path/to/shield/exe/SHiELD_nh.prod.64bit.gnu.x
-sbatch:
-  exclusive: false # Run with exclusive node access (true/false)
-  constraint: false # Node constraints (e.g., "24-core", "32-core")
-  cpus_per_task: 1 # Number of CPU cores per task
-  time: 12 # Maximum wall time (HH)
-  nnodes: 3 # Number of nodes
-  ntasks: 48 # Total number of tasks (e.g., MPI ranks)
-  partition: "batch" # Partition name 
-
+constraint_node: false # Node constraints (e.g., "24-core", "32-core")
+exclusive_node: false # Run with exclusive node access (true/false)
+walltime: 12 # Maximum wall time (HH)
+n_nodes: 2  # Number of nodes
+n_cpus: 96 # Total number of tasks (e.g., MPI ranks)
+partition: batch
+n_cpus_per_task: 1
 
 ```
 
