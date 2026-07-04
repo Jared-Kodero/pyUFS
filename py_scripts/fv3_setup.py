@@ -154,15 +154,15 @@ def preprocess_input():
 
     params.update(paths)
 
+    params.res_km = [0 for _ in range(len(params.refine_ratio) + 1)]
+    params.res_km[0] = cres_to_deg(params.res).km
+
     if params.gtype == "nest":
         params.n_nests = len(params.refine_ratio)
         validate_nests(params)
     else:
         params.n_nests = 0
         params.refine_ratio = 1
-
-    params.res_km = [0 for _ in range(params.n_nests + 1)]
-    params.res_km[0] = cres_to_deg(params.res).km
 
     # Now decide which block to print
     if not params.warm_start:
