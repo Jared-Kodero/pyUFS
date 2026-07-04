@@ -91,7 +91,7 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Working directory: {params.work_dir}")
     run_logs.append(f"Archive directory: {params.archive_dir}")
     run_logs.append(f"Fixed/static directory: {params.fix_src}")
-    run_logs.append(f"Logs directory: {state.logs}")
+    run_logs.append(f"Logs directory: {params.logs}")
 
     if "shield_exe" in params:
         run_logs.append(f"Model executable: {params.shield_exe}")
@@ -123,7 +123,7 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Global cubed-sphere resolution: C{params.res}")
 
     for i in range(1, 7):
-        run_logs.append(f"Global tile {i} resolution: {params.global_res_km:.2f} km")
+        run_logs.append(f"Global tile {i} resolution: {params.res_km[0]:.2f} km")
 
     if params.gtype == "nest":
         run_logs.extend(nest_info)
@@ -149,7 +149,6 @@ def preprocess_input():
     params = parse_input()  # Get parsed arguments
 
     params.n_cpus = state.n_cpus  # Update n_cpus based on available CPUs
-    params.global_res_km = cres_to_deg(params.res).km
 
     paths = configure_directories(params)
 
@@ -161,6 +160,9 @@ def preprocess_input():
     else:
         params.n_nests = 0
         params.refine_ratio = 1
+
+    params.res_km = [0 for _ in range(params.n_nests + 1)]
+    params.res_km[0] = cres_to_deg(params.res).km
 
     # Now decide which block to print
     if not params.warm_start:

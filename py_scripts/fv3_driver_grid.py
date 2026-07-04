@@ -202,11 +202,11 @@ def run_driver(
             else refine_ratio,
         )
 
-        istart_nest = state.nesting["istart_nest"][0]
-        iend_nest = state.nesting["iend_nest"][0]
-        jstart_nest = state.nesting["jstart_nest"][0]
-        jend_nest = state.nesting["jend_nest"][0]
-        parent_tile = state.nesting["parent_tile"][0]
+        istart_nest = state.istart_nest[0]
+        iend_nest = state.iend_nest[0]
+        jstart_nest = state.jstart_nest[0]
+        jend_nest = state.jend_nest[0]
+        parent_tile = state.parent_tile[0]
 
         # --- Expand halo region for regional_gfdl ---
         if gtype == "regional_gfdl":

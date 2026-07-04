@@ -1,0 +1,122 @@
+case_name: C96.NESTED.R4x2.R2x1.CNTRL
+n_cpus: 256
+n_nodes: 8
+ensemble_id: 0
+n_ensembles: 0
+n_cpus_per_node: 32
+multi_node: true
+resubmit: 5
+resubmit_idx: 5
+ufs_utils: /oscar/data/deeps/shared/gfdl_shield/ufs_py
+configs: /oscar/data/deeps/shared/gfdl_shield/ufs_py/configs
+work_dir: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL
+fix_src: /oscar/data/deeps/shared/gfdl_shield/fix
+ufs_exe: /UFS_UTILS/exec
+run_dir: /oscar/data/deeps/private/jl322/jkodero/data/models/gfdl_shield/test_case/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL
+case_dir: /oscar/scratch/jkodero/models/gfdl_shield/runs/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL
+archive_dir: /users/jkodero/data/jkodero/data/models/gfdl_shield/archive/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL
+tmp: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/TMP
+hist: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/HIST
+grid: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/GRID
+logs: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/LOGS
+fix: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/FIXED
+input: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/INPUT
+output: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/OUTPUT
+restarts: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/RESTART
+ic_data: /jobtmp/jkodero/gfdl_shield/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/IC
+constraint_node: false
+exclusive_node: false
+walltime: 12
+partition: batch
+n_cpus_per_task: 1
+archive_data: true
+continue_run: true
+description: 2024081300Z_C96.NESTED.R4X2.R2X1.CNTRL
+init_datetime: '2024-08-13 00:00:00'
+fv3_debug: false
+run_nhours: 24
+res: 96
+gtype: nest
+levels: 64
+do_deep: false
+dt_atmos: 90
+dt_ocean: 90
+refine_ratio: [4, 4, 2]
+k_split: [1, 2, 2, 2]
+n_split: [3, 6, 6, 10]
+lat_max: [60, 55, 47]
+lat_min: [25, 32, 38]
+lon_max: [-47, -57, -67]
+lon_min: [-125, -95, -85]
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
+run_config: /oscar/data/deeps/private/jl322/jkodero/data/models/gfdl_shield/test_case/2024081300Z/C96.NESTED.R4x2.R2x1.CNTRL/run_config.yaml
+case_root: /oscar/scratch/jkodero/models/gfdl_shield/runs
+jobtmp: /jobtmp/jkodero/gfdl_shield
+shield_image: /oscar/data/deeps/shared/gfdl_shield/containers/shield.sif
+fregrid_image: /oscar/data/deeps/shared/gfdl_shield/containers/fregrid.sif
+preprocess_image: /oscar/data/deeps/shared/gfdl_shield/containers/preprocess.sif
+shield_root: /oscar/data/deeps/shared/gfdl_shield
+archive_root: /users/jkodero/data/jkodero/data/models/gfdl_shield/archive
+containers_root: /oscar/data/deeps/shared/gfdl_shield/containers
+container_bindpath: [/oscar, /sss, /users, /jobtmp]
+modules: [hpcx-mpi, netcdf-mpi, libyaml, netcdf]
+forecast_hour: 0
+ensemble_run: false
+generate_ic_data: true
+preprocess_only: false
+target_lon: -86.0
+target_lat: 42.5
+stretch_factor: 1.0
+parent_tile: 6
+halo: 3
+idim: 200
+jdim: 200
+delx: 0.0585
+dely: 0.0585
+lake_cutoff: 0.2
+add_lake: false
+make_gsl_orog: false
+case_description: null
+warm_start: true
+total_run_hours: 144
+forecast_length: 6 days
+checksum: 2b99f9922a464d74650cf8162a82f161f0654b7724cceffb28f57e1ba8e3edac
+restart_no: 5
+total_restarts: 6
+global_res_km: 104.36
+n_nests: 3
+nest_type: telescoping
+nest_res_km: [26.09, 6.52, 3.26]
+nesting:
+  parent_tile: [6, 7, 8]
+  istart_nest: [21, 109, 335]
+  iend_nest: [172, 364, 778]
+  jstart_nest: [47, 75, 323]
+  jend_nest: [134, 282, 650]
+  nest_ioffsets: [999, 11, 55, 168]
+  nest_joffsets: [999, 24, 38, 162]
+nest_ngrid_cells: [214016, 851968, 582528]
+global_ngrid_cells: 221184
+ntiles: [6, 1, 1, 1]
+npx: [97, 305, 513, 445]
+npy: [97, 177, 417, 329]
+grid_pes: [48, 16, 64, 128]
+total_pes: 256
+global_pes: 48
+layout:
+- [2, 4]
+- [4, 4]
+- [8, 8]
+- [8, 16]
+io_layout:
+- [1, 1]
+- [1, 1]
+- [1, 1]
+- [1, 1]
+blocksize: [32, 32, 32, 32]
+external_ic_source:
+  global: {atm: GFS, sfc: GFS, nst: null}
+  nest02: {atm: GFS, sfc: GFS, nst: null}
+  nest03: {atm: GFS, sfc: GFS, nst: null}
+  nest04: {atm: HRRR, sfc: GFS, nst: null}
+model_start_date: [2024, 8, 13, 0, 0, 0]

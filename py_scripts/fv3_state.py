@@ -24,120 +24,142 @@ logging.basicConfig(
 class FV3State(dict):
     __slots__ = ()
 
-    add_lake: bool
-    archive_data: bool
-    archive_dir: Path
-    blocksize: list[int]
-
+    # Case identity, descriptions, and directories
+    case_name: str
     case_description: str
+    description: str
+    checksum: str
+
     case_dir: Path
     work_dir: Path
-    case_name: str
-    checksum: str
+    run_dir: Path
+    run_config: Path
     configs: Path
+    input: Path
+    output: Path
+    logs: Path
+    tmp: Path
+
+    # Archiving and history
+    archive_data: bool
+    archive_dir: Path
+    hist: Path
+    restarts: Path
+
+    # Execution control and simulation timeline
+    init_datetime: pd.Timestamp
+    run_nhours: int
+    total_run_hours: int
+
+    forecast_hour: int
+    forecast_length: str
+
     continue_run: bool
-    container_bindpath: list[str]
+    warm_start: bool
+    preprocess_only: bool
+    restart_no: int
+    total_restarts: int
+    resubmit: int
+    resubmit_idx: int
+
+    # Model time stepping and resolution
+    dt_atmos: int
+    dt_ocean: int
+    res: int
+    res_km: list[float]
+    delx: float
+    dely: float
+    levels: int
+
+    # Computational resources and decomposition
+    n_nodes: int
+    n_cpus: int
+    n_cpus_per_node: int
+    total_pes: int
+    multi_node: bool
+
+    layout: list[list[int]]
+    io_layout: list[list[int]]
+    blocksize: list[int]
+    grid_pes: list[int]
+    n_split: list[int]
+    k_split: list[int]
+
+    # Grid geometry and domain configuration
+    gtype: str
+    grid: Path
+    idim: int
+    jdim: int
+    npx: list[int]
+    npy: list[int]
+    ntiles: list[int]
+    ngrid_cells: list[int]
+    halo: int
+
+    stretch_factor: float
+    target_lat: float
+    target_lon: float
+
+    # Nested-domain configuration
+    n_nests: int
+    nest_type: str
+    refine_ratio: list[int]
+
+    # Note: the original declaration listed parent_tile twice with
+    # incompatible types. Retain the appropriate form for your workflow.
+    parent_tile: list[int]  # or int
+
+    istart_nest: list[int]
+    iend_nest: list[int]
+    jstart_nest: list[int]
+    jend_nest: list[int]
+
+    nest_ioffsets: list[int]
+    nest_joffsets: list[int]
+
+    lat_min: list[int]
+    lat_max: list[int]
+    lon_min: list[int]
+    lon_max: list[int]
+
+    # Initial-condition generation and external data sources
+    generate_ic_data: bool
+    external_ic_dir: Path | None
+    ic_data: Path
+
+    global_ic_source: dict[str, str]
+    nest02_ic_source: dict[str, str]
+    nest03_ic_source: dict[str, str]
+    nest04_ic_source: dict[str, str]
+
+    # Surface and terrain preprocessing
+    add_lake: bool
+    lake_cutoff: float
+    make_gsl_orog: bool
+    do_deep: bool
+    sm_perturbations: dict
+
+    # Fixed files, preprocessing, and executables
+    fix: Path
+    fix_src: Path
+
+    ufs_exe: Path
+    ufs_utils: Path
+    shield_exe: str
+
     shield_image: Path
     fregrid_image: Path
     preprocess_image: Path
 
-    delx: float
-    dely: float
-    description: str
-    do_deep: bool
-    dt_atmos: int
-    dt_ocean: int
-
-    ensemble_id: int
-    ensemble_run: bool
-    external_ic_dir: Path | None
-    external_ic_source: dict[str, dict[str, str | None]]
-
-    fix: Path
-    fix_src: Path
-    forecast_hour: int
-    forecast_length: str
+    # Runtime environment and diagnostics
+    container_bindpath: list[str]
+    modules: list[str]
     fv3_debug: bool
 
-    generate_ic_data: bool
-    global_ngrid_cells: int
-    global_pes: int
-    global_res_km: float
-    grid: Path
-    grid_pes: list[int]
-    gtype: str
-
-    halo: int
-    hist: Path
-
-    ic_data: Path
-    idim: int
-    init_datetime: pd.Timestamp
-    input: Path
-    io_layout: list[list[int]]
-
-    jdim: int
-
-    k_split: list[int]
-    lake_cutoff: float
-    lat_max: list[int]
-    lat_min: list[int]
-    layout: list[list[int]]
-    levels: int
-    logs: Path
-    lon_max: list[int]
-    lon_min: list[int]
-
-    make_gsl_orog: bool
-    modules: list[str]
-    multi_node: bool
-
-    n_cpus: int
-    n_cpus_per_node: int
+    # Ensemble configuration
+    ensemble_run: bool
+    ensemble_id: int
     n_ensembles: int
-    n_nests: int
-    n_nodes: int
-    n_split: list[int]
-
-    nest_ngrid_cells: list[int]
-    nest_res_km: list[float]
-    nest_type: str
-    nesting: dict[str, list[int]]
-
-    npx: list[int]
-    npy: list[int]
-    ntiles: list[int]
-
-    output: Path
-
-    parent_tile: int
-    preprocess_only: bool
-
-    refine_ratio: list[int]
-    res: int
-    restart_no: int
-    restarts: Path
-    resubmit: int
-    resubmit_idx: int
-    run_config: Path
-    run_dir: Path
-    run_nhours: int
-
-    shield_exe: str
-    sm_perturbations: dict
-    stretch_factor: float
-
-    target_lat: float
-    target_lon: float
-    tmp: Path
-    total_pes: int
-    total_restarts: int
-    total_run_hours: int
-
-    ufs_exe: Path
-    ufs_utils: Path
-
-    warm_start: bool
 
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__

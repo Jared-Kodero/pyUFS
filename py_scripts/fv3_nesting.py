@@ -56,7 +56,7 @@ def validate_nests(params: FV3State) -> list:
             nest_res_km.append(res_km)
             nest_info.append(f"Nested tile {7 + i} resolution: {res_km:.2f} km")
 
-    params.nest_res_km = nest_res_km
+    params.res_km.extend(nest_res_km)
     nest_info.append(f"Nest layout type: {params.nest_type}")
     return nest_info
 
@@ -256,10 +256,8 @@ def get_nest_indices(
         "nest_joffsets",
     )
 
-    state.nesting = {}
-
     for k in keys:
-        state.nesting.setdefault(k, [])
+        state[k] = []
 
     if not grid_dir:
         grid_dir = gen_global_nest_parent(res)
@@ -277,17 +275,17 @@ def get_nest_indices(
         tile=tile,
     )
 
-    state.nesting["parent_tile"].append(parent_tile[i])
-    state.nesting["istart_nest"].append(indices["istart_nest"])
-    state.nesting["iend_nest"].append(indices["iend_nest"])
-    state.nesting["jstart_nest"].append(indices["jstart_nest"])
-    state.nesting["jend_nest"].append(indices["jend_nest"])
+    state.parent_tile.append(parent_tile[i])
+    state.istart_nest.append(indices["istart_nest"])
+    state.iend_nest.append(indices["iend_nest"])
+    state.jstart_nest.append(indices["jstart_nest"])
+    state.jend_nest.append(indices["jend_nest"])
 
     # Convert supergrid (grid file) indices to FV3 parent cell indices
-    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.nesting["istart_nest"]]
-    nest_joffsets = [999] + [(j // 2) + 1 for j in state.nesting["jstart_nest"]]
-    state.nesting["nest_ioffsets"] = nest_ioffsets
-    state.nesting["nest_joffsets"] = nest_joffsets
+    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.istart_nest]
+    nest_joffsets = [999] + [(j // 2) + 1 for j in state.jstart_nest]
+    state.nest_ioffsets = nest_ioffsets
+    state.nest_joffsets = nest_joffsets
 
     save_fv3_state()
 
@@ -307,7 +305,7 @@ def get_nest_tele_indices(
         "nest_joffsets",
     )
     for k in keys:
-        state.nesting[k] = []
+        state[k] = []
 
     tiles = [i + 7 for i in range(n_nests)]
 
@@ -327,14 +325,14 @@ def get_nest_tele_indices(
             tile=tile,
         )
 
-        state.nesting["parent_tile"].append(parent_tile)
-        state.nesting["istart_nest"].append(indices["istart_nest"])
-        state.nesting["iend_nest"].append(indices["iend_nest"])
-        state.nesting["jstart_nest"].append(indices["jstart_nest"])
-        state.nesting["jend_nest"].append(indices["jend_nest"])
+        state.parent_tile.append(parent_tile)
+        state.istart_nest.append(indices["istart_nest"])
+        state.iend_nest.append(indices["iend_nest"])
+        state.jstart_nest.append(indices["jstart_nest"])
+        state.jend_nest.append(indices["jend_nest"])
 
-    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.nesting["istart_nest"]]
-    nest_joffsets = [999] + [(j // 2) + 1 for j in state.nesting["jstart_nest"]]
-    state.nesting["nest_ioffsets"] = nest_ioffsets
-    state.nesting["nest_joffsets"] = nest_joffsets
+    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.istart_nest]
+    nest_joffsets = [999] + [(j // 2) + 1 for j in state.jstart_nest]
+    state.nest_ioffsets = nest_ioffsets
+    state.nest_joffsets = nest_joffsets
     save_fv3_state()

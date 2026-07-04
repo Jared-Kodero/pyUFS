@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 import f90nml
-from fv3_runtime import get_launcher, log
+from fv3_runtime import get_launcher, log, report_missing_fixed_files
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -65,10 +65,14 @@ def _run_single_sfc_climo(
         "input_vegetation_greenness_file",
         "mosaic_file_mdl",
     ]
+
+    missing_files = []
     for key in required_files:
         f = Path(config_dict["config"][key])
         if not f.exists():
-            raise FileNotFoundError(f"Missing required file: {f}")
+            missing_files.append(f)
+    if missing_files:
+        report_missing_fixed_files(missing_files, sub_dir="sfc_climo")
 
     for f in [orog_dir_mdl / fn for fn in orog_files] + [mosaic_file_mdl]:
         if not f.exists():
