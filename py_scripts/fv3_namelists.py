@@ -3,7 +3,7 @@ from pathlib import Path
 
 import f90nml
 import numpy as np
-from fv3_runtime import log, read_namelist
+from fv3_runtime import log, read_namelist, report_missing_fixed_files
 from fv3_state import state
 from fv3_timings import get_timings
 from fv3_utils import cp, cres_to_deg, env_setup
@@ -154,9 +154,9 @@ def update_global_nml(
         nml["fv_nest_nml"]["grid_pes"] = state.grid_pes
         nml["fv_nest_nml"]["nest_refine"] = [0] + state.refine_ratio
         nml["fv_nest_nml"]["num_tile_top"] = 6  # use 7 if regional suppergrid is used
-        nml["fv_nest_nml"]["tile_coarse"] = [0] + state.nesting["parent_tile"]
-        nml["fv_nest_nml"]["nest_ioffsets"] = state.nesting["nest_ioffsets"]
-        nml["fv_nest_nml"]["nest_joffsets"] = state.nesting["nest_joffsets"]
+        nml["fv_nest_nml"]["tile_coarse"] = [0] + state.parent_tile
+        nml["fv_nest_nml"]["nest_ioffsets"] = state.nest_ioffsets
+        nml["fv_nest_nml"]["nest_joffsets"] = state.nest_joffsets
         nml["fv_nest_nml"]["p_split"] = 1
 
     else:
@@ -298,12 +298,7 @@ def update_fixed_files():
             missing_files.append(file)
 
     if missing_files:
-        url = "https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/am/"
-        print("Missing required file(s):")
-        for f in missing_files:
-            print(f"  - {f}")
-        print(f"Please download them from\n\t{url}\nand place them in\n\t{fix_dir}.")
-        raise FileNotFoundError("Missing required fixed files. See above for details.")
+        report_missing_fixed_files(missing_files, sub_dir="am")
 
 
 def update_table_files():
@@ -395,19 +390,22 @@ def update_namsfc(nml):
         "fnvmnc": "global_shdmin.0.144x0.144.grb",
         "fnvmxc": "global_shdmax.0.144x0.144.grb",
     }
-
+    missing_files = []
     for key, fname in namsfc_files.items():
         src = am_dir / fname
         dst = state.fix / fname
 
         if not src.exists():
-            raise FileNotFoundError(src)
-
+            missing_files.append(src)
+            continue
         if not dst.exists():
             cp(src, dst)
 
         namsfc[key] = f"FIXED/{fname}"
 
     nml["namsfc"] = namsfc
+
+    if missing_files:
+        report_missing_fixed_files(missing_files, sub_dir="am")
 
     return nml

@@ -115,9 +115,9 @@ def ensemble_config():
 
         if "nest" in f.name:
             tile_num = int(f.stem.split("tile")[-1])
-            tile_idx = tile_num - 7
-            dx = state.nest_res_km[tile_idx]
+            tile_idx = tile_num - 6
+            dx = state.res_km[tile_idx]
         else:
-            dx = state.global_res_km
+            dx = state.res_km[0]
 
         _gen_ensemble(file_stds[str(f)], tmp_f, f, target_vars, rng, dx)

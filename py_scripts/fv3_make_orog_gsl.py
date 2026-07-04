@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log, tmp_cwd
+from fv3_runtime import log, report_missing_fixed_files, tmp_cwd
 from fv3_state import FV3State, state
 from fv3_utils import cp, run_cmd
 
@@ -43,16 +43,24 @@ def _run_make_orog_gsl(
     else:
         out_grid = f"C{res}_grid.tile{tile}.halo{halo}.nc"
 
+    files = {
+        workdir / out_grid: grid_dir / out_grid,
+        workdir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc": topo_dir
+        / "HGT.Beljaars_filtered.lat-lon.30s_res.nc",
+        workdir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc": topo_dir
+        / "geo_em.d01.lat-lon.2.5m.HGT_M.nc",
+        orog_gsl: exec_dir / "orog_gsl",
+    }
+
+    missing_files = [f for f in files if not f.exists()]
+    if missing_files:
+        report_missing_fixed_files(missing_files, sub_dir="orog_gsl")
+
     # Work in temporary directory
     with tmp_cwd(workdir):
         # Symlinks to required inputs
-        (workdir / out_grid).symlink_to(grid_dir / out_grid)
-        (workdir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc").symlink_to(
-            topo_dir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc"
-        )
-        (workdir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc").symlink_to(
-            topo_dir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc"
-        )
+        for src, dst in files.items():
+            (src).symlink_to(dst)
 
         cp(orog_gsl, ".")
 

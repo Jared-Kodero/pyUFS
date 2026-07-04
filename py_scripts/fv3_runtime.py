@@ -73,6 +73,17 @@ def to_list(x: object) -> list:
     return [x] if not isinstance(x, list) else x
 
 
+def report_missing_fixed_files(missing_files: list[Path], sub_dir: str = "am") -> None:
+    url = f"https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/{sub_dir}"
+    print("Missing required file(s):")
+    for f in missing_files:
+        print(f"  - {f}")
+    print(
+        f"Please download them from\n\t{url}\nand place them in\n\t{paths['fix_src'] / sub_dir}."
+    )
+    raise FileNotFoundError("Missing required fixed files. See above for details.")
+
+
 @contextmanager
 def tmp_cwd(path: Path | str):
     cwd = paths["work_dir"]

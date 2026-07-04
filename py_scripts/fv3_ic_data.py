@@ -144,56 +144,72 @@ def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
 
 
 def validate_hrrr_bounds(tile: int) -> str:
+    with (
+        xr.open_dataset(state.fix_src / "am" / "geo_em.d01.nc_HRRRX") as geo_hrrr,
+        xr.open_dataset(
+            state.tmp / "grid" / f"C{state.res}_grid.tile{tile}.nc"
+        ) as grid,
+    ):
+        proj_hrrr = Proj(
+            proj="lcc",
+            lat_1=float(geo_hrrr.attrs["TRUELAT1"]),
+            lat_2=float(geo_hrrr.attrs["TRUELAT2"]),
+            lat_0=float(geo_hrrr.attrs["MOAD_CEN_LAT"]),
+            lon_0=float(geo_hrrr.attrs["STAND_LON"]),
+            a=6_370_000.0,
+            b=6_370_000.0,
+        )
 
-    geo_hrrr = xr.open_dataset(state.fix_src / "am" / "geo_em.d01.nc_HRRRX")
+        # Derive the projected HRRR mass-grid bounds from geo_em corners.
+        hrrr_lon = np.array(
+            [
+                geo_hrrr["XLONG_M"].isel(Time=0, south_north=0, west_east=0),
+                geo_hrrr["XLONG_M"].isel(Time=0, south_north=0, west_east=-1),
+                geo_hrrr["XLONG_M"].isel(Time=0, south_north=-1, west_east=0),
+                geo_hrrr["XLONG_M"].isel(Time=0, south_north=-1, west_east=-1),
+            ],
+            dtype=np.float64,
+        )
 
-    # HRRR uses a sphere with radius 6370km usually in WRF/HRRR setups
-    proj_hrrr = Proj(
-        proj="lcc",
-        lat_1=float(geo_hrrr.TRUELAT1),
-        lat_2=float(geo_hrrr.TRUELAT2),
-        lat_0=float(geo_hrrr.MOAD_CEN_LAT),
-        lon_0=float(geo_hrrr.STAND_LON),
-        a=6370000.0,
-        b=6370000.0,
-    )
+        hrrr_lat = np.array(
+            [
+                geo_hrrr["XLAT_M"].isel(Time=0, south_north=0, west_east=0),
+                geo_hrrr["XLAT_M"].isel(Time=0, south_north=0, west_east=-1),
+                geo_hrrr["XLAT_M"].isel(Time=0, south_north=-1, west_east=0),
+                geo_hrrr["XLAT_M"].isel(Time=0, south_north=-1, west_east=-1),
+            ],
+            dtype=np.float64,
+        )
 
-    # Calculate HRRR domain limits in meters (centered at MOAD_CEN_LAT/LON)
-    dx = float(geo_hrrr.DX)
-    dy = float(geo_hrrr.DY)
-    nx = int(geo_hrrr.sizes["west_east"])
-    ny = int(geo_hrrr.sizes["south_north"])
+        hrrr_x, hrrr_y = proj_hrrr(hrrr_lon, hrrr_lat, errcheck=True)
 
-    # HRRR coordinates are typically 0-indexed at center or relative to center
-    # In WRF geo_em files, the center of the grid is (0,0) in projection space
-    hrrr_x_min = -0.5 * dx * (nx - 1)
-    hrrr_x_max = 0.5 * dx * (nx - 1)
-    hrrr_y_min = -0.5 * dy * (ny - 1)
-    hrrr_y_max = 0.5 * dy * (ny - 1)
+        hrrr_x_min = float(np.min(hrrr_x))
+        hrrr_x_max = float(np.max(hrrr_x))
+        hrrr_y_min = float(np.min(hrrr_y))
+        hrrr_y_max = float(np.max(hrrr_y))
 
-    grid = xr.open_dataset(state.tmp / "grid" / f"C{state.res}_grid.tile{tile}.nc")
+        grid_lon = np.asarray(grid["x"].values, dtype=np.float64)
+        grid_lat = np.asarray(grid["y"].values, dtype=np.float64)
 
-    grid_lon = grid["x"].values
-    grid_lat = grid["y"].values
+        grid_lon = (grid_lon + 180.0) % 360.0 - 180.0
 
-    grid_lon = ((grid_lon + 180) % 360) - 180
+        if grid_lon.ndim == 1 and grid_lat.ndim == 1:
+            grid_lon, grid_lat = np.meshgrid(grid_lon, grid_lat, indexing="xy")
+        else:
+            grid_lon, grid_lat = np.broadcast_arrays(grid_lon, grid_lat)
 
-    shield_x, shield_y = proj_hrrr(grid_lon, grid_lat)
+        grid_x, grid_y = proj_hrrr(grid_lon, grid_lat, errcheck=True)
+
+    tolerance_m = 2.0
 
     is_contained = (
-        (shield_x.min() >= hrrr_x_min)
-        and (shield_x.max() <= hrrr_x_max)
-        and (shield_y.min() >= hrrr_y_min)
-        and (shield_y.max() <= hrrr_y_max)
+        np.all(grid_x >= hrrr_x_min - tolerance_m)
+        and np.all(grid_x <= hrrr_x_max + tolerance_m)
+        and np.all(grid_y >= hrrr_y_min - tolerance_m)
+        and np.all(grid_y <= hrrr_y_max + tolerance_m)
     )
 
-    geo_hrrr.close()
-    grid.close()
-
-    if is_contained:
-        return "HRRR"
-
-    return "GFS"
+    return "HRRR" if is_contained else "GFS"
 
 
 def preprocess_only():

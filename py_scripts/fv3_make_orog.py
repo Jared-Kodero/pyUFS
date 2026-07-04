@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log, tmp_cwd
+from fv3_runtime import log, report_missing_fixed_files, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -48,11 +48,19 @@ def _run_make_orog(
     else:
         out_grid = f"C{res}_grid.tile{tile}.nc"
 
+    files = {
+        orog_dir / "thirty.second.antarctic.new.bin": "fort.15",
+        orog_dir / "landcover30.fixed": "landcover30.fixed",
+        orog_dir / "gmted2010.30sec.int": "fort.235",
+    }
+    missing_files = [f for f in files if not f.exists()]
+    if missing_files:
+        report_missing_fixed_files(missing_files, sub_dir="orog")
+
     # Prepare working directory
     with tmp_cwd(workdir):
-        cp(orog_dir / "thirty.second.antarctic.new.bin", "fort.15")
-        cp(orog_dir / "landcover30.fixed", ".")
-        cp(orog_dir / "gmted2010.30sec.int", "fort.235")
+        for src, dst in files.items():
+            cp(src, dst)
 
         if inorogexist:
             cp(inputorog, ".")

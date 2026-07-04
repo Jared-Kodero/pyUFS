@@ -357,21 +357,21 @@ def apply_config_settings(
     domain_f41.grib2_file_input_grid = data_file
 
     # Record provenance only after all settings are finalized.
-    if domain not in state.external_ic_source:
-        state.external_ic_source[domain] = {
+    if f"{domain}_ic_source" not in state:
+        state[f"{domain}_ic_source"] = {
             "atm": None,
             "sfc": None,
             "nst": None,
         }
 
     if domain_f41.convert_atm:
-        state.external_ic_source[domain]["atm"] = resolved_model
+        state[f"{domain}_ic_source"]["atm"] = resolved_model
 
     if domain_f41.convert_sfc:
-        state.external_ic_source[domain]["sfc"] = resolved_model
+        state[f"{domain}_ic_source"]["sfc"] = resolved_model
 
     if domain_f41.convert_nst:
-        state.external_ic_source[domain]["nst"] = resolved_model
+        state[f"{domain}_ic_source"]["nst"] = resolved_model
 
     chgres_exe(domain_f41, n_cpus, domain, resolved_model)
 
