@@ -63,10 +63,10 @@ def make_nested_grid(
             tile=tile,
         )
 
-        istart_nest = ",".join(map(str, state.nesting["istart_nest"]))
-        iend_nest = ",".join(map(str, state.nesting["iend_nest"]))
-        jstart_nest = ",".join(map(str, state.nesting["jstart_nest"]))
-        jend_nest = ",".join(map(str, state.nesting["jend_nest"]))
+        istart_nest = ",".join(map(str, state.istart_nest))
+        iend_nest = ",".join(map(str, state.iend_nest))
+        jstart_nest = ",".join(map(str, state.jstart_nest))
+        jend_nest = ",".join(map(str, state.jend_nest))
 
         cmd = [
             f"{make_hgrid}",
@@ -129,11 +129,11 @@ def make_nested_grid(
         get_nest_tele_indices(res, state.n_nests, refine_ratio, out_dir)
 
         refine_ratios = ",".join(map(str, refine_ratio))
-        istart_nest = ",".join(map(str, state.nesting["istart_nest"]))
-        iend_nest = ",".join(map(str, state.nesting["iend_nest"]))
-        jstart_nest = ",".join(map(str, state.nesting["jstart_nest"]))
-        jend_nest = ",".join(map(str, state.nesting["jend_nest"]))
-        parent_tile = ",".join(map(str, state.nesting["parent_tile"]))
+        istart_nest = ",".join(map(str, state.istart_nest))
+        iend_nest = ",".join(map(str, state.iend_nest))
+        jstart_nest = ",".join(map(str, state.jstart_nest))
+        jend_nest = ",".join(map(str, state.jend_nest))
+        parent_tile = ",".join(map(str, state.parent_tile))
 
         cmd = [
             f"{make_hgrid}",

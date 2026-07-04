@@ -189,8 +189,22 @@ def get_config():
     if walltime > 48:
         walltime = 48
 
-    walltime = f"{walltime}:00:00"
+    ensemble_run = user_cfg.get("ensemble_run", False)
     n_ensembles = user_cfg.get("n_ensembles", 0)
+
+    if ensemble_run and n_ensembles < 1:
+        logger.error(
+            "Ensemble run is enabled, but n_ensembles is not set or less than 1 in run_config.yaml"
+        )
+        sys.exit(1)
+
+    if not ensemble_run and n_ensembles > 0:
+        logger.error(
+            "Ensemble run is disabled, but n_ensembles is set to a value greater than 0 in run_config.yaml"
+        )
+        sys.exit(1)
+
+    walltime = f"{walltime}:00:00"
     resubmit_max = user_cfg.get("resubmit", 0)
     archive_data = int(user_cfg.get("archive_data", False))
     preprocess_only = int(user_cfg.get("preprocess_only", False))

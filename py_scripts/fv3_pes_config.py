@@ -23,8 +23,7 @@ def calc_cpu_alloc(dir: Path) -> None:
 
 
 def get_grid_info() -> None:
-    state.nest_ngrid_cells = []
-    state.global_ngrid_cells = 0
+    state.ngrid_cells = [0 for _ in range(state.n_nests + 1)]
     state.ntiles = []
     state.npx = []
     state.npy = []
@@ -47,10 +46,11 @@ def get_grid_info() -> None:
 
         if tile_num == 6:
             n = 6
-            state.global_ngrid_cells = cells * n
+            state.ngrid_cells[0] = cells * n
         else:
             n = 1
-            state.nest_ngrid_cells.append(cells)
+            idx = tile_num - 6
+            state.ngrid_cells[idx] = cells * n
 
         state.ntiles.append(n)
         state.npx.append(npx)
@@ -62,7 +62,6 @@ def calc_uniform_pes() -> None:
     total_pes = 6 * (state.n_cpus // 6)
     state.grid_pes = [total_pes]
     state.total_pes = total_pes
-    state.global_pes = total_pes
 
     layouts = get_layouts([total_pes // 6])
     state.layout = layouts["layout"]
@@ -71,25 +70,26 @@ def calc_uniform_pes() -> None:
 
 
 def check_user_define_pes() -> bool:
-    global_input_nml = state.get("global_input_nml")
-    if not global_input_nml:
-        return False
 
-    if isinstance(global_input_nml, (str, Path)):
-        path = Path(global_input_nml)
-        if not path.exists():
-            return False
-        global_input_nml = read_namelist(path)
-        if not global_input_nml:
-            return False
+    user_nml = state.run_dir / "input"
+    suffixes = (".nml", ".yaml", ".yml")
 
-    grid_pes = global_input_nml.get("fv_nest_nml", {}).get("grid_pes")
+    override_nml = None
+    grid_pes = None
+    for suffix in suffixes:
+        _path = Path(user_nml).with_suffix(suffix)
+        if not _path.exists():
+            continue
+        else:
+            override_nml = read_namelist(_path)
+
+    if override_nml:
+        grid_pes = override_nml.get("fv_nest_nml", {}).get("grid_pes")
     if not grid_pes:
         return False
 
     state.grid_pes = grid_pes
     state.total_pes = sum(grid_pes)
-    state.global_pes = grid_pes[0]
 
     layouts = get_layouts(p // d for p, d in zip(grid_pes, [6, *([1] * state.n_nests)]))
 
@@ -105,40 +105,39 @@ def calc_nest_pes() -> None:
         return
 
     timings = get_timings()
-    k_split = timings["k_split"]
-    n_split = timings["n_split"]
+    k_split = np.asarray(timings["k_split"], dtype=np.float64)
+    n_split = np.asarray(timings["n_split"], dtype=np.float64)
 
+    grid_cells = np.asarray(
+        [state.ngrid_cells[0], *state.ngrid_cells[1:]],
+        dtype=np.float64,
+    )
+    subcycles = k_split * n_split
+
+    if np.any(grid_cells <= 0) or np.any(subcycles <= 0):
+        raise ValueError("Grid-cell counts and subcycle counts must be positive.")
+
+    # Dynamics work is proportional to horizontal cells times acoustic subcycles.
+    # Scale only for readability. allocate_pes() uses ratios, not magnitudes.
     global_base_pes = 6 * max(1, state.res // 96)
-    global_subcycles = k_split[0] * n_split[0]
+    weights = grid_cells * subcycles
+    weights *= global_base_pes / weights[0]
 
-    # Preserve the original total weight so allocate_pes() continues to
-    # interpret the sum of weights consistently with available CPUs.
-    original_total_weight = global_base_pes
+    # Permit compact decompositions in four-rank increments. Restrict candidates
+    # to layouts no more elongated than 2:1 before grid-specific orientation.
+    valid_nest_pes = []
 
-    nest_base_pes = []
+    for pes in range(16, state.n_cpus + 1, 4):
+        for layout_x in range(isqrt(pes), 0, -1):
+            if pes % layout_x == 0:
+                layout_y = pes // layout_x
 
-    for nest_index, n_cells in enumerate(state.nest_ngrid_cells, start=1):
-        area_weight = n_cells * global_base_pes / state.global_ngrid_cells
+                if layout_y / layout_x <= 2.0:
+                    valid_nest_pes.append(pes)
 
-        nest_subcycles = k_split[nest_index] * n_split[nest_index]
+                break
 
-        # Relative dynamics work per cell, normalized by the global grid.
-        timestep_factor = nest_subcycles / global_subcycles
-
-        nest_weight = area_weight * timestep_factor
-
-        nest_base_pes.append(nest_weight)
-        original_total_weight += area_weight
-
-    weights = [global_base_pes] + nest_base_pes
-
-    # Rescale only the magnitude, not the global:nest ratios.
-    scaled_total_weight = sum(weights)
-
-    weights = [
-        int(weight * original_total_weight / scaled_total_weight) for weight in weights
-    ]
-    valid = np.array([16, 32, 64, 128, 256], dtype=np.int64)
+    valid = np.asarray(valid_nest_pes, dtype=np.int64)
 
     final_pes = allocate_pes(
         weights=weights,
@@ -148,12 +147,12 @@ def calc_nest_pes() -> None:
 
     ntiles_list = [6] + [1] * state.n_nests
 
-    total_pes = sum(final_pes)
     state.grid_pes = final_pes
-    state.total_pes = total_pes
-    state.global_pes = final_pes[0]
+    state.total_pes = sum(final_pes)
 
-    layouts = get_layouts([p // n for p, n in zip(final_pes, ntiles_list)])
+    layouts = get_layouts(
+        [pes // ntiles for pes, ntiles in zip(final_pes, ntiles_list)]
+    )
 
     state.layout = layouts["layout"]
     state.io_layout = layouts["io_layout"]
@@ -163,51 +162,87 @@ def calc_nest_pes() -> None:
 
 
 def allocate_pes(
-    weights: list[int],
+    weights: list[float] | np.ndarray,
     ncpus: int,
     valid_nest_pes: list[int] | np.ndarray,
 ) -> list[int]:
     """
-    Vectorized PE allocation.
+    Allocate PEs by minimizing the largest estimated grid time:
 
-    weights[0]  = global PE weight
-    weights[1:] = nest PE weights
+        T_g ~ weight_g / P_g
 
     Rules:
-        - global PE count must be a multiple of 6
-        - each nest PE count must be in valid_nest_pes
-        - total PE count must equal ncpus if possible
-        - selected layout stays closest to the weighted PE ratios
+        - global PE count is a multiple of 6
+        - nest PE counts are selected from valid_nest_pes
+        - use exactly ncpus when possible
+        - among equivalent bottlenecks, prefer the smallest timing spread
     """
-
     weights = np.asarray(weights, dtype=np.float64)
     valid = np.asarray(valid_nest_pes, dtype=np.int64)
 
-    min_required = sum(weights)
+    if weights.ndim != 1 or len(weights) < 2:
+        raise ValueError("weights must contain the global grid and at least one nest.")
+
+    if np.any(~np.isfinite(weights)) or np.any(weights <= 0.0):
+        raise ValueError("All PE weights must be finite and positive.")
+
+    valid = np.unique(valid[(valid >= 16) & (valid <= ncpus)])
+
+    if valid.size == 0:
+        raise ValueError("No valid nest PE counts are available.")
+
+    min_required = 6 + (len(weights) - 1) * int(valid.min())
+
     if min_required > ncpus:
         raise ValueError(
-            f"Insufficient CPUs for PE allocation: ncpus={ncpus}, but at least {min_required} is needed!"
+            f"Insufficient CPUs for PE allocation: ncpus={ncpus}, but at least {min_required} are required."
         )
 
-    global_valid = np.arange(6, ncpus + 1, 6, dtype=np.int64)
+    global_valid_list = []
+
+    for global_pes in range(6, ncpus + 1, 6):
+        pes_per_tile = global_pes // 6
+
+        for layout_x in range(isqrt(pes_per_tile), 0, -1):
+            if pes_per_tile % layout_x == 0:
+                layout_y = pes_per_tile // layout_x
+
+                if layout_y / layout_x <= 2.0:
+                    global_valid_list.append(global_pes)
+
+                break
+
+    global_valid = np.asarray(global_valid_list, dtype=np.int64)
+
+    if global_valid.size == 0:
+        raise ValueError("No valid global-grid PE counts are available.")
 
     choices = [global_valid] + [valid] * (len(weights) - 1)
+
     mesh = np.meshgrid(*choices, indexing="ij")
-    candidates = np.stack([m.ravel() for m in mesh], axis=1)
+    candidates = np.stack([entry.ravel() for entry in mesh], axis=1)
 
     exact = candidates[candidates.sum(axis=1) == ncpus]
 
     if exact.size == 0:
         candidates = candidates[candidates.sum(axis=1) <= ncpus]
-        candidates = candidates[candidates.sum(axis=1) == candidates.sum(axis=1).max()]
+
+        if candidates.size == 0:
+            raise ValueError("No PE allocation fits within ncpus.")
+
+        max_used_pes = candidates.sum(axis=1).max()
+        candidates = candidates[candidates.sum(axis=1) == max_used_pes]
     else:
         candidates = exact
 
-    target = ncpus * weights / weights.sum()
+    predicted_time = weights[np.newaxis, :] / candidates
 
-    score = np.sum(((candidates - target) / target) ** 2, axis=1)
+    bottleneck_time = predicted_time.max(axis=1)
+    timing_spread = np.ptp(predicted_time, axis=1)
 
-    return candidates[np.argmin(score)].astype(int).tolist()
+    best = np.lexsort((timing_spread, bottleneck_time))[0]
+
+    return candidates[best].astype(int).tolist()
 
 
 def get_layouts(pes: list[int]) -> dict[str, list[int]]:
@@ -215,13 +250,65 @@ def get_layouts(pes: list[int]) -> dict[str, list[int]]:
     io_layouts = []
     blocksizes = []
 
-    for p in pes:
-        for layout_x in range(isqrt(p), 0, -1):
-            if p % layout_x == 0:
-                layout = [layout_x, p // layout_x]
-                break
+    for grid_index, grid_pes in enumerate(pes):
+        if grid_pes <= 0:
+            raise ValueError(f"Invalid PE count for grid {grid_index}: {grid_pes}")
 
-        layouts.append(layout)
+        nx = state.npx[grid_index] - 1
+        ny = state.npy[grid_index] - 1
+
+        best_layout = None
+        best_score = np.inf
+
+        for layout_x in range(1, isqrt(grid_pes) + 1):
+            if grid_pes % layout_x != 0:
+                continue
+
+            layout_y = grid_pes // layout_x
+
+            for x_layout, y_layout in (
+                (layout_x, layout_y),
+                (layout_y, layout_x),
+            ):
+                local_nx = nx / x_layout
+                local_ny = ny / y_layout
+
+                # Prefer locally square subdomains while respecting the grid shape.
+                score = abs(np.log(local_nx / local_ny))
+
+                if score < best_score:
+                    best_score = score
+                    best_layout = [x_layout, y_layout]
+
+        if best_layout is None:
+            # Fall back to the factor pair that gives the most nearly square
+            # local domains, even when nx and ny are not exactly divisible.
+            fallback_layout = None
+            fallback_score = np.inf
+
+            for layout_x in range(1, isqrt(grid_pes) + 1):
+                if grid_pes % layout_x != 0:
+                    continue
+
+                layout_y = grid_pes // layout_x
+
+                for x_layout, y_layout in (
+                    (layout_x, layout_y),
+                    (layout_y, layout_x),
+                ):
+                    local_nx = nx / x_layout
+                    local_ny = ny / y_layout
+
+                    score = abs(np.log(local_nx / local_ny))
+
+                    if score < fallback_score:
+                        fallback_score = score
+                        fallback_layout = [x_layout, y_layout]
+
+            # grid_pes > 0 guarantees that [1, grid_pes] is available.
+            best_layout = fallback_layout or [1, grid_pes]
+
+        layouts.append(best_layout)
         io_layouts.append([1, 1])
         blocksizes.append(32)
 
