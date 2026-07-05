@@ -286,6 +286,7 @@ def main():
         iter_env = {
             **env,
             "CASE_ENSEMBLE_ID": ensemble_id,
+            "CASE_TOTAL_WALLTIME": 0,
             "SLURM_JOB_NAME": slurm_job_name,
             "SLURM_OPEN_MODE": "truncate",
             "CASE_NAME": case_name,
