@@ -17,7 +17,7 @@ from fv3_utils import cp, rename, run_cmd
 def make_nested_grid(
     make_hgrid: str,
     nlon: int,
-    res: int,
+    c_res: int,
     stretch_factor: float,
     parent_tile: list,
     out_dir: Path,
@@ -40,7 +40,7 @@ def make_nested_grid(
     out_dir_tmp.mkdir(parents=True, exist_ok=True)
 
     # Generate global grid first (needed for offsets)
-    _ = gen_global_nest_parent(res, out_dir)
+    _ = gen_global_nest_parent(c_res, out_dir)
 
     nest_tiles = [7 + i for i in range(n_nests)]
 
@@ -55,7 +55,7 @@ def make_nested_grid(
             i_refine_ratio = np.prod(refine_ratio[: i + 1])
 
         get_nest_indices(
-            res=res,
+            c_res=c_res,
             tile_idx=i,
             grid_dir=out_dir,
             parent_tile=parent_tile,
@@ -75,7 +75,7 @@ def make_nested_grid(
             "--nlon",
             f"{nlon}",
             "--grid_name",
-            f"C{res}_grid",
+            f"C{c_res}_grid",
             "--do_schmidt",
             "--stretch_factor",
             f"{stretch_factor}",
@@ -107,12 +107,12 @@ def make_nested_grid(
             log.error(msgs)
             raise RuntimeError(f"Failed to generate nested grid for tile: {tile}")
 
-        nest_tile = out_dir_tmp / f"C{res}_grid.tile7.nc"
+        nest_tile = out_dir_tmp / f"C{c_res}_grid.tile7.nc"
 
         if tile == 7:
-            cp(nest_tile, out_dir / f"C{res}_grid.tile7.nc")
+            cp(nest_tile, out_dir / f"C{c_res}_grid.tile7.nc")
         elif tile > 7:
-            cp(nest_tile, out_dir / f"C{res}_grid.tile{tile}.nc")
+            cp(nest_tile, out_dir / f"C{c_res}_grid.tile{tile}.nc")
 
     shutil.rmtree(out_dir_tmp)
 
@@ -120,13 +120,13 @@ def make_nested_grid(
     for f in files:
         parts = f.name.split("_")
         res_part = str(parts[0])  # e.g., 'C96'
-        if res_part != f"C{res}":
-            new_name = f.name.replace(res_part, f"C{res}")
+        if res_part != f"C{c_res}":
+            new_name = f.name.replace(res_part, f"C{c_res}")
             new_path = out_dir / new_name
             rename(f, new_path)
 
     if nest_type == "telescoping" and gtype == "nest":
-        get_nest_tele_indices(res, state.n_nests, refine_ratio, out_dir)
+        get_nest_tele_indices(c_res, state.n_nests, refine_ratio, out_dir)
 
         refine_ratios = ",".join(map(str, refine_ratio))
         istart_nest = ",".join(map(str, state.istart_nest))
@@ -142,7 +142,7 @@ def make_nested_grid(
             "--nlon",
             f"{nlon}",
             "--grid_name",
-            f"C{res}_grid",
+            f"C{c_res}_grid",
             "--do_schmidt",
             "--stretch_factor",
             f"{stretch_factor}",
@@ -181,7 +181,7 @@ def make_nested_grid(
         telescope_dir.rename(out_dir)
 
 
-def make_uniform_grid(make_hgrid: str, nlon: int, res: int):
+def make_uniform_grid(make_hgrid: str, nlon: int, c_res: int):
     log_file = state.logs / "make_uniform_grid.log"
     cmd = [
         f"{make_hgrid}",
@@ -190,7 +190,7 @@ def make_uniform_grid(make_hgrid: str, nlon: int, res: int):
         "--nlon",
         f"{nlon}",
         "--grid_name",
-        f"C{res}_grid",
+        f"C{c_res}_grid",
         "--do_schmidt",
         "--stretch_factor",
         f"{state.stretch_factor}",
@@ -201,7 +201,7 @@ def make_uniform_grid(make_hgrid: str, nlon: int, res: int):
         "--great_circle_algorithm",
     ]
 
-    log.info(f"Generating uniform grid: C{res}")
+    log.info(f"Generating uniform grid: C{c_res}")
     result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
@@ -211,7 +211,7 @@ def make_uniform_grid(make_hgrid: str, nlon: int, res: int):
 def make_stretched_grid(
     make_hgrid: str,
     nlon: int,
-    res: int,
+    c_res: int,
     stretch_factor: float,
     target_lon: float,
     target_lat: float,
@@ -228,7 +228,7 @@ def make_stretched_grid(
         "--nlon",
         f"{nlon}",
         "--grid_name",
-        f"C{res}_grid",
+        f"C{c_res}_grid",
         "--do_schmidt",
         "--stretch_factor",
         f"{stretch_factor}",
@@ -248,7 +248,7 @@ def make_stretched_grid(
 def make_regional_gfdl_grid(
     make_hgrid: str,
     nlon: int,
-    res: int,
+    c_res: int,
     stretch_factor: float,
     target_lon: float,
     target_lat: float,
@@ -272,7 +272,7 @@ def make_regional_gfdl_grid(
         "--nlon",
         f"{nlon}",
         "--grid_name",
-        f"C{res}_grid",
+        f"C{c_res}_grid",
         "--do_schmidt",
         "--stretch_factor",
         f"{stretch_factor}",
@@ -303,7 +303,7 @@ def make_regional_gfdl_grid(
         log.error(msgs)
         raise RuntimeError("Failed to generate regional GFDL grid")
 
-    grid_file = out_dir / f"C{res}_grid.tile7.nc"
+    grid_file = out_dir / f"C{c_res}_grid.tile7.nc"
 
     cmd = [f"{global_equiv_resol}", f"{grid_file}"]
 
@@ -364,7 +364,7 @@ def make_regional_esg_grid(
 
 
 def run_make_grid(
-    res: int,
+    c_res: int,
     gtype: str,
     exec_dir: Path,
     out_dir: Path,
@@ -394,7 +394,7 @@ def run_make_grid(
 
     Parameters
     ----------
-    res : int
+    c_res : int
         Base cubed-sphere resolution (e.g., 96 for a C96 grid).
     gtype : str
         Grid type. Must be one of:
@@ -442,7 +442,7 @@ def run_make_grid(
     regional_esg_grid = exec_dir / "regional_esg_grid"
     make_hgrid = exec_dir / "make_hgrid"
     global_equiv_resol = exec_dir / "global_equiv_resol"
-    nlon = res * 2
+    nlon = c_res * 2
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # -------------------------------
@@ -451,18 +451,18 @@ def run_make_grid(
 
     with tmp_cwd(out_dir):
         if gtype == "uniform":
-            make_uniform_grid(make_hgrid, nlon, res)
+            make_uniform_grid(make_hgrid, nlon, c_res)
 
         elif gtype == "stretch":
             make_stretched_grid(
-                make_hgrid, nlon, res, stretch_factor, target_lon, target_lat
+                make_hgrid, nlon, c_res, stretch_factor, target_lon, target_lat
             )
 
         elif gtype == "nest":
             make_nested_grid(
                 make_hgrid,
                 nlon,
-                res,
+                c_res,
                 stretch_factor,
                 parent_tile,
                 out_dir,
@@ -474,7 +474,7 @@ def run_make_grid(
             make_regional_gfdl_grid(
                 make_hgrid,
                 nlon,
-                res,
+                c_res,
                 stretch_factor,
                 target_lon,
                 target_lat,

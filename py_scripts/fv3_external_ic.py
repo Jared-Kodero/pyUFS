@@ -45,7 +45,7 @@ def _expected_tiles(gtype: str, n_nests: int) -> tuple[list[int], list[int]]:
 
 
 def _ic_manifest(
-    res: int, gtype: str, n_nests: int, grid_dir: Path, input_dir: Path
+    c_res: int, gtype: str, n_nests: int, grid_dir: Path, input_dir: Path
 ) -> tuple[list[Path], list[Path], int]:
     """
     Build the minimal file set the model reads at cold start.
@@ -54,14 +54,14 @@ def _ic_manifest(
       grid_required   : exact grid-tile paths in GRID/
       input_required  : exact IC paths in INPUT/ (gfs_ctrl, gfs_data,
                         sfc_data, oro_data per tile)
-      min_mosaics     : minimum number of C{res}_*mosaic*.nc files expected
+      min_mosaics     : minimum number of C{c_res}_*mosaic*.nc files expected
                         in GRID/ (mosaic filenames vary by gtype, so these
                         are matched by pattern rather than by exact name)
     """
     global_tiles, nest_tiles = _expected_tiles(gtype, n_nests)
 
     grid_required = [
-        grid_dir / f"C{res}_grid.tile{t}.nc" for t in (global_tiles + nest_tiles)
+        grid_dir / f"C{c_res}_grid.tile{t}.nc" for t in (global_tiles + nest_tiles)
     ]
 
     input_required = [input_dir / "gfs_ctrl.nc"]
@@ -83,7 +83,7 @@ def _ic_manifest(
     return grid_required, input_required, min_mosaics
 
 
-def _validate_ic_files(res: int, gtype: str, n_nests: int) -> None:
+def _validate_ic_files(c_res: int, gtype: str, n_nests: int) -> None:
     """
     Verify the grid and initial-condition files required for the model to
     start. Raises FileNotFoundError naming every missing or empty file,
@@ -95,15 +95,17 @@ def _validate_ic_files(res: int, gtype: str, n_nests: int) -> None:
     input_dir = Path(state.input)
 
     grid_required, input_required, min_mosaics = _ic_manifest(
-        res, gtype, n_nests, grid_dir, input_dir
+        c_res, gtype, n_nests, grid_dir, input_dir
     )
 
     failures: dict[str, list[str]] = {}
 
     grid_bad = [p.name for p in grid_required if not _resolved_ok(p)]
-    valid_mosaics = [m for m in grid_dir.glob(f"C{res}_*mosaic*.nc") if _resolved_ok(m)]
+    valid_mosaics = [
+        m for m in grid_dir.glob(f"C{c_res}_*mosaic*.nc") if _resolved_ok(m)
+    ]
     if len(valid_mosaics) < min_mosaics:
-        grid_bad.append(f"C{res}_*mosaic*.nc[{len(valid_mosaics)}/{min_mosaics}]")
+        grid_bad.append(f"C{c_res}_*mosaic*.nc[{len(valid_mosaics)}/{min_mosaics}]")
     if grid_bad:
         failures["GRID"] = grid_bad
 
@@ -151,7 +153,7 @@ def init_external_ic() -> bool:
 
     Validation is file-level and configuration-aware: it confirms the exact
     grid-tile and initial-condition files the model reads at start, derived
-    from res, gtype, and n_nests, rather than only confirming that the
+    from c_res, gtype, and n_nests, rather than only confirming that the
     staging directories are non-empty.
     """
     external = bool(state.external_ic_dir)
@@ -183,7 +185,7 @@ def init_external_ic() -> bool:
     load_fv3_state(merge=True)
 
     # 4. Validate the exact files the model needs for this configuration.
-    _validate_ic_files(res=state.res, gtype=state.gtype, n_nests=state.n_nests)
+    _validate_ic_files(c_res=state.c_res, gtype=state.gtype, n_nests=state.n_nests)
 
     # 5. Compute the CPU allocation from the validated INPUT directory.
     calc_cpu_alloc(state.input)

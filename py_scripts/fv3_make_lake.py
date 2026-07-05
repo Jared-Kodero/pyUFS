@@ -8,7 +8,7 @@ from fv3_utils import run_cmd
 
 def _run_add_lakefrac(
     workdir: Path,
-    res: int,
+    c_res: int,
     tile: int,
     gtype: str,
     orog_dir: Path,
@@ -22,8 +22,8 @@ def _run_add_lakefrac(
     lakefrac = Path(exec_dir) / "lakefrac"
     inland = Path(exec_dir) / "inland"
 
-    oro_file = Path(orog_dir) / f"oro.C{res}.tile{tile}.nc"
-    grid_file = Path(grid_dir) / f"C{res}_grid.tile{tile}.nc"
+    oro_file = Path(orog_dir) / f"oro.C{c_res}.tile{tile}.nc"
+    grid_file = Path(grid_dir) / f"C{c_res}_grid.tile{tile}.nc"
     oro_symlink = Path(workdir / oro_file.name)
     grid_symlink = Path(workdir / grid_file.name)
     oro_symlink.symlink_to(oro_file)
@@ -33,7 +33,7 @@ def _run_add_lakefrac(
     cutoff = 0.99
     rd = 7
     mode = "g" if gtype == "uniform" else "r"
-    cmd1 = [str(inland), str(res), str(cutoff), str(rd), mode]
+    cmd1 = [str(inland), str(c_res), str(cutoff), str(rd), mode]
 
     result, msgs = run_cmd(cmd1, stdout=log_file, stderr=log_file)
     if result != 0:
@@ -42,11 +42,11 @@ def _run_add_lakefrac(
 
     # 2. Add lake fraction to orography files
 
-    oro_file = f"oro.C{res}.tile{tile}.nc"
+    oro_file = f"oro.C{c_res}.tile{tile}.nc"
     cmd2 = [
         f"{lakefrac}",
         f"{tile}",
-        f"{res}",
+        f"{c_res}",
         f"{topo}",
         f"{lake_cutoff}",
     ]
@@ -61,7 +61,7 @@ def _run_add_lakefrac(
 
 def run_add_lakefrac(
     add_lake: bool,
-    res: int,
+    c_res: int,
     gtype: str,
     exec_dir: Path,
     orog_dir: Path,
@@ -78,16 +78,16 @@ def run_add_lakefrac(
     ----------
     add_lake : bool
         Whether to add lake fraction to orography files.
-    res : int
+    c_res : int
         Cubed-sphere resolution (e.g., 96 for C96).
     gtype : str
         Grid type: 'uniform' or 'regional_gfdl'.
     exec_dir : Path
         Directory containing `inland` and `lakefrac` executables.
     orog_dir : Path
-        Directory containing orography NetCDF files (oro.C${res}.tile*.nc).
+        Directory containing orography NetCDF files (oro.C${c_res}.tile*.nc).
     grid_dir : Path
-        Directory containing grid NetCDF files (C${res}_grid.tile*.nc).
+        Directory containing grid NetCDF files (C${c_res}_grid.tile*.nc).
     topo : Path
         Directory containing topographic data inputs.
     lake_cutoff : float
@@ -104,7 +104,7 @@ def run_add_lakefrac(
         )
         return
 
-    workdir = tmp / f"C{res}" / "orog" / "tiles"
+    workdir = tmp / f"C{c_res}" / "orog" / "tiles"
     workdir.mkdir(parents=True, exist_ok=True)
 
     with tmp_cwd(workdir):
@@ -117,7 +117,7 @@ def run_add_lakefrac(
         args = [
             (
                 workdir,
-                res,
+                c_res,
                 tile,
                 gtype,
                 orog_dir,

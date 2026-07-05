@@ -147,7 +147,7 @@ def validate_hrrr_bounds(tile: int) -> str:
     with (
         xr.open_dataset(state.fix_src / "am" / "geo_em.d01.nc_HRRRX") as geo_hrrr,
         xr.open_dataset(
-            state.tmp / "grid" / f"C{state.res}_grid.tile{tile}.nc"
+            state.tmp / "grid" / f"C{state.c_res}_grid.tile{tile}.nc"
         ) as grid,
     ):
         proj_hrrr = Proj(

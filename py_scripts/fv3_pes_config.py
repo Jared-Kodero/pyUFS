@@ -119,7 +119,7 @@ def calc_nest_pes() -> None:
 
     # Dynamics work is proportional to horizontal cells times acoustic subcycles.
     # Scale only for readability. allocate_pes() uses ratios, not magnitudes.
-    global_base_pes = 6 * max(1, state.res // 96)
+    global_base_pes = 6 * max(1, state.c_res // 96)
     weights = grid_cells * subcycles
     weights *= global_base_pes / weights[0]
 
