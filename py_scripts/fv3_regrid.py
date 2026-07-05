@@ -277,7 +277,7 @@ def regrid_global_tiles(streams: list, c_res: int):
     else:
         g_input_mosaic = state.work_dir / "GRID" / f"C{c_res}_mosaic.nc"
 
-    step = cres_to_deg(state.res).deg
+    step = cres_to_deg(state.c_res).deg
 
     lon_begin = -180.0
     lon_end = 180.0
@@ -367,8 +367,8 @@ def regrid_nest_tiles(streams: list, c_res: int):
 def regrid():
     env_setup()
     streams = get_stream_handles()
-    regrid_global_tiles(streams, state.res)
-    regrid_nest_tiles(streams, state.res)
+    regrid_global_tiles(streams, state.c_res)
+    regrid_nest_tiles(streams, state.c_res)
 
     if state.resubmit_idx == state.resubmit:
         merge_outputs(

@@ -9,7 +9,7 @@ from global_cycle import run_global_cycle
 
 def drive_global_cycle(
     datetime: str,
-    res: int,
+    c_res: int,
     fix: Path,  # fixed files directory
     tmp: Path,  # root temporary directory
     tmp_ic_dir: Path,  # Temporary directory for initial conditions
@@ -24,7 +24,7 @@ def drive_global_cycle(
     """
 
     # Resolution formatting
-    c_res = f"C{res}"
+    c_res = f"C{c_res}"
     fixed_am = fix / "am"
 
     # Default: global-only

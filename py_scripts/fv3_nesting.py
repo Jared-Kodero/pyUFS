@@ -44,7 +44,7 @@ def validate_nests(params: FV3State) -> list:
 
     if params.nest_type == "same_level":
         for i, r in enumerate(refine_ratios):
-            res_km = cres_to_deg(params.res * r).km
+            res_km = cres_to_deg(params.c_res * r).km
             nest_res_km.append(res_km)
             nest_info.append(f"Nested tile {7 + i} resolution: {res_km:.2f} km")
     elif params.nest_type == "telescoping":
@@ -52,7 +52,7 @@ def validate_nests(params: FV3State) -> list:
 
         for i, r in enumerate(refine_ratios):
             total_refine *= r
-            res_km = cres_to_deg(params.res * total_refine).km
+            res_km = cres_to_deg(params.c_res * total_refine).km
             nest_res_km.append(res_km)
             nest_info.append(f"Nested tile {7 + i} resolution: {res_km:.2f} km")
 
@@ -115,11 +115,11 @@ def classify_nesting(params: FV3State) -> FV3State:
     return params
 
 
-def gen_global_nest_parent(res: int, grid_dir: Path = None) -> Path:
+def gen_global_nest_parent(c_res: int, grid_dir: Path = None) -> Path:
     log_file = state.logs / "make_global_grid.log"
     make_hgrid = state.ufs_exe / "make_hgrid"
 
-    nlon = res * 2
+    nlon = c_res * 2
 
     cmd = [
         f"{make_hgrid}",
@@ -128,7 +128,7 @@ def gen_global_nest_parent(res: int, grid_dir: Path = None) -> Path:
         "--nlon",
         f"{nlon}",
         "--grid_name",
-        f"C{res}_grid",
+        f"C{c_res}_grid",
         "--do_schmidt",
         "--stretch_factor",
         f"{state.stretch_factor}",
@@ -235,7 +235,7 @@ def calc_parent_grid_index(
 
 
 def get_nest_indices(
-    res: int,
+    c_res: int,
     tile_idx: int,
     grid_dir: Path = None,
     parent_tile: list = None,
@@ -260,11 +260,11 @@ def get_nest_indices(
         state[k] = []
 
     if not grid_dir:
-        grid_dir = gen_global_nest_parent(res)
+        grid_dir = gen_global_nest_parent(c_res)
 
     i = tile_idx  # Nest index (0-based)
 
-    grid_fname = grid_dir / f"C{res}_grid.tile{parent_tile[i]}.nc"
+    grid_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile[i]}.nc"
     indices = calc_parent_grid_index(
         grid_fname,
         state.lon_min[i],
@@ -291,7 +291,7 @@ def get_nest_indices(
 
 
 def get_nest_tele_indices(
-    res: int, n_nests: int, refine_ratio: list, grid_dir: Path
+    c_res: int, n_nests: int, refine_ratio: list, grid_dir: Path
 ) -> None:
 
     # Reset previous same_level indices if they exist
@@ -311,7 +311,7 @@ def get_nest_tele_indices(
 
     for i, tile in enumerate(tiles):
         parent_tile = tile - 1
-        grid_parent_fname = grid_dir / f"C{res}_grid.tile{parent_tile}.nc"
+        grid_parent_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
 
         i_refine_ratio = np.prod(refine_ratio[: i + 1])
 

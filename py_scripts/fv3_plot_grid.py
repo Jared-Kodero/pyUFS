@@ -152,8 +152,8 @@ def plot_tiles(grid_dir, target_lon=-72.0, target_lat=42.0):
 
     # add pathces for legend
     legend_elements = [
-        Rectangle((0, 0), 1, 1, color=tile_colors[i + 5], label=res)
-        for i, res in enumerate(resolutions)
+        Rectangle((0, 0), 1, 1, color=tile_colors[i + 5], label=c_res)
+        for i, c_res in enumerate(resolutions)
     ]
     ax.legend(
         handles=legend_elements, loc="lower left", fontsize="small", framealpha=0.5
@@ -239,8 +239,8 @@ def plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max):
     ]
 
     legend_elements = [
-        Rectangle((0, 0), 1, 1, color=c, label=res)
-        for c, res in zip(tile_colors, resolutions)
+        Rectangle((0, 0), 1, 1, color=c, label=c_res)
+        for c, c_res in zip(tile_colors, resolutions)
     ]
     ax.legend(
         handles=legend_elements, loc="lower left", fontsize="small", framealpha=0.5

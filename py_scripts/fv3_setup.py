@@ -49,8 +49,8 @@ def parse_input():
         input_params[k] = v
 
     input_params.run_config = Path(yml_path)
-    if "res" in input_params and input_params.res is not None:
-        input_params.res = parse_resolution(input_params.res)
+    if "c_res" in input_params and input_params.c_res is not None:
+        input_params.c_res = parse_resolution(input_params.c_res)
 
     for k, v in default_cfg.items():
         if v is None:
@@ -120,7 +120,7 @@ def _append_init_logs(params: FV3State) -> None:
     run_logs.append(f"Vertical levels: {params.levels}")
 
     run_logs.append(f"Grid type: {params.gtype}")
-    run_logs.append(f"Global cubed-sphere resolution: C{params.res}")
+    run_logs.append(f"Global cubed-sphere resolution: C{params.c_res}")
 
     for i in range(1, 7):
         run_logs.append(f"Global tile {i} resolution: {params.res_km[0]:.2f} km")
@@ -155,7 +155,7 @@ def preprocess_input():
     params.update(paths)
 
     params.res_km = [0 for _ in range(len(params.refine_ratio) + 1)]
-    params.res_km[0] = cres_to_deg(params.res).km
+    params.res_km[0] = cres_to_deg(params.c_res).km
 
     if params.gtype == "nest":
         params.n_nests = len(params.refine_ratio)

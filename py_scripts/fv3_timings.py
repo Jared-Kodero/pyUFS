@@ -5,8 +5,8 @@ import pandas as pd
 from fv3_state import state
 
 BASE_TIMINGS = {
-    48: {"dt_atmos": 3600, "k_split": 2, "n_split": 6},
-    96: {"dt_atmos": 1800, "k_split": 2, "n_split": 6},
+    48: {"dt_atmos": 1800, "k_split": 2, "n_split": 6},
+    96: {"dt_atmos": 900, "k_split": 2, "n_split": 6},
     192: {"dt_atmos": 900, "k_split": 2, "n_split": 6},
     384: {"dt_atmos": 450, "k_split": 2, "n_split": 6},
     768: {"dt_atmos": 225, "k_split": 2, "n_split": 6},
@@ -45,7 +45,7 @@ def _cres_timing(C: int) -> dict:
 
 
 def get_best_guess_timings() -> dict:
-    c_res = state.res
+    c_res = state.c_res
     n_nests = state.n_nests
     refine_ratio = state.refine_ratio
     nest_type = state.nest_type

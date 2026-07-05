@@ -65,7 +65,7 @@ class FV3State(dict):
     # Model time stepping and resolution
     dt_atmos: int
     dt_ocean: int
-    res: int
+    c_res: int
     res_km: list[float]
     delx: float
     dely: float
@@ -200,7 +200,7 @@ def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
         raise ValueError("hash_keys must be a list of keys to include in the hash")
 
     _hash_keys = [
-        "res",
+        "c_res",
         "gtype",
         "levels",
         "target_lon",

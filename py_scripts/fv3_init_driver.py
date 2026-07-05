@@ -22,7 +22,7 @@ def init_driver():
         log.info("Starting FV3 Grid and IC generation driver")
 
         run_driver(
-            res=state.res,
+            c_res=state.c_res,
             gtype=state.gtype,
             add_lake=state.add_lake,
             lake_cutoff=state.lake_cutoff,

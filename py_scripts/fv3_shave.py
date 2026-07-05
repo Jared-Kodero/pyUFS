@@ -9,7 +9,7 @@ def run_single_shave(
     halo: int,
     idim: int,
     jdim: int,
-    res: int,
+    c_res: int,
     tile: int,
     cmd: list,
     tmp_dir: Path,
@@ -20,10 +20,10 @@ def run_single_shave(
     halo_tag = f"halo{halo}"
 
     # Prepare input control files
-    in_orog = tmp_dir / f"oro.C{res}.tile{tile}.nc"
-    in_grid = tmp_dir / f"C{res}_grid.tile{tile}.nc"
-    out_orog = tmp_dir / f"oro.C{res}.tile{tile}.shave.nc"
-    out_grid = tmp_dir / f"C{res}_grid.tile{tile}.shave.nc"
+    in_orog = tmp_dir / f"oro.C{c_res}.tile{tile}.nc"
+    in_grid = tmp_dir / f"C{c_res}_grid.tile{tile}.nc"
+    out_orog = tmp_dir / f"oro.C{c_res}.tile{tile}.shave.nc"
+    out_grid = tmp_dir / f"C{c_res}_grid.tile{tile}.shave.nc"
 
     # Compose input scripts for shave binary
     in_orog_txt = tmp_dir / f"input.shave.orog.{halo_tag}"
@@ -42,8 +42,8 @@ def run_single_shave(
         run_cmd(cmd, stdin=fin, cwd=tmp_dir, stdout=log_file, stderr=log_file)
 
     # Copy outputs to final filenames
-    out_orog_final = tmp_ic_dir / f"C{res}_oro_data.tile{tile}.{halo_tag}.nc"
-    out_grid_final = tmp_ic_dir / f"C{res}_grid.tile{tile}.{halo_tag}.nc"
+    out_orog_final = tmp_ic_dir / f"C{c_res}_oro_data.tile{tile}.{halo_tag}.nc"
+    out_grid_final = tmp_ic_dir / f"C{c_res}_grid.tile{tile}.{halo_tag}.nc"
 
     cp(out_orog, out_orog_final)
     cp(out_grid, out_grid_final)
@@ -54,7 +54,7 @@ def run_shave(
     jdim: int,
     halo: int,
     halop1: int,
-    res: int,
+    c_res: int,
     tile: int,
     exec_dir: Path,
     tmp_dir: Path,
@@ -80,7 +80,7 @@ def run_shave(
     halop1 : int
         One greater than the halo size (`halo + 1`), used to generate boundary
         condition grids.
-    res : int
+    c_res : int
         Base resolution of the grid (e.g., 384 for C384).
     tile : int
         Tile index for regional domain (usually 7).
@@ -101,9 +101,9 @@ def run_shave(
     # ----------------------------------------------------------------------------
     # Run three shave passes: halo+1, halo, and halo=0
     # ----------------------------------------------------------------------------
-    run_single_shave(halop1, idim, jdim, res, tile, cmd, tmp_dir, tmp_dir, log_file)
-    run_single_shave(halo, idim, jdim, res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
-    run_single_shave(0, idim, jdim, res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
+    run_single_shave(halop1, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_dir, log_file)
+    run_single_shave(halo, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
+    run_single_shave(0, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
 
-    for mosaic in grid_dir.glob(f"C{res}_*mosaic.nc"):
+    for mosaic in grid_dir.glob(f"C{c_res}_*mosaic.nc"):
         cp(mosaic, tmp_dir)

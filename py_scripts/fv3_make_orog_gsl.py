@@ -8,7 +8,7 @@ from fv3_utils import cp, run_cmd
 
 def _run_make_orog_gsl(
     make_gsl_orog: bool,
-    res: int,
+    c_res: int,
     tile: int,
     halo: int,
     grid_dir: Path,
@@ -31,7 +31,7 @@ def _run_make_orog_gsl(
 
     log_file = state.logs / f"make_orog_gsl_tile{tile}.log"
 
-    workdir = tmp / f"C{res}" / "orog" / f"tile{tile}"
+    workdir = tmp / f"C{c_res}" / "orog" / f"tile{tile}"
     workdir.mkdir(parents=True, exist_ok=True)
 
     # Executable
@@ -39,9 +39,9 @@ def _run_make_orog_gsl(
 
     # OUTGRID name depends on halo
     if halo == -999:
-        out_grid = f"C{res}_grid.tile{tile}.nc"
+        out_grid = f"C{c_res}_grid.tile{tile}.nc"
     else:
-        out_grid = f"C{res}_grid.tile{tile}.halo{halo}.nc"
+        out_grid = f"C{c_res}_grid.tile{tile}.halo{halo}.nc"
 
     files = {
         workdir / out_grid: grid_dir / out_grid,
@@ -66,7 +66,7 @@ def _run_make_orog_gsl(
 
         # Write grid_info.dat
         with open("grid_info.dat", "w") as f:
-            f.write(f"{tile}\n{res}\n{halo}\n")
+            f.write(f"{tile}\n{c_res}\n{halo}\n")
 
         with open("grid_info.dat", "r") as fin:
             cmd = [f"{orog_gsl}"]
@@ -86,7 +86,7 @@ def _run_make_orog_gsl(
 
 def run_make_orog_gsl(
     make_gsl_orog: bool,
-    res: int,
+    c_res: int,
     tiles: list[int],
     halo: int,
     grid_dir: Path,
@@ -104,7 +104,7 @@ def run_make_orog_gsl(
     ----------
     make_gsl_orog : bool
         Whether to make GSL orography files.
-    res : int
+    c_res : int
         Cubed-sphere resolution (e.g., 96 for C96).
     tile : list[int]
         Tile number (1-6 for global cube-sphere, 7 for nest).
@@ -126,7 +126,7 @@ def run_make_orog_gsl(
     args = [
         (
             make_gsl_orog,
-            res,
+            c_res,
             tile,
             halo,
             grid_dir,

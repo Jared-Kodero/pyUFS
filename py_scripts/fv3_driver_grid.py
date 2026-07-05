@@ -15,7 +15,7 @@ from sfc_climo_gen import run_sfc_climo_gen
 
 
 def run_driver(
-    res: int = None,
+    c_res: int = None,
     gtype: str = None,
     add_lake: bool = None,
     lake_cutoff: float = None,
@@ -59,7 +59,7 @@ def run_driver(
     log.info("Generating Grid and Orography files")
     if gtype in ["uniform", "stretch", "nest"]:
         run_make_grid(
-            res=res,
+            c_res=c_res,
             gtype=gtype,
             exec_dir=exe_dir,
             out_dir=tmp / "grid",
@@ -80,7 +80,7 @@ def run_driver(
         )
 
         run_make_mosaic(
-            res=res,
+            c_res=c_res,
             gtype=gtype,
             exec_dir=exe_dir,
             out_dir=tmp / "grid",
@@ -96,7 +96,7 @@ def run_driver(
         tiles = [i + 1 for i in range(n_tiles)]
 
         run_make_orog(
-            res=res,
+            c_res=c_res,
             tiles=tiles,
             grid_dir=tmp / "grid",
             out_dir=tmp / "orog",
@@ -107,7 +107,7 @@ def run_driver(
 
         run_make_orog_gsl(
             make_gsl_orog=make_gsl_orog,
-            res=res,
+            c_res=c_res,
             tiles=tiles,
             halo=-999,  # no-halo mode
             grid_dir=tmp / "grid",
@@ -121,7 +121,7 @@ def run_driver(
 
         run_add_lakefrac(
             add_lake=add_lake,
-            res=res,
+            c_res=c_res,
             gtype=gtype,
             exec_dir=exe_dir,
             orog_dir=tmp / "orog",
@@ -133,7 +133,7 @@ def run_driver(
 
         if gtype in ["uniform", "stretch"]:
             run_filter_topo(
-                res=res,
+                c_res=c_res,
                 gtype=gtype,
                 exec_dir=exe_dir,
                 grid_dir=tmp / "grid",
@@ -143,7 +143,7 @@ def run_driver(
             )
         elif gtype == "nest":
             run_filter_topo(
-                res=res,
+                c_res=c_res,
                 gtype="stretch",
                 exec_dir=exe_dir,
                 grid_dir=tmp / "grid",
@@ -153,8 +153,8 @@ def run_driver(
             )
 
         # --- Copy outputs to tmp_ic_dir ---
-        grid_files = list((tmp / "grid").glob(f"C{res}_grid.tile*.nc"))
-        mosaic_files = list((tmp / "grid").glob(f"C{res}_*mosaic*.nc"))
+        grid_files = list((tmp / "grid").glob(f"C{c_res}_grid.tile*.nc"))
+        mosaic_files = list((tmp / "grid").glob(f"C{c_res}_*mosaic*.nc"))
         filter_topo_files = list((tmp / "filter_topo").glob("*.nc"))
 
         for f in grid_files + mosaic_files + filter_topo_files:
@@ -162,7 +162,7 @@ def run_driver(
 
         if gtype == "nest":
             for tile in range(7, 7 + n_nests):
-                cp(tmp / "orog" / f"oro.C{res}.tile{tile}.nc", tmp_ic_dir)
+                cp(tmp / "orog" / f"oro.C{c_res}.tile{tile}.nc", tmp_ic_dir)
 
         if make_gsl_orog:
             gsl_orog_files = list((tmp / "orog").glob("*.nc"))
@@ -172,7 +172,7 @@ def run_driver(
         # --- Surface climatology ---
 
         run_sfc_climo_gen(
-            res=res,
+            c_res=c_res,
             input_sfc_climo_dir=fix_dir / "sfc_climo",
             exec_dir=exe_dir,
             tmp_dir=tmp / "fix_sfc",
@@ -193,7 +193,7 @@ def run_driver(
         halop1 = halo + 1 if halo else 4
 
         get_nest_indices(
-            res=res,
+            c_res=c_res,
             tile_idx=0,  # parent tile 6 is always tile_idx 0 for nesting
             grid_dir=None,
             parent_tile=[6],
@@ -235,7 +235,7 @@ def run_driver(
 
             # --- Make grid ---
             run_make_grid(
-                res=res,
+                c_res=c_res,
                 gtype=gtype,
                 exec_dir=exe_dir,
                 out_dir=tmp / "grid",
@@ -256,7 +256,7 @@ def run_driver(
             )
 
             run_make_mosaic(
-                res=res,
+                c_res=c_res,
                 gtype=gtype,
                 exec_dir=exe_dir,
                 out_dir=tmp / "grid",
@@ -265,7 +265,7 @@ def run_driver(
         elif gtype == "regional_esg":
             # --- Make grid ---
             run_make_grid(
-                res=res,
+                c_res=c_res,
                 gtype=gtype,
                 exec_dir=exe_dir,
                 out_dir=tmp / "grid",
@@ -286,24 +286,24 @@ def run_driver(
             )
 
             run_make_mosaic(
-                res=res,
+                c_res=c_res,
                 gtype=gtype,
                 exec_dir=exe_dir,
                 out_dir=tmp / "grid",
             )
 
-        # --- Replace res with derived resolution ---
-        old_res = res
-        res = get_newres(tmp / "grid" / f"C{res}_grid.tile7.nc")
+        # --- Replace c_res with derived resolution ---
+        old_res = c_res
+        c_res = get_newres(tmp / "grid" / f"C{c_res}_grid.tile7.nc")
 
-        # replace res part in the prev generated grid/orog files with the new res for consistency
+        # replace c_res part in the prev generated grid/orog files with the new c_res for consistency
         for f in (tmp / "grid").glob(f"*{old_res}*"):
-            new_name = f.name.replace(f"{old_res}", f"{res}")
+            new_name = f.name.replace(f"{old_res}", f"{c_res}")
             f.rename(tmp / "grid" / new_name)
 
         # --- Make orography ---
         run_make_orog(
-            res=res,
+            c_res=c_res,
             tiles=[tile],
             grid_dir=tmp / "grid",
             out_dir=tmp / "orog",
@@ -314,7 +314,7 @@ def run_driver(
 
         run_add_lakefrac(
             add_lake=add_lake,
-            res=res,
+            c_res=c_res,
             gtype=gtype,
             exec_dir=exe_dir,
             orog_dir=tmp / "orog",
@@ -326,7 +326,7 @@ def run_driver(
 
         # --- Filter topography ---
         run_filter_topo(
-            res=res,
+            c_res=c_res,
             gtype=gtype,
             exec_dir=exe_dir,
             grid_dir=tmp / "grid",
@@ -340,7 +340,7 @@ def run_driver(
             jdim=jdim,
             halo=halo,
             halop1=halop1,
-            res=res,
+            c_res=c_res,
             tile=7,
             exec_dir=exe_dir,
             tmp_dir=tmp / "filter_topo",
@@ -349,14 +349,14 @@ def run_driver(
         )
 
         # --- Copy mosaics ---
-        for f in (tmp / "grid").glob(f"C{res}_*mosaic.nc"):
+        for f in (tmp / "grid").glob(f"C{c_res}_*mosaic.nc"):
             cp(f, tmp_ic_dir)
 
         # --- Run GSL orography (after halo0 shave) ---
 
         run_make_orog_gsl(
             make_gsl_orog=make_gsl_orog,
-            res=res,
+            c_res=c_res,
             tiles=[tile],
             halo=0,
             grid_dir=tmp / "grid",
@@ -365,17 +365,17 @@ def run_driver(
             exec_dir=exe_dir,
             tmp=tmp,
         )
-        for f in (tmp / "orog").glob(f"C{res}_oro_data_*tile{tile}*.nc"):
+        for f in (tmp / "orog").glob(f"C{c_res}_oro_data_*tile{tile}*.nc"):
             cp(f, tmp_ic_dir)
 
         # --- Regional surface climatology ---
-        grid_symlink = tmp_ic_dir / f"C{res}_grid.tile7.nc"
-        oro_symlink = tmp_ic_dir / f"C{res}_oro_data.tile7.nc"
-        grid_symlink.symlink_to(tmp_ic_dir / f"C{res}_grid.tile7.halo{halop1}.nc")
-        oro_symlink.symlink_to(tmp_ic_dir / f"C{res}_oro_data.tile7.halo{halop1}.nc")
+        grid_symlink = tmp_ic_dir / f"C{c_res}_grid.tile7.nc"
+        oro_symlink = tmp_ic_dir / f"C{c_res}_oro_data.tile7.nc"
+        grid_symlink.symlink_to(tmp_ic_dir / f"C{c_res}_grid.tile7.halo{halop1}.nc")
+        oro_symlink.symlink_to(tmp_ic_dir / f"C{c_res}_oro_data.tile7.halo{halop1}.nc")
 
         run_sfc_climo_gen(
-            res=res,
+            c_res=c_res,
             input_sfc_climo_dir=fix_dir / "sfc_climo",
             exec_dir=exe_dir,
             tmp_dir=tmp / "fix_sfc",
