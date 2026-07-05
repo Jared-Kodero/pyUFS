@@ -193,7 +193,6 @@ def run_chgres_cube() -> None:
     env_setup()
 
     yml_configs = load_yml(state.n_nests)
-    state.external_ic_source = {}
 
     # Determine IC directory based on run_chgres_only flag
     ic_dir = state.tmp / "ic"

@@ -5,23 +5,23 @@ import pandas as pd
 from fv3_state import state
 
 BASE_TIMINGS = {
-    48: {"dt": 3600, "k_split": 2, "n_split": 6},
-    96: {"dt": 1800, "k_split": 2, "n_split": 6},
-    192: {"dt": 900, "k_split": 2, "n_split": 6},
-    384: {"dt": 450, "k_split": 2, "n_split": 6},
-    768: {"dt": 225, "k_split": 2, "n_split": 6},
-    1152: {"dt": 150, "k_split": 2, "n_split": 6},
-    3072: {"dt": 90, "k_split": 2, "n_split": 10},
+    48: {"dt_atmos": 3600, "k_split": 2, "n_split": 6},
+    96: {"dt_atmos": 1800, "k_split": 2, "n_split": 6},
+    192: {"dt_atmos": 900, "k_split": 2, "n_split": 6},
+    384: {"dt_atmos": 450, "k_split": 2, "n_split": 6},
+    768: {"dt_atmos": 225, "k_split": 2, "n_split": 6},
+    1152: {"dt_atmos": 150, "k_split": 2, "n_split": 6},
+    3072: {"dt_atmos": 90, "k_split": 2, "n_split": 10},
 }
 
 
 def _extrapolate_dt(C: int) -> int:
     df = pd.DataFrame(
-        [(k, v["dt"]) for k, v in BASE_TIMINGS.items()],
-        columns=["c", "dt"],
+        [(k, v["dt_atmos"]) for k, v in BASE_TIMINGS.items()],
+        columns=["c", "dt_atmos"],
     )
     log_c = np.log(df["c"].values)
-    log_dt = np.log(df["dt"].values)
+    log_dt = np.log(df["dt_atmos"].values)
     slope, intercept = np.polyfit(log_c, log_dt, 1)
     dt_est = np.exp(intercept) * C**slope
     valid = np.array([d for d in range(1, 3601) if 3600 % d == 0])
@@ -32,7 +32,7 @@ def _cres_timing(C: int) -> dict:
     if C in BASE_TIMINGS:
         timing = BASE_TIMINGS[C]
         return {
-            "ideal_dt": timing["dt"],
+            "ideal_dt": timing["dt_atmos"],
             "k_split": timing["k_split"],
             "n_split": timing["n_split"],
         }
