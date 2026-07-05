@@ -47,7 +47,7 @@ def update_nml_configs():
     log.info("Generating namelist files")
 
     update_global_nml(
-        res=state.res,
+        c_res=state.c_res,
         fhmax=state.run_nhours,
         n_nests=state.n_nests,
         current_date=current_date,
@@ -57,7 +57,7 @@ def update_nml_configs():
         timings=timings,
     )
     update_nest_nml(
-        res=state.res,
+        c_res=state.c_res,
         fhmax=state.run_nhours,
         n_nests=state.n_nests,
         current_date=current_date,
@@ -70,21 +70,27 @@ def update_nml_configs():
     update_table_files()
     update_fixed_files()
 
+    # Update state with the calculated timings
+    state.dt_atmos = timings["dt_atmos"]
+    state.dt_ocean = timings["dt_ocean"]
+    state.k_split = timings["k_split"]
+    state.n_split = timings["n_split"]
+
 
 def disable_deep_convection(nml: dict, tile: int, name: str):
     if name.startswith("nest"):
         i = tile - 7  # index for nests
         refine_ratio = state.refine_ratio
 
-        res = state.res * refine_ratio[i]
+        c_res = state.c_res * refine_ratio[i]
         if state.nest_type == "telescoping":
-            res = state.res * int(np.prod(refine_ratio[: i + 1]))
+            c_res = state.c_res * int(np.prod(refine_ratio[: i + 1]))
     else:
-        res = state.res
+        c_res = state.c_res
 
     do_deep = state.do_deep
 
-    res_km = cres_to_deg(res).km
+    res_km = cres_to_deg(c_res).km
     if do_deep or res_km > 4:
         return nml
 
@@ -113,7 +119,7 @@ def common_configs(nml: dict):
 
 
 def update_global_nml(
-    res: int,
+    c_res: int,
     fhmax: int,
     n_nests: int,
     current_date: str,
@@ -175,7 +181,7 @@ def update_global_nml(
 
 
 def update_nest_nml(
-    res: int,
+    c_res: int,
     fhmax: int,
     n_nests: int,
     current_date: str,

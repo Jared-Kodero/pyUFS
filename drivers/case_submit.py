@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 import sys
+from difflib import get_close_matches
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
@@ -138,21 +139,32 @@ def read_yaml(path: Path):
 
     try:
         with open(path, "r") as f:
-            data = yaml.safe_load(f)
+            data = yaml.safe_load(f) or {}
 
-            for k, v in data.items():
-                if k not in DEFAULT_KEYS:
-                    print(
-                        f"ERROR: Unknown configuration key in run_config.yaml: `{k}` Valid keys are:"
-                    )
-                    for k in DEFAULT_KEYS:
-                        print(f"\t- {k}")
+        valid_keys = list(DEFAULT_KEYS)
 
-                    print(f"\nPlease check the configuration file: {path}")
-                    print(
-                        f"For description of each key, refer to the default configuration file: {DEFAULT_CFG_PATH}"
-                    )
-                    sys.exit(1)
+        for key in data:
+            if key not in DEFAULT_KEYS:
+                suggestions = get_close_matches(
+                    key,
+                    valid_keys,
+                    n=1,
+                    cutoff=0.6,
+                )
+
+                message = (
+                    f"ERROR: Unknown configuration key in run_config.yaml: `{key}`."
+                )
+
+                if suggestions:
+                    message += f" Did you mean {suggestions[0]!r}?"
+
+                print(message)
+                print(f"\nPlease check the configuration file: {path}")
+                print(
+                    f"For a full list of keys and description of each key, refer to the default configuration file:\n\t{DEFAULT_CFG_PATH}"
+                )
+                sys.exit(1)
 
     except yaml.YAMLError as e:
         if hasattr(e, "problem_mark"):

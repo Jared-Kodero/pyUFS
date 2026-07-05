@@ -1,125 +1,72 @@
-# ufs_py HPC Run Guide (GFDL SHiELD Model Setup)
+# ufs_py HPC Run Guide
 
-A portable Python workflow framework for configuring, initializing, and executing the GFDL SHiELD model across non-native HPC environments
+`ufs_py` is the Python workflow used to configure, stage, and launch GFDL SHiELD cases on Oscar and other HPC systems that do not provide the native UFS utilities layout.
 
-# Overview
+## Overview
 
-This guide documents the end-to-end workflow for running the GFDL SHiELD model on the Oscar HPC system. The provided Python-based framework replaces the native UFS_UTILS_DIR workflow with a portable implementation designed for systems where the original infrastructure is not directly supported.
-
-The workflow supports configuration, preprocessing, model execution, and postprocessing within a unified and reproducible environment.
+This repository contains the scripts that prepare a case directory, build the runtime environment, generate or stage initial conditions, run SHiELD, and synchronize the results back to the case directory. The workflow is intentionally thin: the shell wrapper hands off to Python, and Python assembles the launch environment and submits the runtime job.
 
 ## Additional Documentation
-For deep dives into specific components, refer to the official documentation:
-* **SHiELD Model:** [https://www.gfdl.noaa.gov/shield/](https://www.gfdl.noaa.gov/shield/)
-* **NOAH MP Land Model:** [Technical Note (PDF)](https://www2.mmm.ucar.edu/wrf/users/physics/phys_refs/LAND_SURFACE/noah_mp_tech_note.pdf)
-* **FV3 Dynamical Core:** [https://www.gfdl.noaa.gov/fv3/fv3-documentation-and-references/](https://www.gfdl.noaa.gov/fv3/fv3-documentation-and-references/)
-* **FV3 Namelist Guide:** [Namelist PDF](https://www.gfdl.noaa.gov/wp-content/uploads/2017/09/fv3_namelist_Feb2017.pdf)
-* **UFS Utilities:** [https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html](https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html)
-* **UFS Weather Model:** [https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html](https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html)
 
-* **Flexible Modeling System:** [https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html](https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html)
+For model-specific background, use the official references below:
 
+* SHiELD Model: https://www.gfdl.noaa.gov/shield/
+* NOAH MP Land Model: https://www2.mmm.ucar.edu/wrf/users/physics/phys_refs/LAND_SURFACE/noah_mp_tech_note.pdf
+* FV3 Dynamical Core: https://www.gfdl.noaa.gov/fv3/fv3-documentation-and-references/
+* FV3 Namelist Guide: https://www.gfdl.noaa.gov/wp-content/uploads/2017/09/fv3_namelist_Feb2017.pdf
+* UFS Utilities: https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html
+* UFS Weather Model: https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html
+* Flexible Modeling System: https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html
 
-## System & Workflow Architecture
+## Workflow Flow
 
-Execution on Oscar is controlled by a set of custom Python scripts located in `<path_to_dir>/gfdl_shield/ufs_py`. These scripts reproduce the functionality of the official `UFS_UTILS_DIR` workflow system (used on NOAA and GFDL HPC Systems), bypassing the need for original bash scripts that are difficult to port due to strict software requirements. 
+The repo launch path is:
 
-### The Runtime Pipeline
-The pipeline proceeds through the following sequence:
-1. `submit.sh`
-2. `case_submit.sh`
-3. `case_run.sh`
-4. Preprocess *(inside Apptainer/Singularity container)*
-5. SHiELD MPI integration *(inside container or using your user-built executable)*
-6. Output regridding
-7. Output synchronization
+1. Create a case directory.
+2. Place a `run_config.yaml` in that case directory.
+3. Run `case_submit.sh` from the case directory, either directly or through a small local wrapper.
+4. `case_submit.sh` calls `drivers/case_submit.py`.
+5. `drivers/case_submit.py` validates the config, resolves the environment, and submits `drivers/case_run.sh`.
+6. `case_run.sh` stages files, runs preprocess, launches SHiELD, runs fregrid, and syncs outputs.
 
-### Shared Environment Tree
-The shared SHiELD installation is located at: `<path_to_dir>/gfdl_shield`
+## Repository Layout
+
+The repository is organized as follows:
 
 ```text
 ufs_py/
-├── case_run.sh              # Executes the runtime workflow
-├── case_submit.sh           # Prepares and submits jobs
-├── configs/                 # YAML, namelists, and runtime configuration
+├── case_submit.sh           # Thin wrapper around drivers/case_submit.py
+├── configs/                 # Default runtime configuration and templates
 │   ├── run_config.yaml
-│   ├── machine_config.yaml
 │   ├── env.yaml
-│   ├── input.nml
+│   ├── input_nml.yaml
 │   ├── field_table.yaml
 │   ├── data_table.yaml
 │   ├── diag_table
 │   ├── diag_field.csv
-│   ├── *.vars.csv           # Variable mappings (ERA5, GFS, HRRR)
-│   └── utilities (scripts, templates, notebooks)
-├── docs/                    # Documentation notebooks
-│   └── oscar_readme.ipynb
-├── fregrid/                 # Regridding utilities (external tools interface)
-├── preprocess/              # Preprocessing stage (containerized execution)
-├── py_scripts/              # Core Python workflow engine
-│   ├── driver.py            # Main orchestrator
-│   ├── fv3gfs_*             # Grid, ICs, runtime, and physics setup modules
-│   ├── chgres_cube.py       # Initial condition generation
-│   ├── era5_to_fv3.py       # ERA5 conversion pipeline
-│   ├── global_cycle.py      # Surface cycling
-│   ├── regrid.py            # Output regridding
-│   ├── merge_outputs.py     # Output consolidation
-│   └── supporting utilities and compiled bytecode
-├── tests/                   # Test cases and validation data
-│   ├── test_case/
-│   └── test_data/
-└── tools/                   # Supporting CLI utilities
-    ├── parse_config.py
-    └── sbatch.sh    # Pipeline execution scripts
-
+│   └── *.vars.csv
+├── drivers/                 # Submission and runtime job scripts
+├── fregrid/                 # Regridding stage interface
+├── preprocess/              # Preprocess stage entrypoint
+├── py_scripts/              # Workflow implementation
+├── tests/                   # Example case and validation assets
+└── README.md
 ```
+
+The default configuration template lives in [configs/run_config.yaml](configs/run_config.yaml), and the launcher reads the case-local `run_config.yaml` from the current working directory.
 
 
 ## Static Runtime Datasets (`fix/` directory)
-The `fix` directory contains essential pre-configured data for your runs, including:
-* Atmospheric climatologies
-* Land surface datasets
-* Terrain and orography
-* Lookup tables
-* Regridding support files
 
-<small>
+The `fix` tree contains the climatologies, lookup tables, orography inputs, and other static datasets needed by a run. These files are already staged on Oscar under `<path_to_dir>/gfdl_shield/fix`, so you normally do not need to download them manually.
 
-| Filename | Description |
-|----------|-------------|
-| aerosol.dat | External aerosols data file |
-| CFSR.SEAICE.1982.2012.monthly.clim.grb | CFS reanalysis of monthly sea ice climatology |
-| co2historicaldata_YYYY.txt | Monthly CO2 in PPMV data for year YYYY |
-| global_albedo4.1x1.grb | Four albedo fields for seasonal mean climatology: 2 for strong zenith angle dependent (visible and near IR) and 2 for weak zenith angle dependent |
-| global_glacier.2x2.grb | Glacier points, permanent/extreme features |
-| global_h2oprdlos.f77 | Coefficients for photochemical production and loss of water (H2O) |
-| global_maxice.2x2.grb | Maximum ice extent, permanent/extreme features |
-| global_mxsnoalb.uariz.t126.384.190.rg.grb | Climatological maximum snow albedo |
-| global_o3prdlos.f77 | Monthly mean ozone coefficients |
-| global_shdmax.0.144x0.144.grb | Climatological maximum vegetation cover |
-| global_shdmin.0.144x0.144.grb | Climatological minimum vegetation cover |
-| global_slope.1x1.grb | Climatological slope type |
-| global_snoclim.1.875.grb | Climatological snow depth |
-| global_snowfree_albedo.bosu.t126.384.190.rg.grb | Climatological snow-free albedo |
-| global_soilmldas.t126.384.190.grb | Climatological soil moisture |
-| global_soiltype.statsgo.t126.384.190.rg.grb | Soil type from STATSGO dataset |
-| global_tg3clim.2.6x1.5.grb | Climatological deep soil temperature |
-| global_vegfrac.0.144.decpercent.grb | Climatological vegetation fraction |
-| global_vegtype.igbp.t126.384.190.rg.grb | Climatological vegetation type |
-| global_zorclim.1x1.grb | Climatological surface roughness |
-| RTGSST.1982.2012.monthly.clim.grb | Monthly climatological global sea surface temperature |
-| seaice_newland.grb | High resolution land mask |
-| sfc_emissivity_idx.txt | External surface emissivity data table |
-| solarconstant_noaa_an.txt | External solar constant data table |
+If a dataset is missing on your system, use the NOAA fix bundle as the source of truth:
 
-</small>
+https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
 
-**Important:** You **do not** need to manually download these files from the NOAA S3 bucket. To save time and storage space, they have already been downloaded and are available globally on the Oscar system at: 
-`<path_to_dir>/gfdl_shield/fix`
+## Case Setup
 
-If missing download from https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
-
-
+Create a case directory, then place a case-local `run_config.yaml` in that directory before launching the workflow. A common pattern is:
 
 ```bash
 INIT="2026031200Z"
@@ -127,188 +74,121 @@ CASE_NAME="C96.R4N2.R2N1.CNTRL"
 WORK_ROOT="$HOME/scratch/shield_cases/$INIT"
 CASE_DIR="$WORK_ROOT/$CASE_NAME"
 
-echo "Creating Work Directory at: $CASE_DIR"
 mkdir -p "$CASE_DIR"
 ```
-```markdown
-CASE_ROOT_DIR/
-└── YYYYMMDDHHZ/
-    └── CASE_NAME/
-        ├── run_config.yml
-        ├── submit.sh
-        └── *.nml, diag_table, etc.
-```
 
-When you submit, everything is automated, you can check each step by checking the resulting dir under `CASE_NAME/run` 
+The generated case directory is the working unit for the workflow. Submit the job from this directory so case-local overrides are picked up from the same place. After a successful run you should expect staged directories such as `FIXED`, `GRID`, `IC`, `INPUT`, `LOGS`, `OUTPUT`, `RESTART`, `HIST`, and `TMP` depending on the case settings.
 
+## Initial Conditions and Preprocessing
 
-### Initial Conditions & Pre-processing (`chgres_cube`)
+The workflow can generate initial conditions automatically from operational GFS or HRRR data when `generate_ic_data: true`. The preprocess stage runs inside the container stack and stages the grid, IC files, and supporting metadata for the case.
 
-The SHiELD model requires initial condition (IC) data to be formatted specifically for the FV3 cubed-sphere grid. This data conversion is handled by a Fortran utility called **`chgres_cube`**.
+This is the supported default path for new runs:
 
-### Automatic Downloading and Execution
-You do **not** need to manually download starting conditions or run the `chgres_cube` utility yourself. The Oscar Python workflow is designed to automate this entirely:
+1. Set a valid initialization time in `run_config.yaml`.
+2. Leave `generate_ic_data: true`.
+3. Let the workflow download and convert the upstream data during preprocess.
 
-1. **Auto-Download:** As long as a valid, standard `init_datetime` (e.g., `"2026031200Z"`) is provided in your `run_config.yml`, the workflow will automatically locate and download the required operational GFS or HRRR data for that specific initialization cycle.
-2. **Auto-Processing:** During the pre-processing phase of the pipeline, `driver.py` will automatically invoke `chgres_cube`. It reads your configuration, takes the downloaded GFS/HRRR data, and handles all necessary regridding and interpolation to map the data onto your specific global or nested grid setup before the main model executable runs.
+If you only want the workflow to stage the grid and IC files, set `preprocess_only: true`. The job exits after preprocessing and does not launch the model.
 
-### Advanced: Customizing Initial Conditions (e.g., ERA5 Integration)
+### External IC Bundles
 
-Get initialization data for the specified external model
+If you already have a pre-generated case bundle, set `generate_ic_data: false` and point `external_ic_dir` at that bundle. The workflow expects a staged case directory containing the files it reads at startup, not an arbitrary NetCDF file that it edits in place.
 
-## Data Sources
+Example:
 
-### GFS (Global Forecast System) with 0.25° resolution.
-
-- NOAA AWS S3  
-  https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.YYYYMMDD/HH/atmos/gfs.tHHz.pgrb2.0p25.fFFF  
-
-- NCAR GDEX  
-  https://tds.gdex.ucar.edu/thredds/fileServer/files/g/d084001/YYYYMMDD/gfs.0p25.YYYYMMDDHH.f000.grib2  
-
----
-
-### HRRR (High-Resolution Rapid Refresh)
-
-CONUS-specific model with 3km resolution, ideal for high-resolution runs.
-
-- NOAA AWS S3  
-  https://noaa-hrrr-bdp-pds.s3.amazonaws.com/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfnatfFF.grib2  
-
-- Google Cloud Storage  
-  https://storage.googleapis.com/high-resolution-rapid-refresh/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfsfcf00.grib2
-
-
-
-**Note:** Initialization data are automatically retrieved by `py_scripts/fv3gfs_ic_data.py`. Manual download is only required in cases where automated retrieval fails.
-
-**You can modify** the initial condition NetCDF (`.nc`) files to use alternative datasets, such as **ERA5**. 
-
-Because `chgres_cube` handles the complex generation of the FV3 cubed-sphere geometries, you **must** generate the base tiles using GFS first. Once the structure is generated, you can swap the underlying data:
-
-1. **Generate Base Tiles:** Run the standard pre-processing step using the default GFS data to allow `chgres_cube` to create the grid structure and output the base `.nc` tile files. You can do this by setting 
-```yaml
-generate_ic_data: true 
-preprocess_only: true
-```
-in the run_config.yaml
-
-2. **Regrid and Replace:** Pause or intercept the pipeline before the main model execution. Use a Python regridding library like `xesmf` (which pairs well with `xarray` and `numpy` for data manipulation) to regrid your ERA5 data onto the newly created FV3 tile geometries.
-3. **Overwrite Variables:** Replace the existing GFS data variables in the `.nc` tile files with your regridded ERA5 data. 
-
-4. Once all the modifications are done you can update the run_config.yaml by setting
 ```yaml
 generate_ic_data: false
-preprocess_only: false
+external_ic_dir: /path/to/prestaged_case
 ```
-Then continue with the run as normal by submitting as ussual.
 
-**Important Note on Variables:** Ensure all required SHiELD variables are present. Some specialized variables needed by the FV3 core may not exist natively in the ERA5 dataset and will need to be manually calculated from available ERA5 fields before you write them into the tile files.  Open tile sfc and atm tiles files and make sure your atm amd sfc ERA5 ds has all the required vars and levels are the same
+If you are building your own external IC pipeline, use the repository code as the handoff point rather than trying to mutate the default files in place. The `py_scripts/era5_to_fv3.py` and related helpers are good starting references for a custom conversion flow.
 
+## Config Reference
 
+Each case directory must include a `run_config.yaml`. Start from [configs/run_config.yaml](configs/run_config.yaml) and copy only the settings you need to override.
 
-see `<path_to_dir>/gfdl_shield/ufs_py/py_scripts/era5_to_fv3.py` for example code
+Important fields:
 
-### After IC generation has finished the workdir will look like this
-- FIXED
-- GRID
-- HIST
-- IC
-- INPUT
-- LOGS
-- OUTPUT
-- RESTART
-- TMP
+* `init_datetime`: initialization cycle in `YYYYMMDDHHZ` form.
+* `run_nhours`: forecast length in hours.
+* `c_res`: cubed-sphere face count for the grid. The code and docs often refer to this as `C96`, `C192`, and so on.
+* `gtype`: grid type such as `uniform`, `nest`, `stretch`, or a regional mode supported by the local utilities.
+* `levels`: number of vertical levels.
+* `generate_ic_data`: generate ICs and grid during preprocess.
+* `external_ic_dir`: path to a staged bundle when `generate_ic_data` is false.
+* `preprocess_only`: stop after staging the case files.
+* `continue_run`: restart from existing output when the case supports it.
+* `archive_data`: copy final outputs into the archive tree.
+* `shield_exe`: optional path to a native SHiELD executable.
 
+The config parser rejects unknown keys, so keep custom case files aligned with the template.
 
-### Model & Nest Configurations
-
-### Example Nest Configurations Reference
-If you plan to use nests, here are standard configurations to guide your `run_config.yml` setup:
-
-* **Parent C96 with 3:1 nest:** Parent ~100 km | Child ~33 km
-* **Parent C192 with 3:1 nest:** Parent ~50 km | Child ~17 km
-* **Parent C384 with 3:1 nest:** Parent ~25 km | Child ~8 km
-* **Convection-permitting nest:** Parent C768 (~13 km) | Refinement 4:1 | Child ~3.25 km
-
-
-
-### The `run_config.yml` File
-Each case directory must contain a `run_config.yml` file. Required parameters include: `init_datetime`, `run_nhours`, `res`, and `gtype`.
-
-see `<path_to_dir>/gfdl_shield/ufs_py/configs/run_config.yml` for exmaple
-
-### Example Global run_config.yml
+### Example Global Case
 
 ```yaml
 description: C96 control run
 init_datetime: "2026031200Z"
 run_nhours: 6
-res: C96
+c_res: 96
 gtype: uniform
 levels: 64
+generate_ic_data: true
+preprocess_only: false
 continue_run: false
-fv3_debug: false
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
-constraint_node: false # Node constraints (e.g., "24-core", "32-core")
-exclusive_node: false # Run with exclusive node access (true/false)
-walltime: 12 # Maximum wall time (HH)
-n_nodes: 2  # Number of nodes
-n_cpus: 96 # Total number of tasks (e.g., MPI ranks)
-partition: batch
+archive_data: true
+shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+constraint_node: false
+exclusive_node: false
+walltime: 12
+n_nodes: 2
+n_cpus: 96
 n_cpus_per_task: 1
+partition: batch
 ```
 
-### Example Nested run_config.yml
+### Example Nested Case
 
 ```yaml
-
+description: Nested SHiELD case
 init_datetime: "2026031200Z"
 run_nhours: 24
-res: C96
+c_res: 96
 gtype: nest
 levels: 64
-refine_ratio: [4,2]
-lon_min: [-125,-95]
-lon_max: [-47,-57]
-lat_min: [25,32]
-lat_max: [60,55]
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
-constraint_node: false # Node constraints (e.g., "24-core", "32-core")
-exclusive_node: false # Run with exclusive node access (true/false)
-walltime: 12 # Maximum wall time (HH)
-n_nodes: 2  # Number of nodes
-n_cpus: 96 # Total number of tasks (e.g., MPI ranks)
-partition: batch
+refine_ratio: [4, 2]
+lon_min: [-125, -95]
+lon_max: [-47, -57]
+lat_min: [25, 32]
+lat_max: [60, 55]
+generate_ic_data: true
+preprocess_only: false
+shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+constraint_node: false
+exclusive_node: false
+walltime: 12
+n_nodes: 2
+n_cpus: 96
 n_cpus_per_task: 1
+partition: batch
 ```
 
+## Compiling a Custom SHiELD Executable
 
-### Compiling a Custom SHiELD Executable (Optional)
+If you need a custom model binary, build it from the SHiELD source tree and point `shield_exe` at the resulting executable. The workflow will use the native executable when `shield_exe` is set; otherwise it falls back to the container image. For multi-node native runs, `shield_exe` is required.
 
-If you require a custom model binary, you must clone the source code 
+Typical build outline:
 
- 
 ```bash
-# 1. Clone the repository and checkout the oscar branch
-git clone -b oscar https://github.com/biosphereNclimate/SHiELD_build.git 
+git clone -b oscar https://github.com/biosphereNclimate/SHiELD_build.git
 cd SHiELD_build
-
-# 2. Retrieve source code and submodules
 ./CHECKOUT_code
 git submodule update --init mkmf
 ```
-**The `gettid` patch:** On systems with `glibc > 2.30` (like Oscar), a conflict occurs because `gettid` is already defined in glibc. 
-You must modify  `SHiELD_SRC/FMS/affinity/affinity.c` to remove the duplicate `static` declaration around line 45 - 55
 
-To patch the gettid conflict in FMS Replaces 'static pid_t gettid(void)' with 'pid_t gettid(void)' around line 45 - 55 
+On newer glibc systems, patch `SHiELD_SRC/FMS/affinity/affinity.c` so the local `gettid` helper does not conflict with glibc's definition. The usual fix is to remove the duplicate `static` qualifier from the local declaration.
 
-
-Do your scientific modifications on SHiELD_SRC
-
-
-**Before building** you must modify  `SHiELD_build/site/environment.gnu.sh` and update the modules, 
-Replace the modules  under case oscar with
+Before compiling, update `SHiELD_build/site/environment.gnu.sh` so the GNU build loads the modules required on Oscar:
 
 ```bash
 module load hpcx-mpi
@@ -317,85 +197,51 @@ module load libyaml
 module load cmake
 ```
 
-Compile
+Then build the executable:
 
 ```bash
 ./Build/COMPILE 64bit gnu pic
-
-
-
 ```
-The executable will be generated. Note its absolute path and set it in run_config.yaml 
+
+Set the resulting executable path in `run_config.yaml`:
 
 ```yaml
-  shield_exe: /path/to/shield/exe/SHiELD_nh.prod.64bit.gnu.x
-```
-if `shield_exe` is not set in the run_config.yaml the container executable will be used!
-
-###  Minimal Quick Start
-
-The following cell will execute a full end-to-end setup for a minimal run. It will:
-1. Create the necessary directories.
-2. Generate the `run_config.yml`.
-3. Create the `submit.sh` Slurm script.
-4. Submit the job.
-
-see `<path_to_dir>/gfdl_shield/ufs_py/configs/run_config.yml` for exmaple
-
-
-### Create Configuration
-```yaml
-# run_config.yml
-description: C96 control run
-init_datetime: "2026031200Z"
-run_nhours: 6
-res: C96
-gtype: uniform
-levels: 64
-continue_run: false
-archive_data: true
-shield_exe: /path/to/shield/exe/SHiELD_nh.prod.64bit.gnu.x
-constraint_node: false # Node constraints (e.g., "24-core", "32-core")
-exclusive_node: false # Run with exclusive node access (true/false)
-walltime: 12 # Maximum wall time (HH)
-n_nodes: 2  # Number of nodes
-n_cpus: 96 # Total number of tasks (e.g., MPI ranks)
-partition: batch
-n_cpus_per_task: 1
-
+shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
 ```
 
-### Modify Diag Table
-To specify custom output frequencies and variables, you must provide a modified `diag_table` within your `$CASE_DIR`. If no file is found there, the model will use the default settings.
+## Minimal Quick Start
 
-**Copy the default table:**
-   ```bash
-   cp "<path_to_dir>/gfdl_shield/ufs_py/configs/diag_table "$CASE_DIR/
-   ```
-**Identify variables of intrest and update table**
-Refer to the available fields in: `<path_to_dir>/gfdl_shield/ufs_py/configs/diag_field.csv`
+1. Create a case directory.
+2. Copy or write `run_config.yaml` into that case directory.
+3. Add any optional case-local overrides such as `diag_table`.
+4. Run `case_submit.sh` from the case directory.
 
-
-
-### Create Submission Script
-
+Example case-local launcher:
 
 ```bash
 #!/bin/bash -l
-#submit.sh
-
-"<path_to_dir>/gfdl_shield/ufs_py/case_submit.sh "
-
-
-# 4. Make executable and submit
-chmod +x submit.sh
-echo "Submitting job from $CASE_DIR..."
-# Un-comment the line below to actually submit to the Slurm queue when running:
-# ./submit.sh
-
+"/path/to/ufs_py/case_submit.sh"
 ```
 
+## Diagnostics
 
-### RUN CONFIG.YAML OPTIONS
+To change output frequency or the set of reported variables, place a case-local `diag_table` in the case directory where you submit the run. If no local file is present, the workflow uses the default table from `configs/diag_table`.
 
-see ```configs/run_config.yaml```
+The variable reference list is in [configs/diag_field.csv](configs/diag_field.csv).
+
+## RUN CONFIG OPTIONS
+
+See [configs/run_config.yaml](configs/run_config.yaml) for the full set of supported options and inline comments.
+
+## Submission Notes
+
+Before submitting, deactivate any active conda environments and use a clean shell so the workflow starts from a predictable environment.
+
+Recommended local launcher:
+
+```bash
+#!/bin/bash -l
+"/path/to/ufs_py/case_submit.sh"
+```
+
+Place that script in the pwd directory and run it from there so the workflow reads the local `run_config.yaml` and any case-local files such as `diag_table`.

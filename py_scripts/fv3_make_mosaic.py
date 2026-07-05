@@ -7,9 +7,9 @@ from fv3_utils import cp, run_cmd
 
 
 def _mosaic_for_uniform_and_stretch(
-    res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+    c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
 ):
-    tiles = [f"C{res}_grid.tile{i}.nc" for i in range(1, 7)]
+    tiles = [f"C{c_res}_grid.tile{i}.nc" for i in range(1, 7)]
     n_tiles = len(tiles)
     tiles = ",".join(tiles)
     cmd = [
@@ -19,7 +19,7 @@ def _mosaic_for_uniform_and_stretch(
         "--dir",
         f"{out_dir}",
         "--mosaic",
-        f"C{res}_mosaic",
+        f"C{c_res}_mosaic",
         "--tile_file",
         tiles,
     ]
@@ -33,7 +33,7 @@ def _mosaic_for_uniform_and_stretch(
 def _mosaic_for_i_nest(
     make_solo_mosaic: str,
     out_dir: Path,
-    res: int,
+    c_res: int,
     nest_idx: int,
     tile: int,
     log_file: Path,
@@ -45,9 +45,9 @@ def _mosaic_for_i_nest(
         "--dir",
         f"{out_dir}",
         "--mosaic",
-        f"C{res}_nested{nest_idx}_mosaic",
+        f"C{c_res}_nested{nest_idx}_mosaic",
         "--tile_file",
-        f"C{res}_grid.tile{tile}.nc",
+        f"C{c_res}_grid.tile{tile}.nc",
     ]
 
     result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
@@ -56,9 +56,9 @@ def _mosaic_for_i_nest(
         raise RuntimeError(f"Failed to generate mosaic for nest tile: [{tile}]")
 
 
-def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path):
+def _mosaic_for_nest(c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path):
     # 1. Global tiles
-    global_tiles = [f"C{res}_grid.tile{i}.nc" for i in range(1, 7)]
+    global_tiles = [f"C{c_res}_grid.tile{i}.nc" for i in range(1, 7)]
     global_tiles = ",".join(global_tiles)
 
     cmd = [
@@ -68,7 +68,7 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
         "--dir",
         f"{out_dir}",
         "--mosaic",
-        f"C{res}_coarse_mosaic",
+        f"C{c_res}_coarse_mosaic",
         "--tile_file",
         global_tiles,
     ]
@@ -80,7 +80,7 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
 
     # 2. For all tiles
     n_tiles = 6 + state.n_nests
-    all_tiles = [f"C{res}_grid.tile{i}.nc" for i in range(1, n_tiles + 1)]
+    all_tiles = [f"C{c_res}_grid.tile{i}.nc" for i in range(1, n_tiles + 1)]
     all_tiles = ",".join(all_tiles)
 
     cmd = [
@@ -90,7 +90,7 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
         "--dir",
         f"{out_dir}",
         "--mosaic",
-        f"C{res}_mosaic",
+        f"C{c_res}_mosaic",
         "--tile_file",
         all_tiles,
     ]
@@ -107,7 +107,7 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
         (
             make_solo_mosaic,
             out_dir,
-            res,
+            c_res,
             i,
             tile,
             Path(str(log_file).replace(".log", f"_tile{tile}.log")),
@@ -119,12 +119,12 @@ def _mosaic_for_nest(res: int, out_dir: Path, make_solo_mosaic: str, log_file: P
 
 
 def _mosaic_for_regionalgfdl(
-    res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+    c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
 ):
-    grid_file = out_dir / f"C{res}_grid.tile7.nc"
+    grid_file = out_dir / f"C{c_res}_grid.tile7.nc"
     new_res = get_newres(grid_file)
 
-    cp(out_dir / f"C{res}_grid.tile7.nc", out_dir / f"C{new_res}_grid.tile7.nc")
+    cp(out_dir / f"C{c_res}_grid.tile7.nc", out_dir / f"C{new_res}_grid.tile7.nc")
 
     cmd = [
         f"{make_solo_mosaic}",
@@ -145,7 +145,7 @@ def _mosaic_for_regionalgfdl(
 
 
 def _mosaic_for_regionalesg(
-    res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+    c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
 ):
     grid_file = out_dir / "regional_grid.nc"
     new_res = get_newres(grid_file)
@@ -171,7 +171,7 @@ def _mosaic_for_regionalesg(
 
 
 def run_make_mosaic(
-    res: int,
+    c_res: int,
     gtype: str,
     exec_dir: Path,
     out_dir: Path,
@@ -186,7 +186,7 @@ def run_make_mosaic(
 
     Parameters
     ----------
-    res : int
+    c_res : int
         Base cubed-sphere resolution (e.g., 96 for C96). Used for file naming
         and mosaic metadata.
     gtype : str
@@ -201,7 +201,7 @@ def run_make_mosaic(
         typically including `make_solo_mosaic`.
     out_dir : Path
         Directory where the mosaic NetCDF file will be written. The expected
-        output is usually named `C{res}_mosaic.nc` or similar.
+        output is usually named `C{c_res}_mosaic.nc` or similar.
 
     """
 
@@ -212,13 +212,13 @@ def run_make_mosaic(
 
     with tmp_cwd(out_dir):
         if gtype in ["uniform", "stretch"]:
-            _mosaic_for_uniform_and_stretch(res, out_dir, make_solo_mosaic, log_file)
+            _mosaic_for_uniform_and_stretch(c_res, out_dir, make_solo_mosaic, log_file)
 
         elif gtype == "nest":
-            _mosaic_for_nest(res, out_dir, make_solo_mosaic, log_file)
+            _mosaic_for_nest(c_res, out_dir, make_solo_mosaic, log_file)
 
         elif gtype == "regional_gfdl":
-            _mosaic_for_regionalgfdl(res, out_dir, make_solo_mosaic, log_file)
+            _mosaic_for_regionalgfdl(c_res, out_dir, make_solo_mosaic, log_file)
 
         elif gtype == "regional_esg":
-            _mosaic_for_regionalesg(res, out_dir, make_solo_mosaic, log_file)
+            _mosaic_for_regionalesg(c_res, out_dir, make_solo_mosaic, log_file)

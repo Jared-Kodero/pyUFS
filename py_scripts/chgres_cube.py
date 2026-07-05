@@ -222,11 +222,11 @@ def run_chgres_cube() -> None:
     f41.varmap_file = state.fix_src / "varmap_tables" / "GFSphys_var_map.txt"
 
     # Create symlinks for fix files
-    link_fix_files(state.res, f41)
+    link_fix_files(state.c_res, f41)
 
     mosaic_dir = state.tmp / "chgres_cube" / "mosaics"
     mosaic_dir.mkdir(parents=True, exist_ok=True)
-    mosaic_file = mosaic_dir / f"C{state.res}_mosaic.nc"
+    mosaic_file = mosaic_dir / f"C{state.c_res}_mosaic.nc"
 
     local_cpus = len(os.sched_getaffinity(0))
     norm_cpu = (local_cpus // 6) * 6
@@ -241,22 +241,22 @@ def run_chgres_cube() -> None:
         # Domain-specific grid setup
         # --------------------
         if domain == "global":
-            orog = [f"oro.C{state.res}.tile{i}.nc" for i in range(1, 7)]
+            orog = [f"oro.C{state.c_res}.tile{i}.nc" for i in range(1, 7)]
             if state.n_nests > 0:
-                mosaic = ic_dir / f"C{state.res}_coarse_mosaic.nc"
+                mosaic = ic_dir / f"C{state.c_res}_coarse_mosaic.nc"
             else:
-                mosaic = ic_dir / f"C{state.res}_mosaic.nc"
+                mosaic = ic_dir / f"C{state.c_res}_mosaic.nc"
 
         elif domain.startswith("nest"):
             nest_idx = domain.replace("nest", "")
             tile = int(nest_idx) + 5
-            mosaic = ic_dir / f"C{state.res}_nested{nest_idx}_mosaic.nc"
-            orog = [f"oro.C{state.res}.tile{tile}.nc"]
+            mosaic = ic_dir / f"C{state.c_res}_nested{nest_idx}_mosaic.nc"
+            orog = [f"oro.C{state.c_res}.tile{tile}.nc"]
 
         elif domain == "regional":
             tile = 7
-            mosaic = ic_dir / f"C{state.res}_mosaic.nc"
-            orog = [f"oro.C{state.res}.tile7.nc"]
+            mosaic = ic_dir / f"C{state.c_res}_mosaic.nc"
+            orog = [f"oro.C{state.c_res}.tile7.nc"]
         else:
             raise ValueError(f"Unrecognized domain key: {domain}")
 
@@ -417,14 +417,14 @@ def chgres_exe(input_dict: dict, n_cpus: int, domain: str, ext_model: str) -> No
         )
 
 
-def link_fix_files(res: int, fort_41: dict) -> None:
+def link_fix_files(c_res: int, fort_41: dict) -> None:
     files = Path(fort_41.fix_dir_target_grid).glob("*")
-    files = [Path(f) for f in files if f.name.startswith(f"C{res}")]
-    symlinks = [f.parent / f.name.replace(f"C{res}", "", 1) for f in files]
+    files = [Path(f) for f in files if f.name.startswith(f"C{c_res}")]
+    symlinks = [f.parent / f.name.replace(f"C{c_res}", "", 1) for f in files]
 
     if not files:
         raise ValueError(
-            f"No fix files found for resolution C{res} in {fort_41.fix_dir_target_grid}"
+            f"No fix files found for resolution C{c_res} in {fort_41.fix_dir_target_grid}"
         )
     #
     # create symlinks in in fix_dir_target_grid

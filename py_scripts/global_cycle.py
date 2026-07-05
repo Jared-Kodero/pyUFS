@@ -75,7 +75,7 @@ def run_global_cycle(
     """
 
     # Resolution parsing
-    cres = state.res
+    cres = state.c_res
     jcap = jcap if jcap is not None else (2 * cres - 2)
     lonb = lonb if lonb is not None else (4 * cres)
     latb = latb if latb is not None else (2 * cres)

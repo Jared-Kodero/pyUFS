@@ -7,7 +7,7 @@ from fv3_utils import cp, run_cmd
 
 
 def run_filter_topo(
-    res: int,
+    c_res: int,
     gtype: str,
     exec_dir: Path,
     grid_dir: Path,
@@ -26,7 +26,7 @@ def run_filter_topo(
 
     Parameters
     ----------
-    res : int
+    c_res : int
         Cubed-sphere resolution (e.g., 96 for a C96 grid). Used for file naming
         and in filter control parameters.
     gtype : str
@@ -40,10 +40,10 @@ def run_filter_topo(
         Directory containing the `filter_topo` executable.
     grid_dir : Path
         Directory containing the grid definition NetCDF files
-        (e.g., `C{res}_grid.tile*.nc` and `C{res}_mosaic.nc`).
+        (e.g., `C{c_res}_grid.tile*.nc` and `C{c_res}_mosaic.nc`).
     orog_dir : Path
         Directory containing the unfiltered orography files
-        (e.g., `oro.C{res}.tile*.nc`).
+        (e.g., `oro.C{c_res}.tile*.nc`).
     tmp_dir : Path
         Output directory for filtered topography files. Typically used as the
         intermediate or final “IC” directory for FV3 input.
@@ -62,25 +62,25 @@ def run_filter_topo(
 
         filter_topo = Path(exec_dir) / "filter_topo"
         # Processing all tiles (uniform/stretch) or coarse tiles only
-        mosaic_grid = f"C{res}_mosaic.nc"
+        mosaic_grid = f"C{c_res}_mosaic.nc"
 
         if gtype not in ["regional_gfdl", "regional_esg"]:
-            # grid_files = f"C{res}_grid.tile[1-6].nc"
-            # topo_files = f"oro.C{res}.tile[1-6].nc"
-            grid_files = [f"C{res}_grid.tile{t}.nc" for t in range(1, 7)]
-            topo_files = [f"oro.C{res}.tile{t}.nc" for t in range(1, 7)]
-            topo_file = f"oro.C{res}"
+            # grid_files = f"C{c_res}_grid.tile[1-6].nc"
+            # topo_files = f"oro.C{c_res}.tile[1-6].nc"
+            grid_files = [f"C{c_res}_grid.tile{t}.nc" for t in range(1, 7)]
+            topo_files = [f"oro.C{c_res}.tile{t}.nc" for t in range(1, 7)]
+            topo_file = f"oro.C{c_res}"
         else:  # regional grids only have tile 1
-            grid_files = [f"C{res}_grid.tile7.nc"]
-            topo_files = [f"oro.C{res}.tile7.nc"]
-            topo_file = f"oro.C{res}"
+            grid_files = [f"C{c_res}_grid.tile7.nc"]
+            topo_files = [f"oro.C{c_res}.tile7.nc"]
+            topo_file = f"oro.C{c_res}"
 
         # Copy mosaic file
         mosaic_src = grid_dir / mosaic_grid
         if mosaic_src.exists():
             cp(mosaic_src, ".")
         else:
-            cp(grid_dir / f"C{res}_mosaic.nc", ".")
+            cp(grid_dir / f"C{c_res}_mosaic.nc", ".")
 
         # Copy grid and orography files
         for f in grid_files:
@@ -100,7 +100,9 @@ def run_filter_topo(
         regional = gtype in ["regional_gfdl", "regional_esg"]
 
         # Write namelist - use appropriate mosaic file for namelist
-        nml_mosaic = mosaic_grid if mosaic_grid.endswith(".nc") else f"C{res}_mosaic.nc"
+        nml_mosaic = (
+            mosaic_grid if mosaic_grid.endswith(".nc") else f"C{c_res}_mosaic.nc"
+        )
         nml = {
             "filter_topo_nml": {
                 "grid_file": nml_mosaic,
@@ -108,7 +110,7 @@ def run_filter_topo(
                 "mask_field": "land_frac",
                 "regional": regional,
                 "stretch_fac": stretch,
-                "res": res,
+                "res": c_res,
             }
         }
         with open("input.nml", "w") as f:

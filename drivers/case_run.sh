@@ -22,6 +22,8 @@ if [ -z "$CASE_RUN_START_TIME" ]; then
     export CASE_RUN_START_TIME=$(date +%s)
 fi
 
+SESSION_START_TIME=$(date +%s)
+
 
 cd "$CASE_PWD"
 
@@ -117,15 +119,29 @@ if (( SYNC == 1 )); then
 fi
 
 
-elapsed_hours () {
-    awk -v start="$1" -v end="$2" 'BEGIN {printf "%.2f", (end - start)/3600}'
+elapsed_hours() {
+    awk -v start="$1" -v end="$2" \
+        'BEGIN { printf "%.2f", (end - start) / 3600 }'
+}
+
+add_hours() {
+    awk -v total="$1" -v increment="$2" \
+        'BEGIN { printf "%.2f", total + increment }'
 }
 
 if (( EXIT_CODE == 0 )); then
+    now=$(date +%s)
+
+    elapsed_session=$(elapsed_hours "$SESSION_START_TIME" "$now")
+    CASE_TOTAL_WALLTIME=$(add_hours "${CASE_TOTAL_WALLTIME}" "$elapsed_session")
+
     if (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
         msg="Case $SLURM_JOB_NAME completed"
-        elapsed=$(elapsed_hours "$CASE_RUN_START_TIME" "$(date +%s)")
-        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg in ${elapsed} hours."
+        elapsed_total=$(elapsed_hours "$CASE_RUN_START_TIME" "$now")
+
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg"
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Walltime: ${CASE_TOTAL_WALLTIME} hours."
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Time Taken: ${elapsed_total} hours."
     fi
 fi
 

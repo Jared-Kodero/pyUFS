@@ -7,7 +7,7 @@ from fv3_utils import cp, run_cmd
 
 
 def _run_make_orog(
-    res: int,
+    c_res: int,
     tile: int,
     grid_dir: Path,
     out_dir: Path,
@@ -28,7 +28,7 @@ def _run_make_orog(
     log_file = state.logs / f"make_orog_tile_{tile}.log"
 
     # Decide grid type
-    is_latlon = lonb is not None and latb is not None and res is None
+    is_latlon = lonb is not None and latb is not None and c_res is None
     inorogexist = inputorog is not None
 
     # Workdir
@@ -37,7 +37,7 @@ def _run_make_orog(
         workdir = tmp / "latlon" / "orog" / f"latlon_{lonb}x{latb}"
         orogfile = "none"
     else:
-        workdir = tmp / f"C{res}" / "orog" / f"tile{tile}"
+        workdir = tmp / f"C{c_res}" / "orog" / f"tile{tile}"
         orogfile = Path(inputorog).name if inorogexist else "none"
 
     workdir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +46,7 @@ def _run_make_orog(
     if is_latlon:
         out_grid = "none"
     else:
-        out_grid = f"C{res}_grid.tile{tile}.nc"
+        out_grid = f"C{c_res}_grid.tile{tile}.nc"
 
     files = {
         orog_dir / "thirty.second.antarctic.new.bin": "fort.15",
@@ -74,7 +74,7 @@ def _run_make_orog(
         mtnres, jcap, NR, NF1, NF2, efac, blat = 1, 0, 0, 0, 0, 0, 0
         with open("INPS", "w") as f:
             f.write(
-                f"{mtnres} {lonb or res} {latb or res} {jcap} {NR} {NF1} {NF2} {efac} {blat}\n"
+                f"{mtnres} {lonb or c_res} {latb or c_res} {jcap} {NR} {NF1} {NF2} {efac} {blat}\n"
             )
             f.write(f"{out_grid}\n")
             f.write(f"{orogfile}\n")
@@ -93,13 +93,13 @@ def _run_make_orog(
         if is_latlon:
             outfile = f"oro.{lonb}x{latb}.nc"
         else:
-            outfile = f"oro.C{res}.tile{tile}.nc"
+            outfile = f"oro.C{c_res}.tile{tile}.nc"
 
         cp("out.oro.nc", out_dir / outfile)
 
 
 def run_make_orog(
-    res: int,
+    c_res: int,
     tiles: list[int],
     grid_dir: Path,
     out_dir: Path,
@@ -120,7 +120,7 @@ def run_make_orog(
 
     Parameters
     ----------
-    res : int or None
+    c_res : int or None
         Cubed-sphere resolution (e.g., 96 for a C96 grid). Required for
         global or nested cubed-sphere grids, not used for lat-lon grids.
     tiles : list[int] or None
@@ -152,7 +152,7 @@ def run_make_orog(
 
     args = [
         (
-            res,
+            c_res,
             tile,
             grid_dir,
             out_dir,

@@ -9,7 +9,7 @@ from fv3_utils import cp, run_cmd
 
 def _run_single_sfc_climo(
     name: str,
-    res: int,
+    c_res: int,
     sfc_climo_gen: Path,
     input_sfc_climo_dir: Path,
     orog_dir_mdl: Path,
@@ -94,12 +94,12 @@ def _run_single_sfc_climo(
         if grid_type == "regional":
             if f.name.endswith(".halo.nc"):
                 stem = f.stem.replace(".halo", "")
-                dest = out_dir / f"C{res}.{stem}.halo{halo}.nc"
+                dest = out_dir / f"C{c_res}.{stem}.halo{halo}.nc"
 
             else:
-                dest = out_dir / f"C{res}.{f.stem}.halo0.nc"
+                dest = out_dir / f"C{c_res}.{f.stem}.halo0.nc"
         else:
-            dest = out_dir / f"C{res}.{f.name}"
+            dest = out_dir / f"C{c_res}.{f.name}"
 
         cp(f, dest)
 
@@ -109,11 +109,11 @@ def _run_single_sfc_climo(
         if grid_type == "regional":
             if f.name.endswith(".halo.nc"):
                 stem = f.stem.replace(".halo", "")
-                dest = out_dir / f"C{res}.{stem}.halo{halo}.nc"
+                dest = out_dir / f"C{c_res}.{stem}.halo{halo}.nc"
             else:
-                dest = out_dir / f"C{res}.{f.stem}.halo0.nc"
+                dest = out_dir / f"C{c_res}.{f.stem}.halo0.nc"
         else:
-            dest = out_dir / f"C{res}.{f.name}"
+            dest = out_dir / f"C{c_res}.{f.name}"
 
         if dest.is_symlink() or dest.exists():
             dest.unlink()
@@ -152,7 +152,7 @@ def _run_single_sfc_climo(
 
 
 def run_sfc_climo_gen(
-    res: int,
+    c_res: int,
     input_sfc_climo_dir: Path,
     exec_dir: Path,
     tmp_dir: Path,
@@ -179,7 +179,7 @@ def run_sfc_climo_gen(
 
     Parameters
     ----------
-    res : int
+    c_res : int
         Cubed-sphere grid resolution (e.g., 96 for C96). Used to identify input
         and output filenames.
     input_sfc_climo_dir : Path
@@ -205,9 +205,9 @@ def run_sfc_climo_gen(
         - `'regional_esg'`
         If `"NULL"`, the program infers the grid type automatically.
     mosaic_dir : Path, optional
-        Directory containing the grid mosaic file (`C{res}_mosaic.nc`).
+        Directory containing the grid mosaic file (`C{c_res}_mosaic.nc`).
     orog_dir : Path, optional
-        Directory containing orography files (`oro.C{res}.tile*.nc`).
+        Directory containing orography files (`oro.C{c_res}.tile*.nc`).
     halo : int, default=0
         Halo width used when generating extended surface climatology fields.
     vegsoilt_frac : bool, default=False
@@ -232,7 +232,7 @@ def run_sfc_climo_gen(
     log_file = state.logs / "sfc_climo_gen.log"
 
     if not orog_dir:
-        orog_dir = fix_dir / "fix_fv3_gmted2010" / f"C{res}"
+        orog_dir = fix_dir / "fix_fv3_gmted2010" / f"C{c_res}"
         if not orog_dir.exists():
             report_missing_fixed_files([orog_dir], sub_dir="fix_fv3_gmted2010")
 
@@ -243,12 +243,12 @@ def run_sfc_climo_gen(
 
     # --- Determine orography and mosaic files ---
     if grid_type in ["regional_gfdl", "regional_esg", "regional"]:
-        orog_files = [f"oro.C{res}.tile7.nc"]
-        mosaic_file = mosaic_dir / f"C{res}_mosaic.nc"
+        orog_files = [f"oro.C{c_res}.tile7.nc"]
+        mosaic_file = mosaic_dir / f"C{c_res}_mosaic.nc"
 
         _run_single_sfc_climo(
             "regional",
-            res,
+            c_res,
             sfc_climo_gen,
             input_sfc_climo_dir,
             orog_dir,
@@ -267,11 +267,11 @@ def run_sfc_climo_gen(
 
     elif grid_type == "nest":
         # Run for global tiles 1–6 first
-        orog_files = [f"oro.C{res}.tile{i}.nc" for i in range(1, 7)]
-        mosaic_file = mosaic_dir / f"C{res}_coarse_mosaic.nc"
+        orog_files = [f"oro.C{c_res}.tile{i}.nc" for i in range(1, 7)]
+        mosaic_file = mosaic_dir / f"C{c_res}_coarse_mosaic.nc"
         _run_single_sfc_climo(
             "global",
-            res,
+            c_res,
             sfc_climo_gen,
             input_sfc_climo_dir,
             orog_dir,
@@ -295,11 +295,11 @@ def run_sfc_climo_gen(
         args = [
             (
                 f"tile_{tile}",
-                res,
+                c_res,
                 sfc_climo_gen,
                 input_sfc_climo_dir,
                 orog_dir,
-                mosaic_dir / f"C{res}_nested{nest_id}_mosaic.nc",
+                mosaic_dir / f"C{c_res}_nested{nest_id}_mosaic.nc",
                 tmp_dir / f"tile{tile}",
                 out_dir,
                 halo,
@@ -307,7 +307,7 @@ def run_sfc_climo_gen(
                 veg_type_src,
                 soil_type_src,
                 n_cpus,
-                [f"oro.C{res}.tile{tile}.nc"],
+                [f"oro.C{c_res}.tile{tile}.nc"],
                 "nest",
                 log_file,
             )
@@ -322,11 +322,11 @@ def run_sfc_climo_gen(
 
     else:
         # Uniform global (tiles 1–6)
-        orog_files = [f"oro.C{res}.tile{i}.nc" for i in range(1, 7)]
-        mosaic_file = mosaic_dir / f"C{res}_mosaic.nc"
+        orog_files = [f"oro.C{c_res}.tile{i}.nc" for i in range(1, 7)]
+        mosaic_file = mosaic_dir / f"C{c_res}_mosaic.nc"
         _run_single_sfc_climo(
             "global",
-            res,
+            c_res,
             sfc_climo_gen,
             input_sfc_climo_dir,
             orog_dir,

@@ -88,7 +88,7 @@ preprocess_only: false # Generate ICs and grid only, then exit
 #   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
 #   C768  ~ 13 km      C3072 ~ 3 km
 
-res: 96 # Cubed-sphere face resolution
+c_res: 96 # Cubed-sphere face resolution
 gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
 target_lon: -96 # Grid center longitude [degrees]; used for stretch / regional
 target_lat: 35.0 # Grid center latitude  [degrees]; used for stretch / regional
@@ -135,8 +135,8 @@ do_deep: false # Deep convection parameterization (disable for dx < 4 km)
 #   dt_atmos is CFL constrained and should decrease with increasing horizontal
 #   resolution or refinement ratio.
 
-dt_atmos: null # Atmospheric timestep [s] for nested high res set to 90
-dt_ocean: null # Ocean coupling timestep [s], if coupled for nested high res set to 90
+dt_atmos: null # Atmospheric timestep [s] for nested high c_res set to 90
+dt_ocean: null # Ocean coupling timestep [s], if coupled for nested high c_res set to 90
 
 # k_split: [ 1, 2, 2, 2 ]  for 3 nests with dt_atmos = 90 s, nest01 runs at 45 s, nest02 and nest03 run at 22.5 s
 # n_split: [ 3, 6, 6, 10 ] for 3 nests with dt_atmos = 90 s and k_split as above, global acoustic timestep is 30 s, nest01 acoustic timestep is 7.5 s, and nest02 and nest03 acoustic timestep is 2.25 s
