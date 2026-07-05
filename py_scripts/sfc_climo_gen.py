@@ -233,6 +233,8 @@ def run_sfc_climo_gen(
 
     if not orog_dir:
         orog_dir = fix_dir / "fix_fv3_gmted2010" / f"C{res}"
+        if not orog_dir.exists():
+            report_missing_fixed_files([orog_dir], sub_dir="fix_fv3_gmted2010")
 
     local_cpus = len(os.sched_getaffinity(0))
 

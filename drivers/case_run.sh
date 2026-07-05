@@ -149,6 +149,7 @@ if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
         rm -rf "$CASE_OUT"
         rm -rf "$CASE_DIR"/HIST
         cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/state.yaml"
+        cp -rf "$CASE_DIR"/LOGS/shield "$CASE_ARCHIVE_DIR/shield_log"
 
         TARFILE="$ARCHIVE_DIR/case.tar.gz"
 
