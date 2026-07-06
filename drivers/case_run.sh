@@ -131,7 +131,6 @@ add_hours() {
 
 if (( EXIT_CODE == 0 )); then
     now=$(date +%s)
-
     elapsed_session=$(elapsed_hours "$SESSION_START_TIME" "$now")
     CASE_TOTAL_WALLTIME=$(add_hours "${CASE_TOTAL_WALLTIME}" "$elapsed_session")
 
