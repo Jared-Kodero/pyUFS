@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sys
 import uuid
@@ -11,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 from derived_vars import calc_derived_vars
-from fv3_runtime import exit_code
+from fv3_runtime import exit_code, get_stream_handles
 from fv3_state import load_fv3_state
 from fv3_state import prev_state as state
 from fv3_utils import cres_to_deg, env_setup
@@ -22,18 +23,7 @@ load_fv3_state()  # ensure pstate is populated before any function calls
 
 log = logging.getLogger("REGRIDDER")
 
-
-def get_stream_handles() -> list[str]:
-    path = Path(state.work_dir) / "diag_table"
-    handles = []
-
-    with open(path) as f:
-        for line in f:
-            parts = [p.strip().strip('"') for p in line.strip().split(",")]
-            if len(parts) == 8 and not ("static" in parts[3] or "spec" in parts[3]):
-                handles.append(parts[3])
-
-    return list(dict.fromkeys(handles))
+py_ncpus = len(os.sched_getaffinity(0))
 
 
 def stream_family(stream: str) -> tuple:
@@ -162,6 +152,9 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
 
     try:
         ds["time"] = ds.indexes["time"].to_datetimeindex(time_unit="ns")
+        ds["time"].encoding["units"] = "seconds since 1970-01-01 00:00:00"
+        ds["time"].encoding["dtype"] = "int64"
+
     except Exception:
         ...
 
@@ -234,14 +227,13 @@ def call_fregrid(
         "tiles_type": tiles_type,
     }
 
-    chunk_size = 10
-
+    chunk_size = 5  # number of variables to process in parallel
     tasks = []
     for idx, i in enumerate(range(0, len(data_vars), chunk_size)):
         chunk = data_vars[i : i + chunk_size]
         tasks.append((cmd, chunk, fregrid_out))
 
-    with Pool(processes=min(len(tasks), 10)) as pool:
+    with Pool(processes=min(len(tasks), py_ncpus)) as pool:
         pool.starmap(_run_fregrid, tasks)
 
     files = sorted(fregrid_out.glob("*.nc"))
@@ -353,7 +345,7 @@ def regrid_nest_tiles(streams: list, c_res: int):
                 input_mosaic,
                 nx,
                 ny,
-                input_file,  # should be the file HIST/fv3_hist_r000.nest02.tile7.nc
+                input_file,
                 output_file,
                 n_step,
                 lon_min,
@@ -367,6 +359,8 @@ def regrid_nest_tiles(streams: list, c_res: int):
 def regrid():
     env_setup()
     streams = get_stream_handles()
+    # remove spec and static files from streams
+    streams = [s for s in streams if "spec" not in s and "static" not in s]
     regrid_global_tiles(streams, state.c_res)
     regrid_nest_tiles(streams, state.c_res)
 
@@ -378,7 +372,6 @@ def regrid():
             state.run_nhours,
             state.total_restarts,
         )
-        log.info("Run Completed Successfully!")
 
     static_path = Path(state.work_dir) / "STATIC"
 
@@ -386,7 +379,7 @@ def regrid():
 
     for f in Path(state.hist).glob("*"):
         if "spec" in f.name or "static" in f.name:
-            dest = static_path / f.name
+            dest = static_path / f.name.replace(f".{state.restart_no:02d}", "")
             if dest.exists():
                 continue
             f.rename(dest)
