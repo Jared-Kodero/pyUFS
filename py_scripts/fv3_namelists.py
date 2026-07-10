@@ -3,7 +3,12 @@ from pathlib import Path
 
 import f90nml
 import numpy as np
-from fv3_runtime import log, read_namelist, report_missing_fixed_files
+from fv3_runtime import (
+    get_stream_handles,
+    log,
+    read_namelist,
+    report_missing_fixed_files,
+)
 from fv3_state import state
 from fv3_timings import get_timings
 from fv3_utils import cp, cres_to_deg, env_setup
@@ -336,15 +341,23 @@ def update_table_files():
     cp(diag_file, diag_table_path)
     cp(field_file, field_table_path)
 
+    streams = get_stream_handles()
+
     with open(diag_table_path) as f:
         lines = f.readlines()
         lines = [line for line in lines if not line.strip().startswith("#")]
+        lines = lines[2:]  # Skip the first two lines (title and base_date)
 
     dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
     desc_str = f"{state.description}\n"
+
     lines = [desc_str, dt_str] + [
-        line.replace("XX", f"{restart_no:02d}") for line in lines
+        line.replace(stream, f"HIST/{stream}.{restart_no:02d}")
+        for line in lines
+        for stream in streams
+        if stream in line
     ]
+
     with open(diag_table_path, "w") as f:
         f.writelines(lines)
 
