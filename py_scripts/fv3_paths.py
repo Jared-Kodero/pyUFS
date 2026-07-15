@@ -139,3 +139,24 @@ def parse_dirs(cfg: dict) -> dict:
     for k in dir_keys:
         cfg[k] = str(Path(os.path.expandvars(cfg[k])))
     return cfg
+
+
+# these files can be modified by user after generation
+def get_orography_files():
+    """Get the files of the generated orography for the current run."""
+    return [f for f in Path(paths["input"]).glob("*.nc") if f.name.startswith("oro")]
+
+
+def get_gfs_data_files():
+    """Get the files of the generated GFS data for the current run."""
+    return [
+        f for f in Path(paths["input"]).glob("*.nc") if f.name.startswith("gfs_data")
+    ]
+
+
+def get_sfc_data_files():
+    """Get the files of the generated surface data for the current run."""
+    # return the list of surface data files
+    return [
+        f for f in Path(paths["input"]).glob("*.nc") if f.name.startswith("sfc_data")
+    ]
