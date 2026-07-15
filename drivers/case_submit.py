@@ -10,7 +10,7 @@ from difflib import get_close_matches
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("CASE.SUBMIT")
+logger = logging.getLogger("Case.Submit")
 
 try:
     import yaml
@@ -31,103 +31,6 @@ if not RUN_CFG_PATH.exists():
 with open(DEFAULT_CFG_PATH, "r") as f:
     DEFAULT_CFG = yaml.safe_load(f)
 DEFAULT_KEYS = DEFAULT_CFG.keys()
-
-
-def get_paths(cfg: dict):
-
-    dir_keys = (
-        "jobtmp",
-        "case_root",
-        "fix_src",
-        "ufs_utils",
-        "archive_root",
-        "shield_image",
-        "fregrid_image",
-        "preprocess_image",
-        "containers_root",
-        "container_bindpath",
-    )
-
-    paths = {}
-    for k in dir_keys:
-        paths[k] = cfg.get(k, DEFAULT_CFG[k])
-
-    for k in dir_keys:
-        if k == "container_bindpath":
-            if isinstance(paths[k], list):
-                paths[k] = ",".join(paths[k])
-                paths[k] = base64.b64encode(paths[k].encode("utf-8")).decode("utf-8")
-            continue
-        paths[k] = str(Path(os.path.expandvars(paths[k])))
-        if k in ("jobtmp", "case_root", "archive_root"):
-            if not Path(paths[k]).exists():
-                Path(paths[k]).mkdir(parents=True, exist_ok=True)
-
-    data = {
-        "JOBTMP_DIR": paths["jobtmp"],
-        "CASE_ROOT_DIR": paths["case_root"],
-        "FIX_SRC": paths["fix_src"],
-        "UFS_UTILS_DIR": paths["ufs_utils"],
-        "ARCHIVE_ROOT_DIR": paths["archive_root"],
-        "SHIELD_SIF": paths["shield_image"],
-        "FREGRID_SIF": paths["fregrid_image"],
-        "PREPROCESS_SIF": paths["preprocess_image"],
-        "CONTAINERS_DIR": paths["containers_root"],
-        "CONTAINER_BINDPATH": paths["container_bindpath"],
-    }
-    return data
-
-
-def get_runtime_flags(cfg: dict) -> dict:
-    nnodes = cfg["CASE_NNODES"]
-    ntasks_per_node = cfg["CASE_NTASKS_PER_NODE"]
-    exclusive = cfg["CASE_EXCLUSIVE_NODE"]
-    use_constraint = cfg["CASE_NODE_CONSTRAINT"]
-    n_tasks = cfg["CASE_NTASKS"]
-
-    mem = cfg["CASE_MEM"]
-
-    if mem > n_tasks * 2:  # at least 2GB per task
-        mem_per_cpu = mem // n_tasks
-    else:
-        mem_per_cpu = None
-        mem = None
-
-    if nnodes > 1:
-        if mem_per_cpu is not None:
-            memory_flag = f"--mem-per-cpu={mem_per_cpu}g"
-        else:
-            memory_flag = ""
-        multi_node = 1
-    else:
-        if mem is not None:
-            memory_flag = f"--mem={mem}g"
-        else:
-            memory_flag = ""
-        multi_node = 0
-
-    node_constraint_flag = ""  # --constraint="
-    if use_constraint == 1:
-        tasks = (24, 32, 48, 64)
-        constraint = next(
-            (f"{c}core" for c in tasks if ntasks_per_node <= c), "192core"
-        )
-
-        node_constraint_flag = f"--constraint={constraint}"
-
-        if ntasks_per_node <= 64:
-            exclusive = 1
-
-    exclusive_flag = "--exclusive" if exclusive == 1 else ""
-
-    flags = {
-        "CASE_MEMORY_FLAG": memory_flag,
-        "CASE_EXCLUSIVE_NODE": exclusive,
-        "CASE_MULTI_NODE_FLAG": multi_node,
-        "CASE_NODE_CONSTRAINT_FLAG": node_constraint_flag,
-        "CASE_NODE_EXCLUSIVE_FLAG": exclusive_flag,
-    }
-    return flags
 
 
 def read_yaml(path: Path):
@@ -183,13 +86,98 @@ def read_yaml(path: Path):
     return data
 
 
+def get_paths(cfg: dict):
+
+    paths = {}
+
+    path_mapping = {
+        "JOBTMP_DIR": "jobtmp",
+        "CASE_ROOT_DIR": "case_root",
+        "FIX_SRC": "fix_src",
+        "UFS_UTILS_DIR": "ufs_utils",
+        "ARCHIVE_ROOT_DIR": "archive_root",
+        "SHIELD_SIF": "shield_image",
+        "FREGRID_SIF": "fregrid_image",
+        "PREPROCESS_SIF": "preprocess_image",
+        "CONTAINERS_DIR": "containers_root",
+        "CONTAINER_BINDPATH": "container_bindpath",
+    }
+
+    for k, v in path_mapping.items():
+        value = cfg.get(v, DEFAULT_CFG[v])
+
+        if v == "container_bindpath" and isinstance(value, list):
+            value = ",".join(value)
+            value = base64.b64encode(value.encode("utf-8")).decode("utf-8")
+        else:
+            value = str(Path(os.path.expandvars(value)))
+
+        if v in ("jobtmp", "case_root", "archive_root"):
+            if not Path(value).exists():
+                Path(value).mkdir(parents=True, exist_ok=True)
+
+        paths[k] = value
+
+    return paths
+
+
+def get_runtime_flags(cfg: dict) -> dict:
+    nnodes = cfg["CASE_NNODES"]
+    ntasks_per_node = cfg["CASE_NTASKS_PER_NODE"]
+    exclusive = cfg["CASE_EXCLUSIVE_NODE"]
+    use_constraint = cfg["CASE_NODE_CONSTRAINT"]
+    n_tasks = cfg["CASE_NTASKS"]
+
+    mem = cfg["CASE_MEM"]
+
+    if mem > n_tasks * 2:  # at least 2GB per task
+        mem_per_cpu = mem // n_tasks
+    else:
+        mem_per_cpu = None
+        mem = None
+
+    if nnodes > 1:
+        if mem_per_cpu is not None:
+            memory_flag = f"--mem-per-cpu={mem_per_cpu}g"
+        else:
+            memory_flag = ""
+        multi_node = 1
+    else:
+        if mem is not None:
+            memory_flag = f"--mem={mem}g"
+        else:
+            memory_flag = ""
+        multi_node = 0
+
+    node_constraint_flag = ""  # --constraint="
+    if use_constraint == 1:
+        tasks = (24, 32, 48, 64)
+        constraint = next(
+            (f"{c}core" for c in tasks if ntasks_per_node <= c), "192core"
+        )
+
+        node_constraint_flag = f"--constraint={constraint}"
+
+    exclusive_flag = "--exclusive" if exclusive == 1 else ""
+
+    flags = {
+        "CASE_MEMORY_FLAG": memory_flag,
+        "CASE_EXCLUSIVE_NODE": exclusive,
+        "CASE_MULTI_NODE_FLAG": multi_node,
+        "CASE_NODE_CONSTRAINT_FLAG": node_constraint_flag,
+        "CASE_NODE_EXCLUSIVE_FLAG": exclusive_flag,
+    }
+    return flags
+
+
 def get_config():
     user_cfg = read_yaml(RUN_CFG_PATH)
-    walltime = int(user_cfg.get("walltime", 48))
-    n_nodes = int(user_cfg.get("n_nodes", 2))
-    n_tasks = int(user_cfg.get("n_cpus", 96))
+    default_cfg = read_yaml(DEFAULT_CFG_PATH)
+    walltime = int(user_cfg.get("walltime", default_cfg.get("walltime", 24)))
+    n_nodes = int(user_cfg.get("n_nodes", default_cfg.get("n_nodes", 4)))
+    n_tasks = int(user_cfg.get("n_cpus", default_cfg.get("n_cpus", 192)))
+    partition = user_cfg.get("partition", default_cfg.get("partition", "batch"))
     logfile = user_cfg.get("logfile", "shield_driver")
-    partition = user_cfg.get("partition", "batch")
     exclusive = int(user_cfg.get("exclusive_node", False))
     constraint = int(user_cfg.get("constraint_node", False))
     cpu_per_task = int(user_cfg.get("cpus_per_task", 1))
@@ -197,9 +185,6 @@ def get_config():
 
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
-
-    if walltime > 48:
-        walltime = 48
 
     ensemble_run = user_cfg.get("ensemble_run", False)
     n_ensembles = user_cfg.get("n_ensembles", 0)
@@ -297,8 +282,8 @@ def main():
 
         iter_env = {
             **env,
+            "TOTAL_WALLTIME_TIME": 0,
             "CASE_ENSEMBLE_ID": ensemble_id,
-            "CASE_TOTAL_WALLTIME": 0,
             "SLURM_JOB_NAME": slurm_job_name,
             "SLURM_OPEN_MODE": "truncate",
             "CASE_NAME": case_name,
@@ -328,6 +313,7 @@ def main():
 
             iter_env = {
                 **env,
+                "TOTAL_WALLTIME_TIME": 0,
                 "CASE_ENSEMBLE_ID": ensemble_id,
                 "SLURM_JOB_NAME": slurm_job_name,
                 "SLURM_OPEN_MODE": "truncate",

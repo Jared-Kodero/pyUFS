@@ -21,8 +21,7 @@ export TMP_DIR="$JOBTMP_DIR/tmp"
 if [ -z "$CASE_RUN_START_TIME" ]; then
     export CASE_RUN_START_TIME=$(date +%s)
 fi
-
-SESSION_START_TIME=$(date +%s)
+export SESSION_START_TIME=$(date +%s)
 
 
 cd "$CASE_PWD"
@@ -82,18 +81,20 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
-ON_SUCCESS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
+ON_SUCCESS="rsync -a "$WORK_DIR/" "$CASE_DIR/""
 ON_FAILURE="rsync -a "$WORK_DIR/" "$CASE_DIR/""
 
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
 
-if (( $(<"$EXIT_CODE_FILE") == 0 && CASE_PREPROCESS_ONLY == 1 )); then
+if (( $(<"$EXIT_CODE_FILE") == 0)); then
     $ON_SUCCESS
-    rm -f "$CASE_DATA_SYMLINK"
-    ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
-    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
-    exit 0
+    if (( $CASE_PREPROCESS_ONLY == 1 )); then
+        rm -f "$CASE_DATA_SYMLINK"
+        ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
+        exit 0
+    fi
 fi
 
 if (( CASE_MULTI_NODE_FLAG == 1 )) || [[ -f "$SHIELD_NATIVE" ]]; then
@@ -102,13 +103,11 @@ else
     SHIELD="$SHIELD_PREFIX $WORK_DIR/shield"
 fi
 
-RUN_START_TIME=$(date +%s)
+
 
 (( $(<"$EXIT_CODE_FILE") == 0 )) && $SHIELD
 (( $(<"$EXIT_CODE_FILE") == 0 )) && $FREGRID
 
-
-RUN_END_TIME=$(date +%s)
 
 
 EXIT_CODE=$(<"$EXIT_CODE_FILE")
@@ -119,73 +118,51 @@ if (( SYNC == 1 )); then
 fi
 
 
-elapsed_hours() {
-    awk -v start="$1" -v end="$2" \
-        'BEGIN { printf "%.2f", (end - start) / 3600 }'
-}
-
-add_hours() {
-    awk -v total="$1" -v increment="$2" \
-        'BEGIN { printf "%.2f", total + increment }'
-}
-
 if (( EXIT_CODE == 0 )); then
-    now=$(date +%s)
-    elapsed_session=$(elapsed_hours "$SESSION_START_TIME" "$now")
-    CASE_TOTAL_WALLTIME=$(add_hours "${CASE_TOTAL_WALLTIME}" "$elapsed_session")
+    CURRENT_TIME=$(date +%s)
+    SESSION_ELAPSED_TIME=$(( CURRENT_TIME - SESSION_START_TIME ))
+    TOTAL_WALLTIME_TIME=$(( TOTAL_WALLTIME_TIME + SESSION_ELAPSED_TIME ))
+    
 
     if (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
-        msg="Case $SLURM_JOB_NAME completed"
-        elapsed_total=$(elapsed_hours "$CASE_RUN_START_TIME" "$now")
 
-        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - $msg"
-        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Walltime: ${CASE_TOTAL_WALLTIME} hours."
-        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Time Taken: ${elapsed_total} hours."
-    fi
-fi
+        if (( CASE_ARCHIVE == 1 )); then
 
+            CASE_OUT="$CASE_DIR/OUTPUT"
+            rm -rf "$CASE_DIR"/IC/R*_INPUT
 
-if (( EXIT_CODE == 0 )) && (( CASE_RESUBMIT_INDEX == CASE_RESUBMIT_MAX )); then
-    CASE_OUT="$CASE_DIR/OUTPUT"
-    rm -rf "$CASE_DIR"/IC/R*_INPUT
+            if (( CASE_ENSEMBLES == 1 )); then
+                CASE_ARCHIVE_DIR="$ARCHIVE_DIR/ensembles"
+            else
+                CASE_ARCHIVE_DIR="$ARCHIVE_DIR/case"
+            fi
 
-    if (( CASE_ENSEMBLES == 1 )); then
-        CASE_ARCHIVE_DIR="$ARCHIVE_DIR/ensembles"
-    else
-        CASE_ARCHIVE_DIR="$ARCHIVE_DIR/case"
-    fi
+            mkdir -p "$CASE_ARCHIVE_DIR"
 
-    mkdir -p "$CASE_ARCHIVE_DIR"
+            cp -rf "$CASE_OUT"/*.nc "$CASE_ARCHIVE_DIR/"
+            rm -rf "$CASE_OUT" "$CASE_DIR"/HIST
 
-    if (( CASE_ARCHIVE == 1 )); then
-        cp -rf "$CASE_OUT"/*.nc "$CASE_ARCHIVE_DIR/"
-        rm -rf "$CASE_ARCHIVE_DIR"/atmos_static*
-        rm -rf "$CASE_ARCHIVE_DIR"/grid_spec*
-        rm -rf "$CASE_OUT"
-        rm -rf "$CASE_DIR"/HIST
-        cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/state.yaml"
-        cp -rf "$CASE_DIR"/LOGS/shield "$CASE_ARCHIVE_DIR/shield_log"
+            cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/state.yaml"
+            cp -rf "$CASE_DIR"/LOGS/shield "$CASE_ARCHIVE_DIR/shield_log"
 
-        TARFILE="$ARCHIVE_DIR/case.tar.gz"
+            TARFILE="$ARCHIVE_DIR/case.tar.gz"
 
-        if tar --use-compress-program='pigz -p 32' -cf "$TARFILE" -C "$CASE_DIR" . \
-            && tar -tzf "$TARFILE" > /dev/null; then
-
-            rm -rf "$CASE_DIR"
-            rm -f "$CASE_DATA_SYMLINK"
+            tar --use-compress-program='pigz -p 32' -cf "$TARFILE" -C "$CASE_DIR" .
+            rm -rf "$CASE_DIR" "$CASE_DATA_SYMLINK"
             ln -s "$CASE_ARCHIVE_DIR" "$CASE_DATA_SYMLINK"
-
-            echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $CASE_ARCHIVE_DIR"
-
-            exit 0
-        else
-            echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - ERROR - Failed to archive case directory: $CASE_DIR"
-            rm -f "$TARFILE"
-            exit 1
         fi
-    fi
 
+        to_hours() { awk -v seconds="$1" 'BEGIN {printf "%.2f\n", seconds / 3600}'; }
+        
+        TOTAL_RUNTIME=$(( CURRENT_TIME - CASE_RUN_START_TIME ))
+
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Walltime: $(to_hours "$TOTAL_WALLTIME_TIME") hours."
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Time Taken: $(to_hours "$TOTAL_RUNTIME") hours."
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $CASE_ARCHIVE_DIR"
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Case $SLURM_JOB_NAME completed"
+    fi
 fi
+
 
 
 if (( EXIT_CODE == 0 && CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
