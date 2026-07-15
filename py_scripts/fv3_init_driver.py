@@ -56,12 +56,6 @@ def init_driver():
         run_chgres_cube()
         ensemble_config()
 
-    log.info(f"Staged diag files: {state.work_dir}")
-    log.info(f"Staged grid files: {state.grid}")
-    log.info(f"Staged ic files: {state.input}")
-    log.info(f"Staged fixed files: {state.fix}")
-    log.info(f"Staged mosaic files: {state.grid}")
-
     if state.preprocess_only:
         preprocess_only()
         return

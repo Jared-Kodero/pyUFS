@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 import yaml
-from fv3_paths import paths
+from fv3_paths import case_paths, paths
 from fv3_utils import parse_datetime
 
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -150,6 +150,7 @@ class FV3State(dict):
     shield_image: Path
     fregrid_image: Path
     preprocess_image: Path
+    python_modules: list[Path]
 
     # Runtime environment and diagnostics
     container_bindpath: list[str]
@@ -259,8 +260,11 @@ def save_fv3_state(cfg: dict = None, path: Path = None):
         path.unlink()
 
     for k, v in _cfg.items():
+        if k in case_paths:
+            continue
         if isinstance(v, Path):
             v = str(v)
+
         data[k] = v
 
     data["init_datetime"] = str(data["init_datetime"])
