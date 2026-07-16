@@ -56,6 +56,10 @@ case_name: null # Case identifier; null falls back to directory name
 description: # Short experiment label (REQUIRED for tracking)
 fv3_debug: false # Verbose diagnostics during model run
 archive_data: true # Archive outputs after completion
+merge_freq: -1 # Merge frequency for regridded output, in restart segments.
+# -1 merges the whole run into one file per stream and grid, on the final restart
+#  0 disables merging and retains one file per restart segment
+#  n merges every n restart segments; any remainder is merged on the final restart
 
 # -----------------------------------------------------------------------------
 # 3. EXECUTION CONTROL

@@ -6,8 +6,8 @@ from fv3_ensemble_driver import ensemble_config
 from fv3_external_ic import init_external_ic
 from fv3_ic_data import preprocess_only
 from fv3_namelists import update_nml_configs
-from fv3_nesting import calc_cpu_alloc
 from fv3_pes_config import calc_cpu_alloc
+from fv3_plot_grid import plot_grid
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import log
 from fv3_state import save_fv3_state, state
@@ -57,6 +57,8 @@ def init_driver():
         # Generate ICs
         run_chgres_cube()
         ensemble_config()
+
+        plot_grid()
 
     if state.preprocess_only:
         preprocess_only()

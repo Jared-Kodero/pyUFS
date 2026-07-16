@@ -5,14 +5,37 @@ import cartopy.feature as cfeature
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from fv3_state import state
 from matplotlib.collections import LineCollection
+from matplotlib.colors import hsv_to_rgb, to_hex
 from matplotlib.patches import Rectangle
 from matplotlib.path import Path as MplPath
 
 
-def plot_tiles(grid_dir, target_lon=-72.0, target_lat=42.0):
+def random_colors(n, seed=42):
+    """Return n visually distinct random colors.
+
+    Hues are spaced by the golden ratio from a random offset, so repeated
+    draws stay separated instead of clustering. The seed keeps the two
+    figures consistent with each other and reproducible between runs.
+    """
+    rng = np.random.default_rng(seed)
+    offset = rng.random()
+    hues = (offset + np.arange(n) * 0.618033988749895) % 1.0
+    sats = rng.uniform(0.55, 0.95, n)
+    vals = rng.uniform(0.50, 0.85, n)
+    return [to_hex(hsv_to_rgb([h, s, v])) for h, s, v in zip(hues, sats, vals)]
+
+
+def tile_number(path):
+    """Tile index from a grid file name, used to sort tile10 after tile9."""
+    stem = Path(path).name.split(".tile")[-1]
+    return int(stem.split(".")[0])
+
+
+def plot_tiles(grid_dir: Path, target_lon: float, target_lat: float):
     grid_dir = Path(grid_dir)
-    grid_files = sorted(grid_dir.glob("C*_grid.tile*.nc"))
+    grid_files = sorted(grid_dir.glob("C*_grid.tile*.nc"), key=tile_number)
     datasets = [xr.open_dataset(f) for f in grid_files if f.exists()]
 
     # -------------------- Utilities --------------------
@@ -93,28 +116,28 @@ def plot_tiles(grid_dir, target_lon=-72.0, target_lat=42.0):
 
     # -------------------- Plotting --------------------
 
-    tile_colors = ["#000000"] * 6 + ["#03306b", "#238b45", "#fb4a4a"]
+    tile_colors = random_colors(len(datasets))
     fig, ax = plt.subplots(figsize=(10, 10))
 
     # Outer horizon
     theta = np.linspace(0, 2 * np.pi, 720)
     ax.plot(np.cos(theta), np.sin(theta), color="black", lw=1.5)
 
+    resolutions = []
+
     for i, (ds, color) in enumerate(zip(datasets, tile_colors), start=1):
         lon, lat = load_lonlat(ds)
 
-        # calc cells
-
-        ny = ds.ny.size
-        nx = ds.nx.size
-        print(f"Tile {i}: nx={nx} ny={ny} cells={nx * ny}")
+        # state.res_km[0] is the global grid, [1:] the nests in nest order
+        if i >= 6:
+            resolutions.append(f"Tile {i} ~{state.res_km[i - 6]:.1f} km")
 
         # Get the path of the child to punch a hole in the current parent
         child_path = None
         if i >= 6 and i < len(datasets):
             child_path = get_tile_path(datasets[i])
 
-        subset = 5 if i <= 7 else 5
+        subset = 5
         lon_s, lat_s = lon[::subset, ::subset], lat[::subset, ::subset]
         seg_int, seg_edge = build_segments(lon_s, lat_s)
 
@@ -133,22 +156,17 @@ def plot_tiles(grid_dir, target_lon=-72.0, target_lat=42.0):
         from cartopy.feature import LAND
 
         for geom in LAND.geometries():
-            pts = np.array(geom.exterior.coords[:])
-            x, y, v = ortho_project(pts[:, 0], pts[:, 1], target_lon, target_lat)
-            if np.any(v):
-                ax.fill(x[v], y[v], alpha=0.08, zorder=0, color="black")
-    except Exception as e:
-        print(f"Error occurred while plotting landmask: {e}")
+            # LAND yields MultiPolygon as well as Polygon; .exterior exists
+            # only on Polygon, and one AttributeError would drop all land.
+            for poly in getattr(geom, "geoms", [geom]):
+                pts = np.array(poly.exterior.coords[:])
+                x, y, v = ortho_project(pts[:, 0], pts[:, 1], target_lon, target_lat)
+                if np.any(v):
+                    ax.fill(x[v], y[v], alpha=0.08, zorder=0, color="black")
+    except Exception:
         pass
 
     # telescoping nests with increasing resolution
-
-    resolutions = [
-        "Global (C96) ~100 km",
-        "Tile 6 refined x4 ~25 km",
-        "Tile 7 refined x4 ~6.25 km",
-        "Tile 8 refined x2 ~3 km",
-    ]
 
     # add pathces for legend
     legend_elements = [
@@ -165,17 +183,18 @@ def plot_tiles(grid_dir, target_lon=-72.0, target_lat=42.0):
     ax.axis("off")
     ax.set_title("FV3 C-grid:Telescoping Nests", fontsize=15)
     plt.tight_layout()
-    # plt.savefig(
-    #     "grid.svg", dpi=1200, bbox_inches="tight"
-    # )
+    plt.savefig(state.run_dir / "grid2.png", dpi=1200, bbox_inches="tight")
     plt.show()
 
+    for ds in datasets:
+        ds.close()
 
-# Run it
-# plot_tiles("./your_grid_data/")
+    return resolutions  # ["Tile 6 ~x km", "Tile 7 ~y km", ...]
 
 
-def plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max):
+def plot_platecarree(
+    lon_min: list, lon_max: list, lat_min: list, lat_max: list, resolutions: list
+):
     """
     Plot rectangular geographic domains on a Lambert Conformal projection.
 
@@ -189,14 +208,12 @@ def plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max):
         Southern latitude bounds (degrees north).
     lat_max : list of float
         Northern latitude bounds (degrees north).
+    resolutions : list of str, optional
+        Legend labels for the nests, as returned by plot_tiles.
     """
 
-    proj = ccrs.LambertConformal(
-        central_longitude=-70.0, central_latitude=42.0, standard_parallels=(33, 45)
-    )
-
-    fig = plt.figure(figsize=(8, 6))
-    ax = plt.axes(projection=proj)
+    plt.figure()
+    ax = plt.axes(projection=ccrs.PlateCarree())
 
     ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
     ax.add_feature(cfeature.BORDERS, linewidth=0.5)
@@ -205,13 +222,12 @@ def plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max):
     ax.add_feature(cfeature.LAKES, facecolor="white")
     ax.add_feature(cfeature.STATES, linewidth=0.5)
 
-    tile_colors = [
-        "#03306b",  # light blue
-        "#238b45",  # green
-        "#fb4a4a",  # light red
-    ]
+    n_nests = len(lon_min)
 
-    for i in range(len(lon_min)):
+    # Same seed as plot_tiles, so nest i keeps the colour of tile 7 + i.
+    tile_colors = random_colors(6 + n_nests)[6:]
+
+    for i in range(n_nests):
         width = lon_max[i] - lon_min[i]
         height = lat_max[i] - lat_min[i]
 
@@ -232,12 +248,6 @@ def plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max):
         crs=ccrs.PlateCarree(),
     )
 
-    resolutions = [
-        "Tile 6 refined x4 ~25 km",
-        "Tile 7 refined x4 ~6.25 km",
-        "Tile 8 refined x2 ~3 km",
-    ]
-
     legend_elements = [
         Rectangle((0, 0), 1, 1, color=c, label=c_res)
         for c, c_res in zip(tile_colors, resolutions)
@@ -245,21 +255,29 @@ def plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max):
     ax.legend(
         handles=legend_elements, loc="lower left", fontsize="small", framealpha=0.5
     )
-
-    plt.title(
-        "Domains in Lambert Conformal Projection\n Telescoping Nests", fontsize=14
-    )
     plt.tight_layout()
-
-    plt.savefig("grid.svg", dpi=1200, bbox_inches="tight")
+    plt.savefig(state.run_dir / "grid1.png", dpi=1200, bbox_inches="tight")
     plt.show()
 
 
-# Input data
+def plot_grid():
+    import cartopy
 
+    cartopy_data = state.fix_src / "carto"
+    cartopy.config["pre_existing_data_dir"] = cartopy_data
+    cartopy.config["data_dir"] = cartopy_data
 
-lon_min = [-125, -110, -87]
-lon_max = [-47, -57, -67]
-lat_min = [25, 30, 35]
-lat_max = [60, 55, 47]
-plot_lambert_boxes(lon_min, lon_max, lat_min, lat_max)
+    try:
+        resolutions = plot_tiles(state.grid, state.target_lon, state.target_lat)
+
+        if state.n_nests > 0:
+            plot_platecarree(
+                state.lon_min,
+                state.lon_max,
+                state.lat_min,
+                state.lat_max,
+                resolutions[1:],  # drop Tile 6, the parent, keep the nests
+            )
+
+    except Exception:
+        return
