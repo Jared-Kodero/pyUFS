@@ -8,7 +8,6 @@ from fv3_nesting import (
     get_nest_indices,
     get_nest_tele_indices,
 )
-from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log, tmp_cwd, to_list
 from fv3_state import save_fv3_state, state
 from fv3_utils import cp, rename, run_cmd
@@ -506,5 +505,4 @@ def run_make_grid(
         else:
             raise ValueError(f"Unsupported gtype {gtype}")
 
-        calc_cpu_alloc(Path(state.tmp / "grid"))
         save_fv3_state()

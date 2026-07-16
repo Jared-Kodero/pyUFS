@@ -3,7 +3,6 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log
 from fv3_state import load_fv3_state, state
 
@@ -186,9 +185,6 @@ def init_external_ic() -> bool:
 
     # 4. Validate the exact files the model needs for this configuration.
     _validate_ic_files(c_res=state.c_res, gtype=state.gtype, n_nests=state.n_nests)
-
-    # 5. Compute the CPU allocation from the validated INPUT directory.
-    calc_cpu_alloc(state.input)
 
     _check_sfc_fix_provenance()
 
