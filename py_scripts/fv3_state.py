@@ -104,6 +104,7 @@ class FV3State(dict):
     n_nests: int
     nest_type: str
     refine_ratio: list[int]
+    merge_freq: int
 
     # Note: the original declaration listed parent_tile twice with
     # incompatible types. Retain the appropriate form for your workflow.
