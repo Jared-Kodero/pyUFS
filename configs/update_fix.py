@@ -2,6 +2,7 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 # =============================
@@ -120,6 +121,41 @@ def recreate_symlinks(fix_root: Path) -> None:
 # =============================
 
 
+#!/usr/bin/env python3
+
+
+def download_cartopy_data(output_dir: Path) -> None:
+    os.chdir(output_dir)
+    output_dir = output_dir.expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    command = [
+        sys.executable,
+        "-m",
+        "cartopy.feature.download",
+        "physical",
+        "cultural",
+        "cultural-extra",
+        "gshhs",
+        "--output",
+        str(output_dir),
+    ]
+
+    print(f"Downloading Cartopy data to: {output_dir}")
+    subprocess.run(command, check=True)
+
+    archive_base = output_dir.parent / output_dir.name
+    archive = shutil.make_archive(
+        base_name=str(archive_base),
+        format="gztar",
+        root_dir=output_dir.parent,
+        base_dir=output_dir.name,
+    )
+
+    print(f"\nDownload complete: {output_dir}")
+    print(f"Transfer archive:  {archive}")
+
+
 def main():
     print("=== Starting SHiELD FIX directory update ===")
 
@@ -142,6 +178,8 @@ def main():
         shutil.rmtree(fix_raw)
 
     print("=== FIX update complete ===")
+
+    download_cartopy_data(fix_dir / "carto")
 
 
 if __name__ == "__main__":
