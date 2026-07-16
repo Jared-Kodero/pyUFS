@@ -66,7 +66,6 @@ run_nhours: null # Integration length [hours]
 forecast_hour: 0 # Offset from initialization [hours]
 continue_run: false # Restart from existing files (requires valid restarts)
 resubmit: 0 # Number of sequential job resubmissions
-python_modules: [] # List of Python script paths to run before the model (e.g., for preprocessing or postprocessing)
 
 # -----------------------------------------------------------------------------
 # 4. ENSEMBLE CONFIGURATION
