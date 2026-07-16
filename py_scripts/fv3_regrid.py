@@ -113,10 +113,8 @@ def merge_outputs(
 
 
 def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Dataset:
-    # rename plev to level if it exists
-    if "plev" in ds.coords or "plev" in ds.dims:
-        ds = ds.rename({"plev": "level"})
-        ds = ds.sortby("level", ascending=False)
+
+    ds = ds.sortby("plev", ascending=False)
 
     for var in ds.data_vars:
         ds[var].attrs.update(data_attrs.get(var, {}))
@@ -142,7 +140,7 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
         "standard_name": "longitude",
         "units": "degrees_east",
     }
-    ds["level"].attrs = {
+    ds["plev"].attrs = {
         "axis": "Z",
         "standard_name": "pressure_level",
         "units": "hPa",

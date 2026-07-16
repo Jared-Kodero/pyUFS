@@ -26,16 +26,16 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
         )
         return ds
 
-    ds = ds.sortby("level", ascending=False)
+    ds = ds.sortby("plev", ascending=False)
 
     # Get delta pressure and pressure at layer midpoints
 
-    ds["level"] = ds["level"] * 100.0
-    dp = abs(ds["level"].diff("level"))
-    q = ds["q"].isel(level=slice(1, None))
-    u = ds["u"].isel(level=slice(1, None))
-    v = ds["v"].isel(level=slice(1, None))
-    p = ds["level"].isel(level=slice(1, None))
+    ds["plev"] = ds["plev"] * 100.0
+    dp = abs(ds["plev"].diff("plev"))
+    q = ds["q"].isel(plev=slice(1, None))
+    u = ds["u"].isel(plev=slice(1, None))
+    v = ds["v"].isel(plev=slice(1, None))
+    p = ds["plev"].isel(plev=slice(1, None))
 
     # Set layers below surface pressure to zero
     # dp = dp.broadcast_like(q)
@@ -45,8 +45,8 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
     qu = q * u
     qv = q * v
 
-    ivtu = (qu * dp).sum(dim="level") / g
-    ivtv = (qv * dp).sum(dim="level") / g
+    ivtu = (qu * dp).sum(dim="plev") / g
+    ivtv = (qv * dp).sum(dim="plev") / g
 
     ivtu = _check_dtype(ivtu, ds["q"].dtype)
     ivtv = _check_dtype(ivtv, ds["q"].dtype)
@@ -104,7 +104,7 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
 
     ds["vimfc"] = vimfc
 
-    ds["level"] = ds["level"] / 100.0
+    ds["plev"] = ds["plev"] / 100.0
 
     return ds
 
