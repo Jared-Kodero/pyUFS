@@ -64,9 +64,8 @@ def init_driver():
         preprocess_only()
         return
 
-    calc_cpu_alloc(state.grid)
-
     os.chdir(state.work_dir)
+    calc_cpu_alloc(state.grid)
     update_nml_configs()
     apply_perturbations()
     save_fv3_state()
