@@ -28,8 +28,8 @@ def _expected_tiles(gtype: str, n_nests: int) -> tuple[list[int], list[int]]:
     Return (global_tiles, nest_tiles) for the model configuration.
 
     Conventions verified against fv3_driver_grid.py and fv3_stage_data.py:
-      uniform, stretch, nest   -> global cubed-sphere tiles 1..6
-      regional_gfdl, esg       -> single tile 7
+      uniform, stretch, nest        -> global cubed-sphere tiles 1..6
+      regional_gfdl, regional_esg   -> single tile 7
       nest                     -> additional tiles 7..6+n_nests
     """
     if gtype in ("uniform", "stretch", "nest"):
@@ -71,11 +71,11 @@ def _ic_manifest(
             input_dir / f"oro_data.tile{t}.nc",
         ]
     for t in nest_tiles:
-        idx = t - 5  # nest index convention: tile 7 -> nest2
+        idx = t - 5  # nest index convention: tile 7 -> nest02
         input_required += [
-            input_dir / f"gfs_data.nest{idx}.tile{t}.nc",
-            input_dir / f"sfc_data.nest{idx}.tile{t}.nc",
-            input_dir / f"oro_data.nest{idx}.tile{t}.nc",
+            input_dir / f"gfs_data.nest{idx:02d}.tile{t}.nc",
+            input_dir / f"sfc_data.nest{idx:02d}.tile{t}.nc",
+            input_dir / f"oro_data.nest{idx:02d}.tile{t}.nc",
         ]
 
     min_mosaics = 1 + (int(n_nests) if gtype == "nest" else 0)
@@ -114,20 +114,7 @@ def _validate_ic_files(c_res: int, gtype: str, n_nests: int) -> None:
 
     if failures:
         detail = "; ".join(f"{d}: {', '.join(n)}" for d, n in failures.items())
-        raise FileNotFoundError(f"IC validation failed in {state.case_home}: {detail}")
-
-
-def _check_sfc_fix_provenance() -> None:
-    """
-    Advisory check for the target-grid surface climatology directory
-    (FIXED/fix_sfc). It is a chgres_cube preprocessing input, not a model
-    run-time input, so its absence is not fatal for a cold start from a
-    pre-staged bundle. It is required only to regenerate surface ICs, and
-    only while &namsfc supplies climatology as GRIB (FNxxx = FIXED/*.grb).
-    """
-    sfc_fix = Path(state.fix) / "fix_sfc"
-    if not sfc_fix.is_dir() or not any(sfc_fix.iterdir()):
-        log.warning("FIXED/fix_sfc absent; needed only to regenerate surface ICs.")
+        raise FileNotFoundError(f"IC validation failed in {state.work_dir}: {detail}")
 
 
 def _stage_external_bundle(src: Path, dst: Path) -> None:
@@ -155,9 +142,12 @@ def init_external_ic() -> bool:
     from c_res, gtype, and n_nests, rather than only confirming that the
     staging directories are non-empty.
     """
+    if state.work_dir is None:
+        raise RuntimeError("Cannot stage external IC: work_dir is not set")
+
+    case_home = Path(state.work_dir)
     external = bool(state.external_ic_dir)
-    ic_dir = Path(state.external_ic_dir) if external else Path(state.case_home)
-    case_home = Path(state.case_home)
+    ic_dir = Path(state.external_ic_dir) if external else case_home
 
     # 1. Top-level staging directories must be present and non-empty.
     required_dirs = ("FIXED", "GRID", "INPUT")
@@ -176,16 +166,14 @@ def init_external_ic() -> bool:
         _stage_external_bundle(ic_dir, case_home)
         log.info(f"Copied external IC data from {ic_dir} to {case_home}")
     else:
-        log.info(f"IC data found directly in {case_home}")
+        log.info(f"IC data source: {case_home}")
 
     # 3. Load the state descriptor. This drives the required-file manifest.
     if not (case_home / "state.yaml").exists():
         raise FileNotFoundError(f"Missing state.yaml in {case_home}")
-    load_fv3_state(merge=True)
+    load_fv3_state()
 
     # 4. Validate the exact files the model needs for this configuration.
     _validate_ic_files(c_res=state.c_res, gtype=state.gtype, n_nests=state.n_nests)
-
-    _check_sfc_fix_provenance()
 
     return True

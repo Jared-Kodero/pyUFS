@@ -196,7 +196,7 @@ def run_driver(
             c_res=c_res,
             tile_idx=0,  # parent tile 6 is always tile_idx 0 for nesting
             grid_dir=None,
-            parent_tile=[6],
+            parent_tile=6,
             i_refine_ratio=refine_ratio[0]
             if isinstance(refine_ratio, list)
             else refine_ratio,

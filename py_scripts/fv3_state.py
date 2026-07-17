@@ -106,8 +106,6 @@ class FV3State(dict):
     refine_ratio: list[int]
     merge_freq: int
 
-    # Note: the original declaration listed parent_tile twice with
-    # incompatible types. Retain the appropriate form for your workflow.
     parent_tile: list[int]  # or int
 
     istart_nest: list[int]
@@ -274,25 +272,29 @@ def save_fv3_state(cfg: dict = None, path: Path = None):
         yaml.safe_dump(dict(data), f, default_flow_style=None, sort_keys=False)
 
 
-def load_fv3_state(merge: bool = False):
+def load_fv3_state():
     """
-    Load the previous state from a YAML file, if it exists
+    Load the previous state from a YAML file, if it exists.
+
+    Values from the previous state override values in the current state.
     """
     path = Path(paths["work_dir"]) / "state.yaml"
     if not path.exists():
         log.info(f"No previous state file found at {path}. Starting with empty state.")
         return
 
-    prev_state.clear()
-    with open(path, "r") as f:
+    with path.open("r") as f:
         data = yaml.safe_load(f)
 
-        data = parse_datetime(data)
-        prev_state.update(data)
-        prev_state.update(paths)
-        state.update(paths)
+    data = parse_datetime(data)
+    prev_state.clear()
+    prev_state.update(data)
+    prev_state.update(paths)
 
-    if merge:
-        new_state = FV3State({**prev_state, **state})
-        state.update(new_state)
-        save_fv3_state()
+    state.update(paths)
+
+    # Later mappings win, so prev_state overrides state.
+    new_state = FV3State({**state, **prev_state})
+    state.update(new_state)
+
+    save_fv3_state()
