@@ -87,14 +87,14 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
-ON_SUCCESS="rsync -a "$WORK_DIR/" "$CASE_DIR/""
-ON_FAILURE="rsync -a "$WORK_DIR/" "$CASE_DIR/""
+SYNC_DIRS="rsync -a "$WORK_DIR/" "$CASE_DIR/""
+
 
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
 
 if (( $(<"$EXIT_CODE_FILE") == 0)); then
-    $ON_SUCCESS
+    $SYNC_DIRS
     if (( $CASE_PREPROCESS_ONLY == 1 )); then
         rm -f "$CASE_DATA_SYMLINK"
         ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
@@ -119,8 +119,7 @@ fi
 EXIT_CODE=$(<"$EXIT_CODE_FILE")
 
 if (( SYNC == 1 )); then
-    (( EXIT_CODE == 0 )) && $ON_SUCCESS
-    (( EXIT_CODE != 0 )) && $ON_FAILURE
+    $SYNC_DIRS
 fi
 
 
@@ -179,6 +178,8 @@ if (( EXIT_CODE == 0 && CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
     scontrol top "$JOB_ID"
     exit 0
 fi
+
+
 
 
 exit $EXIT_CODE

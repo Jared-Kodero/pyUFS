@@ -15,8 +15,9 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception:
-        exit_code(-1)
-        raise
+    # try:
+    main()
+    exit_code(0)
+# except Exception:
+#     exit_code(-1)
+#     raise

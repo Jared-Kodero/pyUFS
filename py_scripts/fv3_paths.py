@@ -15,7 +15,8 @@ env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
 env_paths["run_dir"] = Path(os.getenv("CASE_PWD"))
 env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
 env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
-
+env_paths["ufs_utils"] = Path(__file__).resolve().parent.parent
+env_paths["configs"] = Path(__file__).resolve().parent.parent / "configs"
 
 case_paths = {}
 case_paths["tmp"] = env_paths["work_dir"] / "TMP"

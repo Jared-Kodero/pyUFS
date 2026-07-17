@@ -1,6 +1,6 @@
 from fv3_namelists import restart_config, update_table_files
 from fv3_runscripts import gen_shield_run_sh
-from fv3_state import FV3State, compute_checksum, prev_state, save_fv3_state, state
+from fv3_state import FV3State, compute_checksum, save_fv3_state, state
 from fv3_utils import env_setup
 from sm_perturbations import apply_perturbations
 
@@ -36,7 +36,7 @@ def check_prev_state(params: FV3State) -> None:
         raise ValueError(f"Invalid resubmit state: {idx=} {max_idx=}")
 
     checksum = compute_checksum(params)
-    if idx > 0 and prev_state.get("checksum") != checksum:
+    if idx > 0 and state.get("checksum") != checksum:
         raise RuntimeError("Restart configuration does not match previous state.")
 
     run_hours = params.run_nhours
@@ -65,10 +65,6 @@ def check_prev_state(params: FV3State) -> None:
 
 def restart_driver():
     env_setup()
-
-    for k, v in state.items():
-        prev_state[k] = v
-    state.update(dict(prev_state))
 
     for file in state.work_dir.glob("*"):
         if str(file).endswith((".out")):

@@ -57,6 +57,9 @@ class FV3State(dict):
     continue_run: bool
     warm_start: bool
     preprocess_only: bool
+    preprocess_grid_only: bool
+    preprocess_orog_only: bool
+
     restart_no: int
     total_restarts: int
     resubmit: int
@@ -149,7 +152,6 @@ class FV3State(dict):
     shield_image: Path
     fregrid_image: Path
     preprocess_image: Path
-    python_modules: list[Path]
 
     # Runtime environment and diagnostics
     container_bindpath: list[str]
@@ -171,7 +173,6 @@ class FV3State(dict):
 
 
 state = FV3State({})
-prev_state = FV3State({})
 
 env_vars = {
     "case_name": os.getenv("CASE_NAME"),
@@ -183,8 +184,6 @@ env_vars = {
     "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", 0))),
     "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", 0)),
     "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", 0)),
-    "ufs_utils": Path(__file__).resolve().parent.parent,
-    "configs": Path(__file__).resolve().parent.parent / "configs",
 }
 
 state.update(env_vars)
@@ -280,21 +279,27 @@ def load_fv3_state():
     """
     path = Path(paths["work_dir"]) / "state.yaml"
     if not path.exists():
-        log.info(f"No previous state file found at {path}. Starting with empty state.")
         return
 
     with path.open("r") as f:
         data = yaml.safe_load(f)
 
     data = parse_datetime(data)
-    prev_state.clear()
-    prev_state.update(data)
-    prev_state.update(paths)
+    prev_state = FV3State(**data)
 
-    state.update(paths)
+    for k, v in paths.items():
+        paths[k] = Path(v)
+
+    keep = {
+        "checksum": state.checksum,
+        "restart_no": state.restart_no,
+        "resubmit_idx": state.resubmit_idx,
+        "max_resubmit": state.resubmit,
+        "total_restarts": state.total_restarts,
+        "run_nhours": state.run_nhours,
+        "warm_start": state.warm_start,
+    }
 
     # Later mappings win, so prev_state overrides state.
-    new_state = FV3State({**state, **prev_state})
-    state.update(new_state)
-
+    state.update({**state, **prev_state, **paths, **keep})
     save_fv3_state()

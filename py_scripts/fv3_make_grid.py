@@ -381,6 +381,7 @@ def run_make_grid(
     jdim: int = None,
     delx: float = None,
     dely: float = None,
+    mod_dir: Path = None,
 ):
     """
     Generate FV3 grid NetCDF files and a mosaic using fv3 grid tools.
@@ -436,7 +437,19 @@ def run_make_grid(
     nest_resolutions : list of int, optional
         List of grid resolutions for the telescoping hierarchy, including the
         global resolution as the first element.
+    mod_dir : Path, optional
+
     """
+
+    if mod_dir.exists() and len(mod_dir.glob("*")) > 0:
+        src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
+        log.info(f"Using existing grid files from {src}")
+
+        files_to_copy = list(mod_dir.glob("*"))
+        for file in files_to_copy:
+            cp(file, out_dir / file.name)
+        save_fv3_state()
+        return
 
     regional_esg_grid = exec_dir / "regional_esg_grid"
     make_hgrid = exec_dir / "make_hgrid"

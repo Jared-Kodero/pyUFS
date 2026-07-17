@@ -212,8 +212,12 @@ def validate_hrrr_bounds(tile: int) -> str:
 
 def preprocess_only():
     files_to_rm = []
-    for pattern in ["*run.id", "*.out", "shield.native", "*table*"]:
+    for pattern in ["*.out", "shield.native", "*table*"]:
         files_to_rm.extend(state.work_dir.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
+    state.resubmit_idx = 0
+    state.restart_no = 0
+    state.preprocess_only = False
+
     save_fv3_state()
     log.info("IC files generated successfully")
