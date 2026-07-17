@@ -175,6 +175,7 @@ def run_make_mosaic(
     gtype: str,
     exec_dir: Path,
     out_dir: Path,
+    mod_dir: Path = None,
 ):
     """
     Generate a cubed-sphere mosaic file for the FV3 dynamical core.
@@ -204,6 +205,9 @@ def run_make_mosaic(
         output is usually named `C{c_res}_mosaic.nc` or similar.
 
     """
+
+    if mod_dir.exists() and len(mod_dir.glob("*")) > 0:
+        return
 
     log.info("Generating grid mosaics")
 

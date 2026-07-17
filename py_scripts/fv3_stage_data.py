@@ -10,6 +10,7 @@ from fv3_utils import cp, rename
 
 
 def stage_files() -> None:
+
     log.info("Staging requred files and data")
 
     n_nests = state.n_nests
@@ -58,13 +59,13 @@ def stage_files() -> None:
 
             cp(f, dest)
 
-    fix_sfc_files = (state.tmp / "ic" / "fix_sfc").glob("*")
+    fix_sfc_files = (state.tmp / "input" / "fix_sfc").glob("*")
     for f in fix_sfc_files:
         f = Path(f)
         if f.is_symlink() and f.name.startswith("."):
             f.unlink()
 
-    tmp_ic_dir_files = (state.tmp / "ic").glob("*")
+    tmp_ic_dir_files = (state.tmp / "input").glob("*")
     for f in tmp_ic_dir_files:
         dest_file = state.input / f.name
 

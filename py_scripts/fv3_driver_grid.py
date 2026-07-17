@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from fv3_filter_topo import run_filter_topo
@@ -10,7 +11,7 @@ from fv3_nesting import get_nest_indices
 from fv3_runtime import get_newres, log
 from fv3_shave import run_shave
 from fv3_state import save_fv3_state, state
-from fv3_utils import cp
+from fv3_utils import clear_dir, cp
 from sfc_climo_gen import run_sfc_climo_gen
 
 
@@ -50,7 +51,7 @@ def run_driver(
     Clean, fully ordered, consistent with original bash workflow.
     """
 
-    tmp_ic_dir = tmp / "ic"
+    tmp_ic_dir = tmp / "input"
     tmp_ic_dir.mkdir(parents=True, exist_ok=True)
 
     # ==========================================================
@@ -77,6 +78,7 @@ def run_driver(
             delx=delx,
             dely=dely,
             parent_tile=parent_tile,
+            mod_dir=state.ic_data / "grid",
         )
 
         run_make_mosaic(
@@ -84,7 +86,22 @@ def run_driver(
             gtype=gtype,
             exec_dir=exe_dir,
             out_dir=tmp / "grid",
+            mod_dir=state.ic_data / "grid",
         )
+
+        if state.preprocess_grid_only:
+            cp(tmp / "grid", state.ic_data / "grid")
+            clear_dir(tmp / "grid")
+
+            path = str(state.ic_data / "grid").replace(
+                str(state.work_dir), str(state.case_dir)
+            )
+
+            state.preprocess_grid_only = False
+            save_fv3_state()
+            log.info(f"Grid files staged in {path}")
+            sys.exit(0)
+            return
 
         if gtype == "nest":
             n_tiles = 6 + n_nests
@@ -103,6 +120,7 @@ def run_driver(
             orog_dir=orog_dir,
             exec_dir=exe_dir,
             tmp=tmp,
+            mod_dir=state.ic_data / "orography",
         )
 
         run_make_orog_gsl(
@@ -115,7 +133,20 @@ def run_driver(
             topo_dir=orog_dir,
             exec_dir=exe_dir,
             tmp=tmp,
+            mod_dir=state.ic_data / "orography",
         )
+
+        if state.preprocess_orog_only:
+            cp(tmp / "orog", state.ic_data / "orography")
+            clear_dir(tmp / "orog")
+            path = str(state.ic_data / "orography").replace(
+                str(state.work_dir), str(state.case_dir)
+            )
+            state.preprocess_orog_only = False
+            save_fv3_state()
+            log.info(f"Orography files staged in {path}")
+            sys.exit(0)
+            return
 
         # --- Add lake fraction if requested ---
 
@@ -144,7 +175,7 @@ def run_driver(
         elif gtype == "nest":
             run_filter_topo(
                 c_res=c_res,
-                gtype="stretch",
+                gtype=gtype,
                 exec_dir=exe_dir,
                 grid_dir=tmp / "grid",
                 orog_dir=tmp / "orog",
@@ -292,6 +323,14 @@ def run_driver(
                 out_dir=tmp / "grid",
             )
 
+            if state.preprocess_grids_only:
+                state.grids_preprocessed = True
+                log.info(
+                    "Preprocess grids only requested. Exiting after grid generation."
+                )
+                save_fv3_state()
+                return
+
         # --- Replace c_res with derived resolution ---
         old_res = c_res
         c_res = get_newres(tmp / "grid" / f"C{c_res}_grid.tile7.nc")
@@ -311,6 +350,14 @@ def run_driver(
             exec_dir=exe_dir,
             tmp=tmp,
         )
+
+        if state.preprocess_orography_only:
+            state.orography_preprocessed = True
+            log.info(
+                "Preprocess orography only requested. Exiting after orography generation."
+            )
+            save_fv3_state()
+            return
 
         run_add_lakefrac(
             add_lake=add_lake,

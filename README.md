@@ -102,6 +102,25 @@ generate_ic_data: false
 external_ic_dir: /path/to/prestaged_case
 ```
 
+## Modifying Orography
+
+To modify the orography, set the following option in the YAML configuration:
+
+```yaml
+preprocess_orog_only: true
+```
+
+Submit the job. The `shield_driver*.log` file will report the directory where the orography files were staged.
+
+Before modifying the files:
+
+1. Copy the staged orography files to a separate backup directory.
+2. Modify both the `orog_filt` and `orog_raw` variables. These variables must be updated together to maintain consistency.
+3. Place the modified files back into the original staging directory.
+4. Preserve the original filenames exactly.
+
+
+
 If you are building your own external IC pipeline, use the repository code as the handoff point rather than trying to mutate the default files in place. The `py_scripts/era5_to_fv3.py` and related helpers are good starting references for a custom conversion flow.
 
 ## Config Reference

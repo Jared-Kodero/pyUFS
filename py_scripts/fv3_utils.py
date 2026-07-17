@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from collections import namedtuple
@@ -127,6 +128,19 @@ def cp(src: str | Path, dest: str | Path):
     if result != 0:
         log.error(msgs)
         raise RuntimeError(f"Failed to copy file: {src} to {dest}")
+
+
+def clear_dir(directory: str | Path) -> None:
+    """
+    Remove all files and directories in the specified directory.
+    """
+    path = Path(directory)
+
+    for item in path.iterdir():
+        if item.is_dir() and not item.is_symlink():
+            shutil.rmtree(item)
+        else:
+            item.unlink()
 
 
 def env_setup():
