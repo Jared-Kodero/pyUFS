@@ -118,7 +118,7 @@ fi
 
 EXIT_CODE=$(<"$EXIT_CODE_FILE")
 
-if (( SYNC == 1 )); then
+if  (( EXIT_CODE == 0 && SYNC == 1 )); then
     $SYNC_DIRS
 fi
 
