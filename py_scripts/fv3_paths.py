@@ -32,10 +32,10 @@ case_paths["ic_data"] = env_paths["work_dir"] / "IC"
 paths = {**env_paths, **case_paths}
 
 
-def configure_directories(params: FV3State) -> dict:
-    params = parse_dirs(params)
+def configure_directories(state: FV3State) -> dict:
+    state = parse_dirs(state)
 
-    config_restart_dir({**env_paths, **case_paths}, params)
+    config_restart_dir({**env_paths, **case_paths}, state)
 
     def _clear(path: Path) -> None:
         if not path.exists():
@@ -45,7 +45,7 @@ def configure_directories(params: FV3State) -> dict:
         else:
             path.unlink()
 
-    if params.warm_start:
+    if state.warm_start:
         _clear(paths["restarts"])
         _clear(paths["hist"])
 

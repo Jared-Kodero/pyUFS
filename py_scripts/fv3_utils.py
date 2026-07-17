@@ -1,3 +1,5 @@
+# utils.py
+
 import logging
 import os
 import shutil
@@ -242,3 +244,74 @@ def parse_resolution(in_str):
         )
 
     return c_res
+
+
+def format_forecast_length(nhours: int) -> str:
+    """Convert forecast length in hours to a readable string.
+
+    Months are approximated as 30 days.
+    """
+    hours_per_day = 24
+    hours_per_month = 30 * hours_per_day
+
+    months, remainder = divmod(nhours, hours_per_month)
+    days, hours = divmod(remainder, hours_per_day)
+
+    parts = []
+
+    if months:
+        parts.append(f"{months} month{'s' if months != 1 else ''}")
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours or not parts:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+
+    return " ".join(parts)
+
+
+def _read_required_env_int(name: str) -> int:
+    value = os.getenv(name)
+
+    if value is None:
+        raise RuntimeError(f"Required environment variable {name} is not set.")
+
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Environment variable {name} must be an integer, got {value!r}."
+        ) from exc
+
+
+def runtime_env_vars() -> dict[str, object]:
+    """Read scheduler and case metadata from the runtime environment."""
+    case_name = os.getenv("CASE_NAME")
+
+    values: dict[str, object] = {
+        "case_name": case_name,
+        "n_cpus": _read_required_env_int("CASE_NTASKS"),
+        "n_nodes": int(os.getenv("CASE_NNODES", "1")),
+        "ensemble_id": int(os.getenv("CASE_ENSEMBLE_ID", "0")),
+        "n_ensembles": int(os.getenv("CASE_ENSEMBLES", "0")),
+        "n_cpus_per_node": _read_required_env_int("CASE_NTASKS_PER_NODE"),
+        "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", "0"))),
+        "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", "0")),
+        "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", "0")),
+    }
+
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def require_minimum_cpus(minimum: int = 32) -> int:
+    """Validate the number of CPUs visible to the current process."""
+    try:
+        available = len(os.sched_getaffinity(0))
+    except AttributeError:
+        available = os.cpu_count() or 1
+
+    if available < minimum:
+        raise RuntimeError(
+            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum} is required."
+        )
+
+    return available

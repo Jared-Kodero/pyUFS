@@ -22,7 +22,7 @@ import xarray as xr
 from fv3_state import state
 from matplotlib.collections import LineCollection
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
-from matplotlib.patches import Rectangle
+from matplotlib.patches import PathPatch, Rectangle
 from matplotlib.path import Path as MplPath
 
 N_GLOBAL_TILES = 6
@@ -211,10 +211,12 @@ def get_tile_path(ds):
     return MplPath(np.column_stack([b_lon, b_lat]))
 
 
-def ortho_project(lon_deg, lat_deg, lon0_deg=0.0, lat0_deg=0.0):
-    """Orthographic projection onto the plane tangent at (lon0, lat0).
+def ortho_project(lon_deg, lat_deg, lon0_deg=0.0, lat0_deg=0.0, roll_deg=0.0):
+    """Orthographic projection onto the tangent plane at ``(lon0, lat0)``.
 
-    Returns x, y in Earth radii and a boolean mask of the visible hemisphere.
+    ``roll_deg`` rotates the tangent plane clockwise.  Setting it to the angle
+    of the tile's increasing-i direction preserves the native cubed-sphere
+    orientation instead of forcing geographic north to the top.
     """
     lon0_deg = lon0_deg % 360
     lon, lat = np.deg2rad(lon_deg), np.deg2rad(lat_deg)
@@ -224,7 +226,34 @@ def ortho_project(lon_deg, lat_deg, lon0_deg=0.0, lat0_deg=0.0):
     visible = (X * cx + Y * cy + Z * cz) > 0.0
     x = np.cos(lat) * np.sin(lon - lon0)
     y = np.cos(lat0) * np.sin(lat) - np.sin(lat0) * np.cos(lat) * np.cos(lon - lon0)
+
+    if roll_deg:
+        angle = np.deg2rad(roll_deg)
+        c, s = np.cos(angle), np.sin(angle)
+        x, y = c * x + s * y, -s * x + c * y
+
     return x, y, visible
+
+
+def computational_roll_deg(lon, lat, lon0, lat0):
+    """Clockwise roll that makes the tile's increasing-i axis horizontal."""
+    j = lon.shape[0] // 2
+    i = lon.shape[1] // 2
+    i0 = max(i - 1, 0)
+    i1 = min(i + 1, lon.shape[1] - 1)
+    x, y, _ = ortho_project(
+        lon[j, [i0, i1]], lat[j, [i0, i1]], lon0, lat0, roll_deg=0.0
+    )
+    return float(np.rad2deg(np.arctan2(y[1] - y[0], x[1] - x[0])))
+
+
+def projected_tile_path(lon, lat, lon0, lat0, roll_deg):
+    """Closed tile boundary as a path in the rolled tangent plane."""
+    b_lon = np.concatenate([lon[0, :], lon[:, -1], lon[-1, ::-1], lon[::-1, 0]])
+    b_lat = np.concatenate([lat[0, :], lat[:, -1], lat[-1, ::-1], lat[::-1, 0]])
+    x, y, visible = ortho_project(b_lon, b_lat, lon0, lat0, roll_deg)
+    vertices = np.column_stack([x[visible], y[visible]])
+    return MplPath(vertices, closed=True)
 
 
 def tile_center(lon, lat):
@@ -357,10 +386,10 @@ def _inside_any(paths, lon, lat):
     return inside
 
 
-def project_segment(lon, lat, lon0_deg, lat0_deg, mask_paths=None):
+def project_segment(lon, lat, lon0_deg, lat0_deg, mask_paths=None, roll_deg=0.0):
     """Project one grid line, dropping points hidden by the limb or falling
     inside any mask path, and split the remainder into continuous chunks."""
-    x, y, vis = ortho_project(lon, lat, lon0_deg, lat0_deg)
+    x, y, vis = ortho_project(lon, lat, lon0_deg, lat0_deg, roll_deg)
 
     if mask_paths:
         vis = vis & ~_inside_any(mask_paths, lon, lat)
@@ -391,6 +420,7 @@ def draw_tile_mesh(
     lat0,
     km_per_inch,
     mask_paths=None,
+    roll_deg=0.0,
     page_spacing=MESH_PAGE_SPACING_IN,
     interior_lw=0.3,
     edge_lw=1.2,
@@ -409,7 +439,9 @@ def draw_tile_mesh(
     seg_int, seg_edge = build_segments(lon_s, lat_s)
 
     for L, A in seg_int:
-        chunks = project_segment(L, A, lon0, lat0, mask_paths=mask_paths)
+        chunks = project_segment(
+            L, A, lon0, lat0, mask_paths=mask_paths, roll_deg=roll_deg
+        )
         if chunks:
             ax.add_collection(
                 LineCollection(
@@ -420,36 +452,54 @@ def draw_tile_mesh(
     # Edges are never masked, so the boundary of a host and the boundary of its
     # nest remain coincident.
     for L, A in seg_edge:
-        chunks = project_segment(L, A, lon0, lat0)
+        chunks = project_segment(L, A, lon0, lat0, roll_deg=roll_deg)
         if chunks:
             ax.add_collection(
                 LineCollection(chunks, lw=edge_lw, colors=color, zorder=zorder + 1)
             )
 
 
-def draw_land(ax, lon0, lat0, color=LAND_FILL, alpha=0.3, zorder=0):
-    """Fill land polygons in orthographic view. Failure is non-fatal."""
+def draw_land(
+    ax,
+    lon0,
+    lat0,
+    roll_deg=0.0,
+    clip_path=None,
+    color=LAND_FILL,
+    alpha=0.3,
+    zorder=0,
+):
+    """Fill land only inside the current tile boundary."""
     try:
         for geom in cfeature.LAND.geometries():
-            # LAND yields MultiPolygon as well as Polygon; .exterior exists
-            # only on Polygon, and one AttributeError would drop all land.
             for poly in getattr(geom, "geoms", [geom]):
                 pts = np.asarray(poly.exterior.coords[:])
-                x, y, v = ortho_project(pts[:, 0], pts[:, 1], lon0, lat0)
+                x, y, v = ortho_project(
+                    pts[:, 0], pts[:, 1], lon0, lat0, roll_deg=roll_deg
+                )
                 if np.any(v):
-                    ax.fill(x[v], y[v], alpha=alpha, zorder=zorder, color=color)
+                    patches = ax.fill(
+                        x[v], y[v], alpha=alpha, zorder=zorder, color=color
+                    )
+                    if clip_path is not None:
+                        for patch in patches:
+                            patch.set_clip_path(clip_path)
     except Exception:
         return
 
 
-def draw_horizon(ax, lw=0.8, color=HORIZON_COLOR, zorder=1):
+def draw_horizon(
+    ax, roll_deg=0.0, clip_path=None, lw=0.8, color=HORIZON_COLOR, zorder=1
+):
     theta = np.linspace(0, 2 * np.pi, 720)
-    ax.plot(np.cos(theta), np.sin(theta), color=color, lw=lw, zorder=zorder)
+    (line,) = ax.plot(np.cos(theta), np.sin(theta), color=color, lw=lw, zorder=zorder)
+    if clip_path is not None:
+        line.set_clip_path(clip_path)
 
 
-def tile_extent(lon, lat, lon0, lat0, pad=0.08):
+def tile_extent(lon, lat, lon0, lat0, roll_deg=0.0, pad=0.08):
     """Axis limits enclosing the visible part of a tile, with fractional pad."""
-    x, y, v = ortho_project(lon, lat, lon0, lat0)
+    x, y, v = ortho_project(lon, lat, lon0, lat0, roll_deg)
     if not np.any(v):
         return (-1.05, 1.05), (-1.05, 1.05)
     x, y = x[v], y[v]
@@ -522,14 +572,23 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
         ax = axes[f - 1]
         lon, lat = load_lonlat(datasets[f - 1])
         lon0, lat0 = tile_center(lon, lat)
+        roll_deg = computational_roll_deg(lon, lat, lon0, lat0)
 
         # Limits are fixed first: each panel is zoomed to its own face, so its
         # map scale, and therefore its stride, follows from the zoom.
-        xlim, ylim = tile_extent(lon, lat, lon0, lat0)
+        xlim, ylim = tile_extent(lon, lat, lon0, lat0, roll_deg=roll_deg)
         km_per_inch = page_km_per_inch(xlim[1] - xlim[0], PANEL_FIG_IN)
 
-        draw_land(ax, lon0, lat0)
-        draw_horizon(ax)
+        tile_clip = PathPatch(
+            projected_tile_path(lon, lat, lon0, lat0, roll_deg),
+            transform=ax.transData,
+            facecolor="white",
+            edgecolor="none",
+            zorder=-1,
+        )
+        ax.add_patch(tile_clip)
+        draw_land(ax, lon0, lat0, roll_deg=roll_deg, clip_path=tile_clip)
+        draw_horizon(ax, roll_deg=roll_deg, clip_path=tile_clip)
 
         draw_tile_mesh(
             ax,
@@ -540,6 +599,7 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
             lat0,
             km_per_inch,
             mask_paths=paths_of_children(f),
+            roll_deg=roll_deg,
             interior_lw=0.25,
             edge_lw=1.0,
             alpha=0.55,
@@ -561,6 +621,7 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
                 lat0,
                 km_per_inch,
                 mask_paths=paths_of_children(nest_tile(k)),
+                roll_deg=roll_deg,
                 interior_lw=0.3,
                 edge_lw=1.1,
                 alpha=0.85,

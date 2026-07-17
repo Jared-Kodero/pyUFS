@@ -14,12 +14,12 @@ import numpy as np
 import xarray as xr
 from derived_vars import calc_derived_vars
 from fv3_runtime import exit_code, get_stream_handles
-from fv3_state import load_fv3_state, state
+from fv3_state import load_fv3_state
 from fv3_utils import cres_to_deg, env_setup
 from pyfregrid import fregrid
 
 warnings.filterwarnings("ignore")
-load_fv3_state()  # ensure pstate is populated before any function calls
+state = load_fv3_state()
 
 log = logging.getLogger("REGRIDDER")
 
@@ -197,7 +197,6 @@ def merge_outputs(
     window = merge_window(restart_no, total_restarts, merge_freq)
 
     if window is None:
-        log.info(f"No merge at restart {restart_no} (merge_freq = {merge_freq})")
         return
 
     first, last = window
