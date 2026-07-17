@@ -57,7 +57,7 @@ def make_nested_grid(
             c_res=c_res,
             tile_idx=i,
             grid_dir=out_dir,
-            parent_tile=parent_tile,
+            parent_tile=i_parent_tile,
             i_refine_ratio=i_refine_ratio,
             tile=tile,
         )
