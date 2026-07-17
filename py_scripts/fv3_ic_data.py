@@ -216,3 +216,4 @@ def preprocess_only():
         files_to_rm.extend(state.work_dir.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
     save_fv3_state()
+    log.info("IC files generated successfully")
