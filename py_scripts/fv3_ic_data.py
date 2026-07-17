@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import time
 from pathlib import Path
@@ -8,9 +7,8 @@ from typing import Literal
 
 import numpy as np
 import xarray as xr
-from fv3_pes_config import calc_cpu_alloc
 from fv3_runtime import log
-from fv3_state import load_fv3_state, save_fv3_state, state
+from fv3_state import save_fv3_state, state
 from fv3_utils import run_cmd
 from pyproj import Proj
 
@@ -218,44 +216,3 @@ def preprocess_only():
         files_to_rm.extend(state.work_dir.glob(pattern))
     subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
     save_fv3_state()
-
-
-def init_external_ic() -> bool:
-
-    ic_dir = state.external_ic_dir or state.work_dir
-    ic_at_home = not state.external_ic_dir
-
-    ic_dir = Path(ic_dir)
-    required = ("FIXED", "GRID", "INPUT")
-
-    # state.file
-
-    yml_cfg = state.work_dir / "state.yml"
-
-    missing = [
-        d
-        for d in required
-        if not (ic_dir / d).is_dir() or not any((ic_dir / d).iterdir())
-    ]
-    if missing:
-        raise FileNotFoundError(
-            f"Incomplete IC staging in {state.work_dir}: {', '.join(missing)} missing or empty"
-        )
-
-    if not ic_at_home:
-        os.system(f"cp -rf {ic_dir}/* {state.work_dir}/")
-        log.info(
-            f"Copied external IC data from {state.external_ic_dir} to {state.work_dir}"
-        )
-    else:
-        log.info(f"IC data was found directly in {state.work_dir}")
-
-    if not yml_cfg.exists():
-        raise FileNotFoundError(
-            f"Missing state.yml in {state.work_dir}. Cannot load FV3 state."
-        )
-
-    load_fv3_state(merge=True)
-    calc_cpu_alloc(state.input)
-
-    return True

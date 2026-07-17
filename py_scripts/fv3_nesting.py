@@ -154,14 +154,12 @@ def gen_global_nest_parent(c_res: int, grid_dir: Path = None) -> Path:
 
 
 def calc_parent_grid_index(
+    idx: int,
     grid_fname: Path,
-    lon_min: float,
-    lon_max: float,
-    lat_min: float,
-    lat_max: float,
     i_refine_ratio: int,
     alignment: int = 16,
     tile: int = None,
+    update_bounds: bool = False,
 ):
     """
     Compute supergrid index bounds for an FV3 two-way nest.
@@ -179,6 +177,8 @@ def calc_parent_grid_index(
     grid_fname : str
         Path to the parent supergrid file with variables x and y of
         shape (nyp, nxp).
+    idx : int
+        Index of the domain for which to compute nest indices.
     lon_min, lon_max : float
         Longitude bounds in degrees east; reduced modulo 360.
     lat_min, lat_max : float
@@ -188,6 +188,12 @@ def calc_parent_grid_index(
     alignment : int
         Required divisor of the nest cell count along each axis.
     """
+
+    lon_min = state.lon_min[idx]
+    lon_max = state.lon_max[idx]
+    lat_min = state.lat_min[idx]
+    lat_max = state.lat_max[idx]
+
     with xr.open_dataset(grid_fname) as ds:
         lons = ds.x.values
         lats = ds.y.values
@@ -229,6 +235,19 @@ def calc_parent_grid_index(
     starts -= over
     ends -= over
 
+    if update_bounds:
+        # Update geographic bounds from the adjusted nest indices.
+        ii = slice(starts[0] - 1, ends[0])
+        jj = slice(starts[1] - 1, ends[1])
+
+        bbox_lons = (lons[jj, ii] + 180) % 360 - 180
+        bbox_lats = lats[jj, ii]
+
+        state.lon_min[idx] = round(float(bbox_lons.min()), 2)
+        state.lon_max[idx] = round(float(bbox_lons.max()), 2)
+        state.lat_min[idx] = round(float(bbox_lats.min()), 2)
+        state.lat_max[idx] = round(float(bbox_lats.max()), 2)
+
     return dict(
         istart_nest=int(starts[0]),
         iend_nest=int(ends[0]),
@@ -241,7 +260,7 @@ def get_nest_indices(
     c_res: int,
     tile_idx: int,
     grid_dir: Path = None,
-    parent_tile: list = None,
+    parent_tile: int = None,
     i_refine_ratio: int = None,
     tile: int = None,
 ) -> None:
@@ -267,18 +286,16 @@ def get_nest_indices(
 
     i = tile_idx  # Nest index (0-based)
 
-    grid_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile[i]}.nc"
+    grid_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
     indices = calc_parent_grid_index(
+        i,
         grid_fname,
-        state.lon_min[i],
-        state.lon_max[i],
-        state.lat_min[i],
-        state.lat_max[i],
         i_refine_ratio,
         tile=tile,
+        update_bounds=state.nest_type != "telescoping",
     )
 
-    state.parent_tile.append(parent_tile[i])
+    state.parent_tile.append(parent_tile)
     state.istart_nest.append(indices["istart_nest"])
     state.iend_nest.append(indices["iend_nest"])
     state.jstart_nest.append(indices["jstart_nest"])
@@ -319,13 +336,7 @@ def get_nest_tele_indices(
         i_refine_ratio = np.prod(refine_ratio[: i + 1])
 
         indices = calc_parent_grid_index(
-            grid_parent_fname,
-            state.lon_min[i],
-            state.lon_max[i],
-            state.lat_min[i],
-            state.lat_max[i],
-            i_refine_ratio,
-            tile=tile,
+            i, grid_parent_fname, i_refine_ratio, tile=tile, update_bounds=True
         )
 
         state.parent_tile.append(parent_tile)
