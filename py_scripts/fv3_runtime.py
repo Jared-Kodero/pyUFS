@@ -55,14 +55,14 @@ def open_nml(path: Path) -> dict:
 
 def read_namelist(path: Path) -> dict:
     if re.search(r"\.(?:nml|\d+)$", str(path)):
-        override_nml = open_nml(path)
+        data = open_nml(path)
     elif str(path).endswith((".yaml", ".yml")):
-        override_nml = open_yaml(path)
+        data = open_yaml(path)
     else:
         raise ValueError(
             "Unsupported Namelist file format. Use .nml, fotran file fds i.e .41 or .yaml/.yml"
         )
-    return override_nml
+    return data
 
 
 def sort_paths(f: str | Path):
