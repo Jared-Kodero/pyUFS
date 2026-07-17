@@ -49,7 +49,7 @@ def init_driver():
             delx=state.delx,
             dely=state.dely,
             orog_dir=state.fix_src / "orog",
-            tmp=state.tmp,
+            tmp=state.ic_data,
             exe_dir=state.ufs_exe,
             fix_dir=state.fix_src,
         )

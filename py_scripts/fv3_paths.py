@@ -26,7 +26,7 @@ case_paths["fix"] = env_paths["work_dir"] / "FIXED"
 case_paths["input"] = env_paths["work_dir"] / "INPUT"
 case_paths["output"] = env_paths["work_dir"] / "OUTPUT"
 case_paths["restarts"] = env_paths["work_dir"] / "RESTART"
-case_paths["ic_data"] = env_paths["work_dir"] / "IC"
+case_paths["ic_data"] = env_paths["work_dir"] / "PREPROCESS"
 
 paths = {**env_paths, **case_paths}
 
