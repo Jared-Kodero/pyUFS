@@ -1,7 +1,8 @@
+# state.py
+
 import hashlib
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -173,25 +174,7 @@ class FV3State(dict):
 
 
 state = FV3State({})
-
-env_vars = {
-    "case_name": os.getenv("CASE_NAME"),
-    "n_cpus": int(os.environ.get("CASE_NTASKS")),
-    "n_nodes": int(os.environ.get("CASE_NNODES", 1)),
-    "ensemble_id": int(os.environ.get("CASE_ENSEMBLE_ID", 0)),
-    "n_ensembles": int(os.environ.get("CASE_ENSEMBLES", 0)),
-    "n_cpus_per_node": int(os.environ.get("CASE_NTASKS_PER_NODE")),
-    "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", 0))),
-    "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", 0)),
-    "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", 0)),
-}
-
-state.update(env_vars)
-
-if env_vars["resubmit_idx"] > 0:
-    log = logging.getLogger("RESTART")
-else:
-    log = logging.getLogger("PREPROCESS")
+log = logging.getLogger("UFS_UTILS")
 
 
 def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
@@ -278,28 +261,16 @@ def load_fv3_state():
     Values from the previous state override values in the current state.
     """
     path = Path(paths["work_dir"]) / "state.yaml"
+
     if not path.exists():
-        return
+        raise FileNotFoundError(f"Restart state file not found: {path}")
 
-    with path.open("r") as f:
-        data = yaml.safe_load(f)
+    with path.open("r") as file:
+        data = yaml.safe_load(file)
 
-    data = parse_datetime(data)
-    prev_state = FV3State(**data)
+    parse_datetime(data)
 
-    for k, v in paths.items():
-        paths[k] = Path(v)
+    state.clear()
+    state.update(data, **paths)
 
-    keep = {
-        "checksum": state.checksum,
-        "restart_no": state.restart_no,
-        "resubmit_idx": state.resubmit_idx,
-        "max_resubmit": state.resubmit,
-        "total_restarts": state.total_restarts,
-        "run_nhours": state.run_nhours,
-        "warm_start": state.warm_start,
-    }
-
-    # Later mappings win, so prev_state overrides state.
-    state.update({**state, **prev_state, **paths, **keep})
-    save_fv3_state()
+    return state

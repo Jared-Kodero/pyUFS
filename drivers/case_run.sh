@@ -122,6 +122,10 @@ if  (( EXIT_CODE == 0 && SYNC == 1 )); then
     $SYNC_DIRS
 fi
 
+if (( EXIT_CODE != 0 )); then
+    cp -rf "$WORK_DIR"/LOGS "$CASE_DIR"/LOGS
+fi
+
 
 if (( EXIT_CODE == 0 )); then
     CURRENT_TIME=$(date +%s)
