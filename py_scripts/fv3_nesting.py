@@ -56,7 +56,10 @@ def validate_nests(params: FV3State) -> list:
             nest_res_km.append(res_km)
             nest_info.append(f"Nested tile {7 + i} resolution: {res_km:.2f} km")
 
-    params.res_km.extend(nest_res_km)
+    # res_km is preallocated in preprocess_input as [global, 0, 0, ...] with
+    # one slot per nest. Assign into those slots; extend() would append past
+    # them and leave the nest entries at zero.
+    params.res_km[1:] = nest_res_km
     nest_info.append(f"Nest layout type: {params.nest_type}")
     return nest_info
 

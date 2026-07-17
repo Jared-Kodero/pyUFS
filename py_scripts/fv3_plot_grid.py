@@ -27,6 +27,20 @@ def random_colors(n, seed=42):
     return [to_hex(hsv_to_rgb([h, s, v])) for h, s, v in zip(hues, sats, vals)]
 
 
+GLOBAL_TILE_COLOR = "black"
+
+
+def tile_palette(n_nests, seed=42):
+    """Return colors for the six global tiles followed by n_nests nests.
+
+    The global cubed-sphere tiles are drawn in a single neutral color so the
+    nests are the only colored features. Element i corresponds to tile i + 1,
+    so nest k (tile 6 + k) is at index 5 + k.
+    """
+    n_nests = max(int(n_nests), 0)
+    return [GLOBAL_TILE_COLOR] * 6 + random_colors(n_nests, seed=seed)
+
+
 def tile_number(path):
     """Tile index from a grid file name, used to sort tile10 after tile9."""
     stem = Path(path).name.split(".tile")[-1]
@@ -116,15 +130,17 @@ def plot_tiles(grid_dir: Path, target_lon: float, target_lat: float):
 
     # -------------------- Plotting --------------------
 
-    tile_colors = random_colors(len(datasets))
+    tile_colors = tile_palette(len(datasets) - 6)
     fig, ax = plt.subplots(figsize=(10, 10))
 
     # Outer horizon
     theta = np.linspace(0, 2 * np.pi, 720)
     ax.plot(np.cos(theta), np.sin(theta), color="black", lw=1.5)
 
+    # res_km[0] is the global resolution, res_km[k] the resolution of nest k
+    # (tile 6 + k). Label index 0 is therefore tile 6, the global parent.
     resolutions = [
-        f"Tile {i + 1} ~{state.res_km[i]:.1f} km" for i in range(6 + state.n_nests + 1)
+        f"Tile {i + 6} ~{state.res_km[i]:.1f} km" for i in range(state.n_nests + 1)
     ]
 
     for i, (ds, color) in enumerate(zip(datasets, tile_colors), start=1):
@@ -221,8 +237,8 @@ def plot_platecarree(
 
     n_nests = len(lon_min)
 
-    # Same seed as plot_tiles, so nest i keeps the colour of tile 7 + i.
-    tile_colors = random_colors(6 + n_nests)[6:]
+    # Same palette as plot_tiles, so nest i keeps the colour of tile 7 + i.
+    tile_colors = tile_palette(n_nests)[6:]
 
     for i in range(n_nests):
         width = lon_max[i] - lon_min[i]
