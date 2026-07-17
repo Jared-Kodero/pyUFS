@@ -109,6 +109,7 @@ def run_make_orog(
     latb: int = None,
     inputorog: Path = None,
     tmp: Path = None,
+    mod_dir: Path = None,
 ):
     """
     Generate orography NetCDF files for FV3 cubed-sphere or lat-lon grids.
@@ -148,7 +149,20 @@ def run_make_orog(
     tmp : Path or None, optional
         Temporary working directory for intermediate files. Defaults to the
         system environment variable `$TMPDIR` if not provided.
+    mod_dir : Path or None, optional
+        Optional directory containing pre-generated orography files. If this
+        directory exists, the function will copy its contents to `out_dir` and
+        skip the orography generation process.
     """
+
+    # check if mod_dir is presnt
+    if mod_dir.exists() and len(list(mod_dir.glob("*"))) > 0:
+        src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
+        log.info(f"Using existing orography files from {src}")
+        files_to_copy = list(mod_dir.glob("*"))
+        for file in files_to_copy:
+            cp(file, out_dir / file.name)
+        return
 
     args = [
         (

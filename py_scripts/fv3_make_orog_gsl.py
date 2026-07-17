@@ -94,6 +94,7 @@ def run_make_orog_gsl(
     topo_dir: Path,
     exec_dir: Path,
     tmp: Path = None,
+    mod_dir: Path = None,
 ):
     """
     Python wrapper for fv3_orog_gsl.sh functionality.
@@ -121,7 +122,13 @@ def run_make_orog_gsl(
         Directory containing the `orog_gsl` executable.
     tmp : Path or None
         Temporary working directory (default: $tmp or /tmp).
+    mod_dir : Path or None
+        Directory containing pre-existing orography files. If provided,
+        the function will use these files instead of generating new ones.
     """
+
+    if mod_dir.exists() and len(list(mod_dir.glob("*"))) > 0:
+        return
 
     args = [
         (

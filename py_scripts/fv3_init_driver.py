@@ -49,7 +49,7 @@ def init_driver():
             delx=state.delx,
             dely=state.dely,
             orog_dir=state.fix_src / "orog",
-            tmp=state.ic_data,
+            tmp=state.tmp,
             exe_dir=state.ufs_exe,
             fix_dir=state.fix_src,
         )
@@ -60,9 +60,9 @@ def init_driver():
 
         plot_grid()
 
-    if state.preprocess_only:
-        preprocess_only()
-        return
+        if state.preprocess_only:
+            preprocess_only()
+            return
 
     os.chdir(state.work_dir)
     calc_cpu_alloc(state.grid)

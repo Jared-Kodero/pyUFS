@@ -29,13 +29,13 @@ def parse_input():
 
     input_params = FV3State({})
 
-    default_config_path = state.configs / "run_config.yaml"
+    default_config_path = Path(paths["configs"]) / "run_config.yaml"
 
     with open(default_config_path, "r") as f:
         default_cfg = yaml.safe_load(f)
 
     # --- Resolve runtime config path ---
-    yml_path = paths["run_dir"] / "run_config.yaml"
+    yml_path = Path(paths["run_dir"]) / "run_config.yaml"
 
     if not Path(yml_path).exists():
         raise FileNotFoundError(f"Configuration file not found at: {yml_path}")
@@ -81,6 +81,7 @@ def parse_input():
     check_prev_state(input_params)
     input_params = parse_datetime(input_params)
 
+    input_params.update(configure_directories(input_params))
     return input_params
 
 
@@ -145,17 +146,17 @@ def preprocess_input():
             f"Insufficient CPUs for this run. Detected {py_ncpus} available, but at least 32 is required."
         )
 
-    load_fv3_state()
     params = parse_input()  # Get parsed arguments
+    load_fv3_state()
 
     params.n_cpus = state.n_cpus  # Update n_cpus based on available CPUs
 
-    paths = configure_directories(params)
+    if len(params.refine_ratio) == 1:
+        params.res_km = [cres_to_deg(params.c_res).km]
 
-    params.update(paths)
-
-    params.res_km = [0 for _ in range(len(params.refine_ratio) + 1)]
-    params.res_km[0] = cres_to_deg(params.c_res).km
+    else:
+        params.res_km = [0] + [0 * i for i in params.refine_ratio]
+        params.res_km[0] = cres_to_deg(params.c_res).km
 
     if params.gtype == "nest":
         params.n_nests = len(params.refine_ratio)

@@ -191,7 +191,7 @@ def run_chgres_cube() -> None:
     yml_configs = load_yml(state.n_nests)
 
     # Determine IC directory based on run_chgres_only flag
-    ic_dir = state.tmp / "ic"
+    ic_dir = state.tmp / "input"
 
     # Prepare fort.41 configuration
     f41 = FV3State(asdict(ChgresCubeConfig()))

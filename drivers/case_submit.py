@@ -173,10 +173,18 @@ def get_runtime_flags(cfg: dict) -> dict:
 def get_config():
     user_cfg = read_yaml(RUN_CFG_PATH)
     default_cfg = read_yaml(DEFAULT_CFG_PATH)
+
+    preprocess_grid_only = int(user_cfg.get("preprocess_grid_only", False))
+    preprocess_orog_only = int(user_cfg.get("preprocess_orog_only", False))
+    preprocess_only = int(user_cfg.get("preprocess_only", False))
+    if preprocess_grid_only or preprocess_orog_only:
+        preprocess_only = 1
+
     walltime = int(user_cfg.get("walltime", default_cfg.get("walltime", 24)))
     n_nodes = int(user_cfg.get("n_nodes", default_cfg.get("n_nodes", 4)))
     n_tasks = int(user_cfg.get("n_cpus", default_cfg.get("n_cpus", 192)))
     partition = user_cfg.get("partition", default_cfg.get("partition", "batch"))
+
     logfile = user_cfg.get("logfile", "shield_driver")
     exclusive = int(user_cfg.get("exclusive_node", False))
     constraint = int(user_cfg.get("constraint_node", False))
@@ -204,7 +212,7 @@ def get_config():
     walltime = f"{walltime}:00:00"
     resubmit_max = user_cfg.get("resubmit", 0)
     archive_data = int(user_cfg.get("archive_data", False))
-    preprocess_only = int(user_cfg.get("preprocess_only", False))
+
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
     case_name = user_cfg.get("case_name") or env_case_name
     skip_ensembles = user_cfg.get("skip_ensembles", None)

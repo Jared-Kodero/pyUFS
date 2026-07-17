@@ -1,3 +1,17 @@
+"""Visualisation of FV3 cubed-sphere tiles and their nests.
+
+Figures produced
+----------------
+grid_faces.png  one panel per global cubed-sphere face, each centred on its own
+                centroid, with every nest hosted by that face drawn on it and
+                the host mesh masked underneath
+nest_grid.png   nest domains on a PlateCarree map
+
+Nest hosting is taken from state.parent_tile, the direct parent tile of each
+nest: parent_tile[k] is the tile hosting nest k + 1, which occupies tile 7 + k.
+A chain such as [6, 7, 8] telescopes, so all three nests resolve to face 6.
+"""
+
 from pathlib import Path
 
 import cartopy.crs as ccrs
@@ -7,38 +21,98 @@ import numpy as np
 import xarray as xr
 from fv3_state import state
 from matplotlib.collections import LineCollection
-from matplotlib.colors import hsv_to_rgb, to_hex
+from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
 from matplotlib.patches import Rectangle
 from matplotlib.path import Path as MplPath
 
+N_GLOBAL_TILES = 6
+
+# --------------------------------------------------------------------------
+# Palette
+# --------------------------------------------------------------------------
+
+# Muted mineral and vegetation tones. Ordered so that adjacent nests differ in
+# hue and in lightness, which keeps them separable in greyscale printing.
+EARTH_TONES = [
+    "#B0542F",  # rust
+    "#4F6D4E",  # moss
+    "#C2913A",  # ochre
+    "#3E6B7C",  # slate blue
+    "#7A4B2A",  # umber
+    "#8A9A5B",  # sage
+    "#2F6D5E",  # deep teal
+    "#9C6B4F",  # clay
+    "#5C6B4A",  # olive drab
+    "#A8763E",  # bronze
+    "#6E5A46",  # taupe
+    "#C2A878",  # sand
+]
+
+GLOBAL_TILE_COLOR = "#57544E"  # neutral stone grey for the six global faces
+LAND_FILL = "#6E6A60"
+HORIZON_COLOR = "#3A3A36"
+LAND_FACE = "#EDE6D8"
+OCEAN_FACE = "#DCE5E9"
+COAST_COLOR = "#66655D"
+BORDER_COLOR = "#8C8A82"
+GRIDLINE_COLOR = "#B9B4A8"
+TEXT_COLOR = "#2B2B28"
+
+# Mesh decimation is set by physical grid spacing, not by array size. Drawn
+# lines are held to a roughly constant separation on the page, so a 3 km nest
+# covering a small part of a panel is thinned far more than the 100 km face
+# around it, and neither saturates to solid colour.
+MESH_PAGE_SPACING_IN = 0.10  # target separation between drawn lines, inches
+MESH_MIN_LINES = 6  # floor, so a small nest still shows internal structure
+MESH_MAX_LINES = 60  # ceiling, bounds cost on the largest supergrids
+
+# IUGG mean radius R1 of the GRS80 ellipsoid (Moritz, 2000).
+EARTH_RADIUS_KM = 6371.0088
+
+PANEL_FIG_IN = 3.4  # width of one face panel, inches
+FIG_DPI = 300
+
+
+def earth_colors(n, seed=42):
+    """Return n earth-tone colours.
+
+    The first len(EARTH_TONES) colours are the fixed palette above, taken in
+    order, so a given nest keeps its colour between runs and between figures.
+    Beyond that the palette is reused with progressively lower value and higher
+    saturation rather than repeated identically. The seed is retained for call
+    compatibility and only offsets the starting entry.
+    """
+    n = max(int(n), 0)
+    rng = np.random.default_rng(seed)
+    start = int(rng.integers(0, len(EARTH_TONES))) if seed is None else 0
+    colors = []
+    for k in range(n):
+        idx = (start + k) % len(EARTH_TONES)
+        cycle = k // len(EARTH_TONES)
+        rgb = to_rgb(EARTH_TONES[idx])
+        if cycle:
+            h, s, v = rgb_to_hsv(rgb)
+            v = float(np.clip(v * (1.0 - 0.18 * cycle), 0.25, 0.90))
+            s = float(np.clip(s * (1.0 + 0.12 * cycle), 0.20, 0.95))
+            rgb = hsv_to_rgb([h, s, v])
+        colors.append(to_hex(rgb))
+    return colors
+
 
 def random_colors(n, seed=42):
-    """Return n visually distinct random colors.
-
-    Hues are spaced by the golden ratio from a random offset, so repeated
-    draws stay separated instead of clustering. The seed keeps the two
-    figures consistent with each other and reproducible between runs.
-    """
-    rng = np.random.default_rng(seed)
-    offset = rng.random()
-    hues = (offset + np.arange(n) * 0.618033988749895) % 1.0
-    sats = rng.uniform(0.55, 0.95, n)
-    vals = rng.uniform(0.50, 0.85, n)
-    return [to_hex(hsv_to_rgb([h, s, v])) for h, s, v in zip(hues, sats, vals)]
-
-
-GLOBAL_TILE_COLOR = "black"
+    """Backwards-compatible alias for earth_colors."""
+    return earth_colors(n, seed=seed)
 
 
 def tile_palette(n_nests, seed=42):
-    """Return colors for the six global tiles followed by n_nests nests.
+    """Return colours for the six global faces followed by n_nests nests.
 
-    The global cubed-sphere tiles are drawn in a single neutral color so the
-    nests are the only colored features. Element i corresponds to tile i + 1,
-    so nest k (tile 6 + k) is at index 5 + k.
+    The global faces share one neutral colour so the nests are the only
+    chromatic features. Element i corresponds to tile i + 1, so nest k
+    (tile 6 + k) is at index 5 + k.
     """
     n_nests = max(int(n_nests), 0)
-    return [GLOBAL_TILE_COLOR] * 6 + random_colors(n_nests, seed=seed)
+    return [GLOBAL_TILE_COLOR] * N_GLOBAL_TILES + earth_colors(n_nests, seed=seed)
 
 
 def tile_number(path):
@@ -47,233 +121,640 @@ def tile_number(path):
     return int(stem.split(".")[0])
 
 
-def plot_tiles(grid_dir: Path, target_lon: float, target_lat: float):
-    grid_dir = Path(grid_dir)
-    grid_files = sorted(grid_dir.glob("C*_grid.tile*.nc"), key=tile_number)
-    datasets = [xr.open_dataset(f) for f in grid_files if f.exists()]
+# --------------------------------------------------------------------------
+# Nest hierarchy
+# --------------------------------------------------------------------------
 
-    # -------------------- Utilities --------------------
 
-    def _to_deg(a):
-        a = np.asarray(a)
-        if np.nanmax(np.abs(a)) <= (2 * np.pi + 1e-6):
-            return np.rad2deg(a)
-        return a
+def nest_parents(n_nests):
+    """Direct parent tile of each nest, as a list of length n_nests.
 
-    def load_lonlat(ds):
-        lon = _to_deg(ds["x"].values)
-        lat = _to_deg(ds["y"].values)
-        if lon.ndim == 1 and lat.ndim == 1:
-            lon, lat = np.meshgrid(lon, lat)
-        return lon % 360, lat
+    Read from state.parent_tile. Element k is the tile hosting nest k + 1,
+    which itself occupies tile 7 + k. If state.parent_tile is absent or of the
+    wrong length, a telescoping chain [6, 7, 8, ...] is assumed and used.
+    """
+    n_nests = max(int(n_nests), 0)
+    parents = state.parent_tile
+    if not parents:
+        parents = []
 
-    def get_tile_path(ds):
-        """Creates a precise Path object following the boundary of the tile."""
-        lon, lat = load_lonlat(ds)
-        # Trace the perimeter: Bottom -> Right -> Top (rev) -> Left (rev)
-        b_lon = np.concatenate([lon[0, :], lon[:, -1], lon[-1, ::-1], lon[::-1, 0]])
-        b_lat = np.concatenate([lat[0, :], lat[:, -1], lat[-1, ::-1], lat[::-1, 0]])
-        return MplPath(np.column_stack([b_lon, b_lat]))
+    if isinstance(parents, int):
+        parents = [parents]
 
-    def ortho_project(lon_deg, lat_deg, lon0_deg=0.0, lat0_deg=0.0):
-        lon0_deg = lon0_deg % 360
-        lon, lat = np.deg2rad(lon_deg), np.deg2rad(lat_deg)
-        lon0, lat0 = np.deg2rad(lon0_deg), np.deg2rad(lat0_deg)
-        cx, cy, cz = (
-            np.cos(lat0) * np.cos(lon0),
-            np.cos(lat0) * np.sin(lon0),
-            np.sin(lat0),
-        )
-        X, Y, Z = np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)
-        visible = (X * cx + Y * cy + Z * cz) > 0.0
-        x = np.cos(lat) * np.sin(lon - lon0)
-        y = np.cos(lat0) * np.sin(lat) - np.sin(lat0) * np.cos(lat) * np.cos(lon - lon0)
-        return x, y, visible
+    if len(parents) != n_nests:
+        parents = [N_GLOBAL_TILES + k for k in range(n_nests)]
+    return [int(p) for p in parents]
 
-    def build_segments(lon2d, lat2d):
-        ny, nx = lon2d.shape
-        segs_int, segs_edge = [], []
-        for i in range(ny):
-            if 0 < i < ny - 1:
-                segs_int.append((lon2d[i, :], lat2d[i, :]))
-        for j in range(nx):
-            if 0 < j < nx - 1:
-                segs_int.append((lon2d[:, j], lat2d[:, j]))
-        segs_edge = [
-            (lon2d[0, :], lat2d[0, :]),
-            (lon2d[-1, :], lat2d[-1, :]),
-            (lon2d[:, 0], lat2d[:, 0]),
-            (lon2d[:, -1], lat2d[:, -1]),
-        ]
-        return segs_int, segs_edge
 
-    def project_segment(lon, lat, lon0_deg, lat0_deg, mask_path=None):
-        """Project segments, masking out points that fall inside the child Path."""
-        x, y, vis = ortho_project(lon, lat, lon0_deg, lat0_deg)
+def nest_tile(k):
+    """Tile number of nest k, zero based: nest 0 is tile 7."""
+    return N_GLOBAL_TILES + 1 + int(k)
 
-        if mask_path is not None:
-            # Check which points of the parent line are inside the child polygon
-            points = np.column_stack([lon, lat])
-            in_child = mask_path.contains_points(points)
-            vis = vis & ~in_child  # Only keep points NOT in the child
 
-        chunks, current = [], []
-        for xi, yi, vi in zip(x, y, vis):
-            if vi:
-                current.append((xi, yi))
-            elif len(current) >= 2:
-                chunks.append(np.array(current))
-                current = []
-        if len(current) >= 2:
-            chunks.append(np.array(current))
-        return chunks
+def direct_children(tile, parents):
+    """Indices of the nests whose direct parent is the given tile."""
+    return [k for k, p in enumerate(parents) if p == int(tile)]
 
-    # -------------------- Plotting --------------------
 
-    tile_colors = tile_palette(len(datasets) - 6)
-    fig, ax = plt.subplots(figsize=(10, 10))
+def host_face(k, parents):
+    """Global face that ultimately hosts nest k, following the parent chain.
 
-    # Outer horizon
-    theta = np.linspace(0, 2 * np.pi, 720)
-    ax.plot(np.cos(theta), np.sin(theta), color="black", lw=1.5)
+    Returns None if the chain is malformed, for example a cycle or a parent
+    tile with no corresponding nest.
+    """
+    tile = parents[k]
+    seen = set()
+    while tile > N_GLOBAL_TILES:
+        idx = tile - N_GLOBAL_TILES - 1  # tile 7 is nest index 0
+        if idx in seen or idx < 0 or idx >= len(parents):
+            return None
+        seen.add(idx)
+        tile = parents[idx]
+    return tile if 1 <= tile <= N_GLOBAL_TILES else None
 
-    # res_km[0] is the global resolution, res_km[k] the resolution of nest k
-    # (tile 6 + k). Label index 0 is therefore tile 6, the global parent.
-    resolutions = [
-        f"Tile {i + 6} ~{state.res_km[i]:.1f} km" for i in range(state.n_nests + 1)
+
+def face_nests(face, parents):
+    """Nest indices hosted by a global face, directly or through a chain.
+
+    Returned in ascending tile order, which is coarse to fine for a telescope,
+    so drawing in this order puts each child on top of its parent.
+    """
+    return [k for k in range(len(parents)) if host_face(k, parents) == int(face)]
+
+
+# --------------------------------------------------------------------------
+# Geometry utilities
+# --------------------------------------------------------------------------
+
+
+def _to_deg(a):
+    a = np.asarray(a)
+    if np.nanmax(np.abs(a)) <= (2 * np.pi + 1e-6):
+        return np.rad2deg(a)
+    return a
+
+
+def load_lonlat(ds):
+    """Return (lon, lat) in degrees as 2-D arrays, lon wrapped to [0, 360)."""
+    lon = _to_deg(ds["x"].values)
+    lat = _to_deg(ds["y"].values)
+    if lon.ndim == 1 and lat.ndim == 1:
+        lon, lat = np.meshgrid(lon, lat)
+    return lon % 360, lat
+
+
+def get_tile_path(ds):
+    """Path object following the boundary of a tile in lon-lat space."""
+    lon, lat = load_lonlat(ds)
+    b_lon = np.concatenate([lon[0, :], lon[:, -1], lon[-1, ::-1], lon[::-1, 0]])
+    b_lat = np.concatenate([lat[0, :], lat[:, -1], lat[-1, ::-1], lat[::-1, 0]])
+    return MplPath(np.column_stack([b_lon, b_lat]))
+
+
+def ortho_project(lon_deg, lat_deg, lon0_deg=0.0, lat0_deg=0.0):
+    """Orthographic projection onto the plane tangent at (lon0, lat0).
+
+    Returns x, y in Earth radii and a boolean mask of the visible hemisphere.
+    """
+    lon0_deg = lon0_deg % 360
+    lon, lat = np.deg2rad(lon_deg), np.deg2rad(lat_deg)
+    lon0, lat0 = np.deg2rad(lon0_deg), np.deg2rad(lat0_deg)
+    cx, cy, cz = np.cos(lat0) * np.cos(lon0), np.cos(lat0) * np.sin(lon0), np.sin(lat0)
+    X, Y, Z = np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)
+    visible = (X * cx + Y * cy + Z * cz) > 0.0
+    x = np.cos(lat) * np.sin(lon - lon0)
+    y = np.cos(lat0) * np.sin(lat) - np.sin(lat0) * np.cos(lat) * np.cos(lon - lon0)
+    return x, y, visible
+
+
+def tile_center(lon, lat):
+    """Centroid of a tile as (lon, lat) in degrees.
+
+    The mean is taken over unit vectors rather than over angles, so the result
+    is well defined across the dateline and at the poles.
+    """
+    lonr, latr = np.deg2rad(lon), np.deg2rad(lat)
+    x = np.nanmean(np.cos(latr) * np.cos(lonr))
+    y = np.nanmean(np.cos(latr) * np.sin(lonr))
+    z = np.nanmean(np.sin(latr))
+    r = np.sqrt(x**2 + y**2 + z**2)
+    if r < 1e-12:
+        return 0.0, 0.0
+    return float(np.rad2deg(np.arctan2(y, x)) % 360), float(
+        np.rad2deg(np.arcsin(z / r))
+    )
+
+
+def great_circle_km(lon1, lat1, lon2, lat2, radius=EARTH_RADIUS_KM):
+    """Haversine distance between two points in degrees, returned in km."""
+    p1, p2 = np.deg2rad(lat1), np.deg2rad(lat2)
+    dp, dl = p2 - p1, np.deg2rad(lon2 - lon1)
+    a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
+    return 2 * radius * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
+
+
+def grid_spacing_km(lon, lat):
+    """Spacing between adjacent grid points near the tile centre, in km.
+
+    Returned as (dy, dx). Measured from the file rather than taken from
+    state.res_km, so it is correct whether the file is a supergrid (spacing
+    res_km / 2) or a cell-centre grid, and it needs no assumption about the
+    ordering of res_km. Local isotropy of the gnomonic cubed sphere makes a
+    single central sample adequate for setting line density.
+    """
+    ny, nx = lon.shape
+    j, i = ny // 2, nx // 2
+    dy = great_circle_km(lon[j, i], lat[j, i], lon[j + 1, i], lat[j + 1, i])
+    dx = great_circle_km(lon[j, i], lat[j, i], lon[j, i + 1], lat[j, i + 1])
+    return float(max(dy, 1e-6)), float(max(dx, 1e-6))
+
+
+def page_km_per_inch(span_units, width_inch, radius=EARTH_RADIUS_KM):
+    """Map scale of an orthographic axis, in km per inch of page.
+
+    The projection returns coordinates in Earth radii, so an axis spanning
+    span_units across width_inch has scale radius * span_units / width_inch.
+    """
+    return radius * float(span_units) / max(float(width_inch), 1e-6)
+
+
+def mesh_stride(
+    n,
+    spacing_km,
+    km_per_inch,
+    page_spacing=MESH_PAGE_SPACING_IN,
+    min_lines=MESH_MIN_LINES,
+    max_lines=MESH_MAX_LINES,
+):
+    """Stride that holds drawn lines near page_spacing inches apart.
+
+    A separation of page_spacing inches corresponds to a distance
+    d = page_spacing * km_per_inch on the sphere, so the stride is
+    s = ceil(d / spacing_km) for a tile of grid spacing spacing_km. The stride
+    is then bounded so that between min_lines and max_lines are drawn whatever
+    the size of the tile.
+    """
+    n = int(n)
+    target_km = float(page_spacing) * float(km_per_inch)
+    s = int(np.ceil(target_km / float(spacing_km)))
+    s = max(s, int(np.ceil(n / float(max_lines))))  # never exceed max_lines
+    s = min(s, max(1, n // int(min_lines)))  # never fall below min_lines
+    return max(s, 1)
+
+
+def _stride_index(n, stride):
+    """Strided indices that always retain the last point, so the tile edge is
+    the true edge rather than the last multiple of the stride."""
+    idx = np.arange(0, n, max(int(stride), 1))
+    if idx[-1] != n - 1:
+        idx = np.append(idx, n - 1)
+    return idx
+
+
+def subset_mesh(lon, lat, km_per_inch, page_spacing=MESH_PAGE_SPACING_IN):
+    """Decimate a mesh to a constant on-page line density.
+
+    Parameters
+    ----------
+    lon, lat : ndarray
+        Tile coordinates in degrees.
+    km_per_inch : float
+        Map scale of the target axis, from page_km_per_inch.
+    page_spacing : float
+        Target separation between drawn lines, inches.
+    """
+    ny, nx = lon.shape
+    dy_km, dx_km = grid_spacing_km(lon, lat)
+    sy = mesh_stride(ny, dy_km, km_per_inch, page_spacing)
+    sx = mesh_stride(nx, dx_km, km_per_inch, page_spacing)
+    sel = np.ix_(_stride_index(ny, sy), _stride_index(nx, sx))
+    return lon[sel], lat[sel]
+
+
+def build_segments(lon2d, lat2d):
+    """Split a mesh into interior lines and the four boundary lines."""
+    ny, nx = lon2d.shape
+    segs_int = []
+    for i in range(1, ny - 1):
+        segs_int.append((lon2d[i, :], lat2d[i, :]))
+    for j in range(1, nx - 1):
+        segs_int.append((lon2d[:, j], lat2d[:, j]))
+    segs_edge = [
+        (lon2d[0, :], lat2d[0, :]),
+        (lon2d[-1, :], lat2d[-1, :]),
+        (lon2d[:, 0], lat2d[:, 0]),
+        (lon2d[:, -1], lat2d[:, -1]),
     ]
+    return segs_int, segs_edge
 
-    for i, (ds, color) in enumerate(zip(datasets, tile_colors), start=1):
-        lon, lat = load_lonlat(ds)
 
-        # Get the path of the child to punch a hole in the current parent
-        child_path = None
-        if i >= 6 and i < len(datasets):
-            child_path = get_tile_path(datasets[i])
+def _inside_any(paths, lon, lat):
+    """Mask of points falling inside any of the given lon-lat paths."""
+    pts = np.column_stack([lon, lat])
+    inside = np.zeros(pts.shape[0], dtype=bool)
+    for p in paths:
+        inside |= p.contains_points(pts)
+    return inside
 
-        subset = 5
-        lon_s, lat_s = lon[::subset, ::subset], lat[::subset, ::subset]
-        seg_int, seg_edge = build_segments(lon_s, lat_s)
 
-        # Internal lines (with precise mask)
-        for L, A in seg_int:
-            chunks = project_segment(L, A, target_lon, target_lat, mask_path=child_path)
-            ax.add_collection(LineCollection(chunks, lw=0.3, alpha=0.6, colors=color))
+def project_segment(lon, lat, lon0_deg, lat0_deg, mask_paths=None):
+    """Project one grid line, dropping points hidden by the limb or falling
+    inside any mask path, and split the remainder into continuous chunks."""
+    x, y, vis = ortho_project(lon, lat, lon0_deg, lat0_deg)
 
-        # Edges (No mask, to ensure the boundaries meet perfectly)
-        for L, A in seg_edge:
-            chunks = project_segment(L, A, target_lon, target_lat)
-            ax.add_collection(LineCollection(chunks, lw=1.2, zorder=3, colors=color))
+    if mask_paths:
+        vis = vis & ~_inside_any(mask_paths, lon, lat)
 
-    # Landmask
+    chunks, current = [], []
+    for xi, yi, vi in zip(x, y, vis):
+        if vi:
+            current.append((xi, yi))
+        elif len(current) >= 2:
+            chunks.append(np.array(current))
+            current = []
+    if len(current) >= 2:
+        chunks.append(np.array(current))
+    return chunks
+
+
+# --------------------------------------------------------------------------
+# Drawing primitives
+# --------------------------------------------------------------------------
+
+
+def draw_tile_mesh(
+    ax,
+    lon,
+    lat,
+    color,
+    lon0,
+    lat0,
+    km_per_inch,
+    mask_paths=None,
+    page_spacing=MESH_PAGE_SPACING_IN,
+    interior_lw=0.3,
+    edge_lw=1.2,
+    alpha=0.6,
+    zorder=2,
+):
+    """Draw one tile mesh in orthographic view centred on (lon0, lat0).
+
+    km_per_inch is the map scale of the target axis and sets the decimation, so
+    the mesh reads at the same density whether the tile is a 100 km face
+    filling the panel or a 3 km nest covering a few percent of it. Interior
+    lines falling inside mask_paths are dropped, which is how a host face is
+    hollowed out under the nests it carries.
+    """
+    lon_s, lat_s = subset_mesh(lon, lat, km_per_inch, page_spacing)
+    seg_int, seg_edge = build_segments(lon_s, lat_s)
+
+    for L, A in seg_int:
+        chunks = project_segment(L, A, lon0, lat0, mask_paths=mask_paths)
+        if chunks:
+            ax.add_collection(
+                LineCollection(
+                    chunks, lw=interior_lw, alpha=alpha, colors=color, zorder=zorder
+                )
+            )
+
+    # Edges are never masked, so the boundary of a host and the boundary of its
+    # nest remain coincident.
+    for L, A in seg_edge:
+        chunks = project_segment(L, A, lon0, lat0)
+        if chunks:
+            ax.add_collection(
+                LineCollection(chunks, lw=edge_lw, colors=color, zorder=zorder + 1)
+            )
+
+
+def draw_land(ax, lon0, lat0, color=LAND_FILL, alpha=0.3, zorder=0):
+    """Fill land polygons in orthographic view. Failure is non-fatal."""
     try:
-        from cartopy.feature import LAND
-
-        for geom in LAND.geometries():
+        for geom in cfeature.LAND.geometries():
             # LAND yields MultiPolygon as well as Polygon; .exterior exists
             # only on Polygon, and one AttributeError would drop all land.
             for poly in getattr(geom, "geoms", [geom]):
-                pts = np.array(poly.exterior.coords[:])
-                x, y, v = ortho_project(pts[:, 0], pts[:, 1], target_lon, target_lat)
+                pts = np.asarray(poly.exterior.coords[:])
+                x, y, v = ortho_project(pts[:, 0], pts[:, 1], lon0, lat0)
                 if np.any(v):
-                    ax.fill(x[v], y[v], alpha=0.08, zorder=0, color="black")
+                    ax.fill(x[v], y[v], alpha=alpha, zorder=zorder, color=color)
     except Exception:
-        pass
+        return
 
-    # telescoping nests with increasing resolution
 
-    # add pathces for legend
-    legend_elements = [
-        Rectangle((0, 0), 1, 1, color=tile_colors[i + 5], label=c_res)
-        for i, c_res in enumerate(resolutions)
+def draw_horizon(ax, lw=0.8, color=HORIZON_COLOR, zorder=1):
+    theta = np.linspace(0, 2 * np.pi, 720)
+    ax.plot(np.cos(theta), np.sin(theta), color=color, lw=lw, zorder=zorder)
+
+
+def tile_extent(lon, lat, lon0, lat0, pad=0.08):
+    """Axis limits enclosing the visible part of a tile, with fractional pad."""
+    x, y, v = ortho_project(lon, lat, lon0, lat0)
+    if not np.any(v):
+        return (-1.05, 1.05), (-1.05, 1.05)
+    x, y = x[v], y[v]
+    dx = max(x.max() - x.min(), 1e-3)
+    dy = max(y.max() - y.min(), 1e-3)
+    half = 0.5 * max(dx, dy) * (1.0 + pad)
+    cx, cy = 0.5 * (x.max() + x.min()), 0.5 * (y.max() + y.min())
+    return (cx - half, cx + half), (cy - half, cy + half)
+
+
+# --------------------------------------------------------------------------
+# Labels
+# --------------------------------------------------------------------------
+
+
+def tile_labels(n_tiles, parents):
+    """Panel titles for the six faces and legend labels for the nests.
+
+    res_km[0] is the global resolution and res_km[k] the resolution of nest k,
+    which occupies tile 6 + k.
+    """
+    res = list(getattr(state, "res_km", []))
+
+    def resolved(tile):
+        idx = 0 if tile <= N_GLOBAL_TILES else tile - N_GLOBAL_TILES
+        return f"Tile {tile} ~{res[idx]:.1f} km" if idx < len(res) else f"Tile {tile}"
+
+    face_titles = [resolved(t) for t in range(1, N_GLOBAL_TILES + 1)]
+    nest_labels = [
+        f"{resolved(nest_tile(k))} on tile {parents[k]}" for k in range(len(parents))
     ]
-    ax.legend(
-        handles=legend_elements, loc="lower left", fontsize="small", framealpha=0.5
+    return face_titles, nest_labels
+
+
+# --------------------------------------------------------------------------
+# Figures
+# --------------------------------------------------------------------------
+
+
+def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_path):
+    """One panel per global face, with the nests it hosts drawn on it.
+
+    Each panel is an orthographic view centred on the centroid of its own face
+    and zoomed to it, so all six faces are legible in one figure. A nest is
+    placed on the face returned by host_face, which follows parent_tile up the
+    chain, so a telescope rooted at tile 6 appears entirely on the tile 6 panel.
+    Every tile is hollowed out under its direct children, leaving each mesh
+    visible only where it is the finest grid present.
+    """
+    n_faces = min(N_GLOBAL_TILES, len(datasets))
+    ncols = 3
+    nrows = int(np.ceil(n_faces / ncols))
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(PANEL_FIG_IN * ncols, (PANEL_FIG_IN + 0.2) * nrows),
+        constrained_layout=True,
     )
+    axes = np.atleast_1d(axes).ravel()
 
-    ax.set_aspect("equal")
-    ax.set_xlim(-1.05, 1.05)
-    ax.set_ylim(-1.05, 1.05)
-    ax.axis("off")
-    plt.tight_layout()
-    plt.savefig(state.run_dir / "grids.png", dpi=1200, bbox_inches="tight")
+    def paths_of_children(tile):
+        paths = []
+        for k in direct_children(tile, parents):
+            idx = nest_tile(k) - 1
+            if idx < len(datasets):
+                paths.append(get_tile_path(datasets[idx]))
+        return paths
+
+    for f in range(1, n_faces + 1):
+        ax = axes[f - 1]
+        lon, lat = load_lonlat(datasets[f - 1])
+        lon0, lat0 = tile_center(lon, lat)
+
+        # Limits are fixed first: each panel is zoomed to its own face, so its
+        # map scale, and therefore its stride, follows from the zoom.
+        xlim, ylim = tile_extent(lon, lat, lon0, lat0)
+        km_per_inch = page_km_per_inch(xlim[1] - xlim[0], PANEL_FIG_IN)
+
+        draw_land(ax, lon0, lat0)
+        draw_horizon(ax)
+
+        draw_tile_mesh(
+            ax,
+            lon,
+            lat,
+            tile_colors[f - 1],
+            lon0,
+            lat0,
+            km_per_inch,
+            mask_paths=paths_of_children(f),
+            interior_lw=0.25,
+            edge_lw=1.0,
+            alpha=0.55,
+            zorder=2,
+        )
+
+        hosted = face_nests(f, parents)
+        for rank, k in enumerate(hosted):
+            idx = nest_tile(k) - 1
+            if idx >= len(datasets):
+                continue
+            nlon, nlat = load_lonlat(datasets[idx])
+            draw_tile_mesh(
+                ax,
+                nlon,
+                nlat,
+                tile_colors[idx],
+                lon0,
+                lat0,
+                km_per_inch,
+                mask_paths=paths_of_children(nest_tile(k)),
+                interior_lw=0.3,
+                edge_lw=1.1,
+                alpha=0.85,
+                zorder=4 + 2 * rank,
+            )
+
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.set_aspect("equal")
+        title = face_titles[f - 1]
+        if hosted:
+            title += "\n" + ", ".join(f"T{nest_tile(k)}" for k in hosted)
+        ax.set_title(title, fontsize=9, color=TEXT_COLOR)
+        ax.axis("off")
+
+    for ax in axes[n_faces:]:
+        ax.axis("off")
+
+    handles = [
+        Rectangle((0, 0), 1, 1, color=tile_colors[nest_tile(k) - 1], label=lab)
+        for k, lab in enumerate(nest_labels)
+        if (nest_tile(k) - 1) < len(tile_colors)
+    ]
+    if handles:
+        fig.legend(
+            handles=handles,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.03),
+            ncol=min(len(handles), 3),
+            fontsize="small",
+            frameon=False,
+        )
+
+    fig.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight")
     plt.show()
-
-    for ds in datasets:
-        ds.close()
-
-    return resolutions  # ["Tile 6 ~x km", "Tile 7 ~y km", ...]
+    plt.close(fig)
 
 
 def plot_platecarree(
     lon_min: list, lon_max: list, lat_min: list, lat_max: list, resolutions: list
 ):
-    """
-    Plot rectangular geographic domains on a Lambert Conformal projection.
+    """Plot nest domains on a PlateCarree map.
 
     Parameters
     ----------
-    lon_min : list of float
-        Western longitude bounds (degrees east).
-    lon_max : list of float
-        Eastern longitude bounds (degrees east).
-    lat_min : list of float
-        Southern latitude bounds (degrees north).
-    lat_max : list of float
-        Northern latitude bounds (degrees north).
-    resolutions : list of str, optional
+    lon_min, lon_max : list of float
+        Western and eastern longitude bounds, degrees east.
+    lat_min, lat_max : list of float
+        Southern and northern latitude bounds, degrees north.
+    resolutions : list of str
         Legend labels for the nests, as returned by plot_tiles.
     """
-
-    plt.figure()
-    ax = plt.axes(projection=ccrs.PlateCarree())
-
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.8)
-    ax.add_feature(cfeature.BORDERS, linewidth=0.5)
-    ax.add_feature(cfeature.LAND, facecolor="lightgray")
-    ax.add_feature(cfeature.OCEAN, facecolor="white")
-    ax.add_feature(cfeature.LAKES, facecolor="white")
-    ax.add_feature(cfeature.STATES, linewidth=0.5)
-
     n_nests = len(lon_min)
+    if n_nests == 0:
+        return
 
-    # Same palette as plot_tiles, so nest i keeps the colour of tile 7 + i.
-    tile_colors = tile_palette(n_nests)[6:]
+    tile_colors = tile_palette(n_nests)[N_GLOBAL_TILES:]
 
-    for i in range(n_nests):
+    span_x = max(lon_max) - min(lon_min)
+    span_y = max(lat_max) - min(lat_min)
+    pad_x = max(0.30 * span_x, 3.0)
+    pad_y = max(0.30 * span_y, 3.0)
+    extent = [
+        min(lon_min) - pad_x,
+        max(lon_max) + pad_x,
+        max(min(lat_min) - pad_y, -90.0),
+        min(max(lat_max) + pad_y, 90.0),
+    ]
+
+    fig = plt.figure(figsize=(9, 7))
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_extent(extent, crs=ccrs.PlateCarree())
+
+    ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_FACE, zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor=LAND_FACE, zorder=0)
+    ax.add_feature(
+        cfeature.LAKES,
+        facecolor=OCEAN_FACE,
+        edgecolor=COAST_COLOR,
+        linewidth=0.3,
+        zorder=1,
+    )
+    ax.add_feature(cfeature.STATES, edgecolor=BORDER_COLOR, linewidth=0.3, zorder=2)
+    ax.add_feature(cfeature.BORDERS, edgecolor=BORDER_COLOR, linewidth=0.5, zorder=2)
+    ax.add_feature(cfeature.COASTLINE, edgecolor=COAST_COLOR, linewidth=0.6, zorder=2)
+
+    gl = ax.gridlines(
+        draw_labels=True,
+        linewidth=0.3,
+        color=GRIDLINE_COLOR,
+        linestyle=":",
+        alpha=0.8,
+        zorder=2,
+    )
+    gl.top_labels = False
+    gl.right_labels = False
+    gl.xlabel_style = {"size": 8, "color": TEXT_COLOR}
+    gl.ylabel_style = {"size": 8, "color": TEXT_COLOR}
+
+    # Draw the largest domain first so smaller nests are never hidden.
+    areas = [
+        (lon_max[i] - lon_min[i]) * (lat_max[i] - lat_min[i]) for i in range(n_nests)
+    ]
+    order = np.argsort(areas)[::-1]
+
+    for i in order:
         width = lon_max[i] - lon_min[i]
         height = lat_max[i] - lat_min[i]
-
-        rect = Rectangle(
-            (lon_min[i], lat_min[i]),
-            width,
-            height,
-            linewidth=2,
-            edgecolor=tile_colors[i],
-            facecolor="none",
-            transform=ccrs.PlateCarree(),
-            zorder=3,
+        color = tile_colors[i]
+        ax.add_patch(
+            Rectangle(
+                (lon_min[i], lat_min[i]),
+                width,
+                height,
+                linewidth=1.8,
+                edgecolor=color,
+                facecolor=to_rgba(color, 0.08),
+                transform=ccrs.PlateCarree(),
+                zorder=3 + int(n_nests - i),
+            )
         )
-        ax.add_patch(rect)
-
-    ax.set_extent(
-        [min(lon_min) - 10, max(lon_max) + 10, min(lat_min) - 10, max(lat_max) + 10],
-        crs=ccrs.PlateCarree(),
-    )
+        ax.text(
+            lon_min[i],
+            lat_max[i],
+            f"T{nest_tile(i)}",
+            transform=ccrs.PlateCarree(),
+            fontsize=7,
+            color="white",
+            va="bottom",
+            ha="left",
+            zorder=10,
+            bbox=dict(boxstyle="round,pad=0.18", facecolor=color, edgecolor="none"),
+        )
 
     legend_elements = [
-        Rectangle((0, 0), 1, 1, color=c, label=c_res)
-        for c, c_res in zip(tile_colors, resolutions)
+        Rectangle((0, 0), 1, 1, color=c, label=lab)
+        for c, lab in zip(tile_colors, resolutions)
     ]
     ax.legend(
-        handles=legend_elements, loc="lower left", fontsize="small", framealpha=0.5
+        handles=legend_elements,
+        loc="lower left",
+        fontsize="small",
+        framealpha=0.85,
+        edgecolor="none",
     )
-    plt.tight_layout()
-    plt.savefig(state.run_dir / "nest_grid.png", dpi=1200, bbox_inches="tight")
+
+    fig.tight_layout()
+    fig.savefig(state.run_dir / "nest_grids.png", dpi=FIG_DPI, bbox_inches="tight")
     plt.show()
+    plt.close(fig)
+
+
+def plot_tiles(grid_dir: Path):
+    """Draw grid_faces.png: the six global faces with their nests on them.
+
+    Parameters
+    ----------
+    grid_dir : Path
+        Directory holding C*_grid.tile*.nc supergrid files.
+
+    Returns
+    -------
+    list of str
+        Legend labels for the nests, in the form "Tile 7 ~3.0 km on tile 6".
+    """
+    grid_dir = Path(grid_dir)
+    grid_files = sorted(grid_dir.glob("C*_grid.tile*.nc"), key=tile_number)
+    datasets = [xr.open_dataset(f) for f in grid_files if f.exists()]
+    if not datasets:
+        return []
+
+    try:
+        n_nests = max(len(datasets) - N_GLOBAL_TILES, 0)
+        parents = nest_parents(n_nests)
+        tile_colors = tile_palette(n_nests)
+        face_titles, nest_labels = tile_labels(len(datasets), parents)
+
+        plot_faces(
+            datasets,
+            tile_colors,
+            face_titles,
+            nest_labels,
+            parents,
+            state.run_dir / "grid_faces.png",
+        )
+    finally:
+        for ds in datasets:
+            ds.close()
+
+    return nest_labels
 
 
 def plot_grid():
+    """Entry point. Configures the cartopy cache and produces both figures."""
     import cartopy
 
     cartopy_data = state.fix_src / "carto"
@@ -281,7 +762,7 @@ def plot_grid():
     cartopy.config["data_dir"] = cartopy_data
 
     try:
-        resolutions = plot_tiles(state.grid, state.target_lon, state.target_lat)
+        nest_labels = plot_tiles(state.grid)
 
         if state.n_nests > 0:
             plot_platecarree(
@@ -289,8 +770,7 @@ def plot_grid():
                 state.lon_max,
                 state.lat_min,
                 state.lat_max,
-                resolutions[1:],  # drop Tile 6, the parent, keep the nests
+                nest_labels,
             )
-
     except Exception:
         return
