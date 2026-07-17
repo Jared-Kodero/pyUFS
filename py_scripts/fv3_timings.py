@@ -5,12 +5,12 @@ import pandas as pd
 from fv3_state import state
 
 BASE_TIMINGS = {
-    48: {"dt_atmos": 1800, "k_split": 2, "n_split": 6},
-    96: {"dt_atmos": 900, "k_split": 2, "n_split": 6},
-    192: {"dt_atmos": 600, "k_split": 2, "n_split": 6},
-    384: {"dt_atmos": 450, "k_split": 2, "n_split": 6},
-    768: {"dt_atmos": 225, "k_split": 2, "n_split": 6},
-    1152: {"dt_atmos": 150, "k_split": 2, "n_split": 6},
+    48: {"dt_atmos": 1200, "k_split": 2, "n_split": 6},
+    96: {"dt_atmos": 720, "k_split": 2, "n_split": 6},
+    192: {"dt_atmos": 450, "k_split": 2, "n_split": 6},
+    384: {"dt_atmos": 360, "k_split": 2, "n_split": 6},
+    768: {"dt_atmos": 180, "k_split": 2, "n_split": 8},
+    1152: {"dt_atmos": 120, "k_split": 2, "n_split": 8},
     3072: {"dt_atmos": 90, "k_split": 2, "n_split": 10},
 }
 

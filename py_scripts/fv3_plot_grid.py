@@ -123,14 +123,12 @@ def plot_tiles(grid_dir: Path, target_lon: float, target_lat: float):
     theta = np.linspace(0, 2 * np.pi, 720)
     ax.plot(np.cos(theta), np.sin(theta), color="black", lw=1.5)
 
-    resolutions = []
+    resolutions = [
+        f"Tile {i + 1} ~{state.res_km[i]:.1f} km" for i in range(6 + state.n_nests + 1)
+    ]
 
     for i, (ds, color) in enumerate(zip(datasets, tile_colors), start=1):
         lon, lat = load_lonlat(ds)
-
-        # state.res_km[0] is the global grid, [1:] the nests in nest order
-        if i >= 6:
-            resolutions.append(f"Tile {i} ~{state.res_km[i - 6]:.1f} km")
 
         # Get the path of the child to punch a hole in the current parent
         child_path = None
@@ -181,9 +179,8 @@ def plot_tiles(grid_dir: Path, target_lon: float, target_lat: float):
     ax.set_xlim(-1.05, 1.05)
     ax.set_ylim(-1.05, 1.05)
     ax.axis("off")
-    ax.set_title("FV3 C-grid:Telescoping Nests", fontsize=15)
     plt.tight_layout()
-    plt.savefig(state.run_dir / "grid2.png", dpi=1200, bbox_inches="tight")
+    plt.savefig(state.run_dir / "grids.png", dpi=1200, bbox_inches="tight")
     plt.show()
 
     for ds in datasets:
@@ -256,7 +253,7 @@ def plot_platecarree(
         handles=legend_elements, loc="lower left", fontsize="small", framealpha=0.5
     )
     plt.tight_layout()
-    plt.savefig(state.run_dir / "grid1.png", dpi=1200, bbox_inches="tight")
+    plt.savefig(state.run_dir / "nest_grid.png", dpi=1200, bbox_inches="tight")
     plt.show()
 
 

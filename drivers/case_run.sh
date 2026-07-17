@@ -11,29 +11,35 @@ set -e
 module purge
 
 
+cd "$CASE_PWD"
 
 export WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
-export TMP_DIR="$JOBTMP_DIR/tmp"
+
+
+if  [ ! -d "$JOBTMP_DIR" ]; then 
+    SYNC=0
+    WORK_DIR="$CASE_DIR"
+    TMP_DIR="$CASE_ROOT_DIR/tmp"
+    mkdir -p "$JOBTMP_DIR"
+else
+    SYNC=1
+    TMP_DIR="$JOBTMP_DIR/tmp"
+    rm -rf "$WORK_DIR"
+fi
+
+
+
 
 
 if [ -z "$CASE_RUN_START_TIME" ]; then
     export CASE_RUN_START_TIME=$(date +%s)
 fi
+
+export TMP_DIR
 export SESSION_START_TIME=$(date +%s)
 
-
-cd "$CASE_PWD"
-
-
-if  [ ! -d "$JOBTMP_DIR" ]; then 
-    WORK_DIR="$CASE_DIR"
-    SYNC=0
-else
-    SYNC=1
-    rm -rf "$WORK_DIR"
-fi
 
 
 # PREPARE DIRECTORIES
