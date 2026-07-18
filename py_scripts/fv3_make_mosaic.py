@@ -204,9 +204,12 @@ def run_make_mosaic(
         Directory where the mosaic NetCDF file will be written. The expected
         output is usually named `C{c_res}_mosaic.nc` or similar.
 
+    mod_dir : Path, optional
+        Directory containing the model files. If provided and not empty, the function will return early without generating new mosaics.
+
     """
 
-    if mod_dir.exists() and len(mod_dir.glob("*")) > 0:
+    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
         return
 
     log.info("Generating grid mosaics")

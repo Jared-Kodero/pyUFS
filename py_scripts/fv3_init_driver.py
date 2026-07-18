@@ -110,18 +110,17 @@ def _load_initial_state() -> None:
     state.clear()
     state.update(merged_config)
     state.update(runtime_env)
+    state.case_description = state.get("description", "")
+    description = [state.init_datetime, state.case_name]
+    state.description = "_".join(str(value).upper() for value in description if value)
     state.init_datetime = parse_datetime(state.init_datetime)
-
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
-    state.case_description = state.get("description", "")
     state.continue_run = False
     state.warm_start = False
     state.restart_no = 0
     state.resubmit_idx = 0
     state.total_restarts = state.resubmit + 1
-    description = [state.init_datetime, state.case_name]
-    state.description = "_".join(str(value).upper() for value in description if value)
 
     segment_count = state.resubmit + 1
     state.total_run_hours = state.run_nhours * segment_count
@@ -144,8 +143,6 @@ def _load_initial_state() -> None:
     else:
         state.n_nests = 0
         state.refine_ratio = 1
-
-    state.checksum = compute_checksum(state)
 
     _log_initial_state()
 
@@ -200,8 +197,8 @@ def init_driver() -> None:
             save_fv3_state()
             return
 
+    state.checksum = compute_checksum(state)
     os.chdir(state.work_dir)
-
     calc_cpu_alloc(state.grid)
     update_nml_configs()
     apply_perturbations()

@@ -201,12 +201,13 @@ def merge_outputs(
 
     first, last = window
     output_dir = Path(output_dir)
+    segment_dir = output_dir / "seg"
     handles = list(dict.fromkeys(stream_family(s) for s in streams))
 
     for handle in handles:
         segments: dict[str, list[tuple[int, Path]]] = {}
 
-        for path in output_dir.glob(f"{handle}.*.nc"):
+        for path in segment_dir.glob(f"{handle}.*.nc"):
             parsed = parse_segment(path, handle)
             if parsed is None:
                 continue  # merged output or unrelated file
@@ -392,8 +393,10 @@ def regrid_global_tiles(streams: list, c_res: int):
 
     for stream in streams:
         input_file = stream
-        output_file = state.output / segment_name(
-            stream_family(stream), segment_index(stream), "global"
+        output_file = (
+            state.output
+            / "seg"
+            / segment_name(stream_family(stream), segment_index(stream), "global")
         )
 
         call_fregrid(
@@ -444,8 +447,12 @@ def regrid_nest_tiles(streams: list, c_res: int):
 
         for stream in streams:
             input_file = f"{stream}.nest{nest_idx:02d}.tile{tile}.nc"
-            output_file = state.output / segment_name(
-                stream_family(stream), segment_index(stream), f"tile{tile}"
+            output_file = (
+                state.output
+                / "seg"
+                / segment_name(
+                    stream_family(stream), segment_index(stream), f"tile{tile}"
+                )
             )
 
             call_fregrid(
@@ -471,13 +478,14 @@ def regrid():
     regrid_global_tiles(streams, state.c_res)
     regrid_nest_tiles(streams, state.c_res)
 
+    merge_freq = get_merge_freq()
     merge_outputs(
         state.output,
         streams,
         state.n_nests,
         state.restart_no,
         state.total_restarts,
-        get_merge_freq(),
+        merge_freq,
     )
 
     static_path = Path(state.work_dir) / "STATIC"
@@ -490,6 +498,9 @@ def regrid():
             if dest.exists():
                 continue
             f.rename(dest)
+
+    if state.resubmit_idx == state.resubmit:
+        os.system(f"rm -rf {Path(state.output) / 'seg'}")
 
     shutil.rmtree(state.tmp)
 

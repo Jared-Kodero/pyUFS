@@ -54,6 +54,16 @@ $CASE_MEMORY_FLAG \
 --export="$EXPORT_VARS" \
 "$UFS_UTILS_DIR/drivers/case_run.sh")
 
-
 EXIT_CODE=$?
 export EXIT_CODE
+export JOB_ID
+
+if (( EXIT_CODE != 0 )) || [[ -z "$JOB_ID" ]]; then
+    echo "Case.Submit - ERROR - sbatch failed for job $SLURM_JOB_NAME" >&2
+    (( EXIT_CODE == 0 )) && EXIT_CODE=1
+    # works whether this file is sourced (case_run.sh) or executed (case_submit.py)
+    if (return 0 2>/dev/null); then
+        return "$EXIT_CODE"
+    fi
+    exit "$EXIT_CODE"
+fi
