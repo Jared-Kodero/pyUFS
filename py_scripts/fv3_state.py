@@ -120,10 +120,15 @@ class FV3State(dict):
     nest_ioffsets: list[int]
     nest_joffsets: list[int]
 
-    lat_min: list[int]
-    lat_max: list[int]
-    lon_min: list[int]
-    lon_max: list[int]
+    lat_min: list[float]
+    lat_max: list[float]
+    lon_min: list[float]
+    lon_max: list[float]
+
+    resolved_lon_min: list[float]
+    resolved_lon_max: list[float]
+    resolved_lat_min: list[float]
+    resolved_lat_max: list[float]
 
     # Initial-condition generation and external data sources
     generate_ic_data: bool

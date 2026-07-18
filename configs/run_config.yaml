@@ -1,7 +1,11 @@
 # =============================================================================
-# SHIELD Run Configuration
+# SHiELD Run Configuration
 # FV3-based atmospheric model simulation parameters.
 # =============================================================================
+# The launcher reads the case-local run_config.yaml from the submission
+# directory and fills any unset key from this default file. Unknown keys are
+# rejected at submission time, so keep case files aligned with the keys below.
+#
 # Sections (functional order):
 #   0. Job environment (system)
 #   1. Job submission (SLURM)
@@ -13,51 +17,52 @@
 #   7. Vertical grid and physics
 #   8. Time stepping
 #   9. Surface and orography
-#  11. Land surface perturbations
+#  10. Land surface perturbations
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # 0. JOB ENVIRONMENT (SYSTEM)
 # -----------------------------------------------------------------------------
+# Environment variables such as $USER and $HOME are expanded.
 
 case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
-jobtmp: /jobtmp/$USER/gfdl_shield
-fix_src: /oscar/data/deeps/shared/gfdl_shield/fix
+jobtmp: /jobtmp/$USER/gfdl_shield # Node-local scratch. When present, the model runs here and syncs back to case_root.
+fix_src: /oscar/data/deeps/shared/gfdl_shield/fix # Source tree for static datasets (the fix directory)
 ufs_utils: /oscar/data/deeps/shared/gfdl_shield/ufs_py
 shield_image: /oscar/data/deeps/shared/gfdl_shield/containers/shield.sif
 fregrid_image: /oscar/data/deeps/shared/gfdl_shield/containers/fregrid.sif
 preprocess_image: /oscar/data/deeps/shared/gfdl_shield/containers/preprocess.sif
 shield_root: /oscar/data/deeps/shared/gfdl_shield
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x
-containers_root: /oscar/data/deeps/shared/gfdl_shield/containers
-container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths to bind inside containers (e.g., Singularity, Apptainer, or Docker). Must include all directories used by the workflow.
-modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Modules to load for the workflow. Must include all libraries used by the workflow.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x # Native executable. Required for multi-node native runs; otherwise the container image is used.
+containers_root: /oscar/data/deeps/shared/gfdl_shield/containers # If empty, images are built by configs/install_images.sh before the first stage.
+container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers. Must include every directory used by the workflow.
+modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Host modules loaded for the workflow. Must include every library used by the workflow.
+
 # -----------------------------------------------------------------------------
 # 1. JOB SUBMISSION (SLURM)
 # -----------------------------------------------------------------------------
 # Parameters forwarded to sbatch. Override defaults as required by the host.
-constraint_node: false # Use node constraint for job submission
+
+constraint_node: false # Apply a core-count node constraint
 exclusive_node: false # Request exclusive node access
 walltime: 24 # Walltime in hours
 n_nodes: 4 # Number of nodes to request
-n_cpus: 192 # Total number of CPUs to request
-partition: batch # Partition to submit job to
-n_cpus_per_task: 1 # Number of CPUs per task (for MPI or OpenMP)
+n_cpus: 192 # Total number of tasks to request. At least 32 must be visible to the preprocess process.
+partition: batch # Partition to submit the job to
+n_cpus_per_task: 1 # CPUs per task (for MPI or OpenMP)
 mem: 0 # Total job memory [GB]; 0 lets the scheduler apply its default
 logfile: shield_driver # Basename of the driver log written in the case directory
-
-# SUBMIT CONFIGURATION
-skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
+# Tasks per node are computed as n_cpus // n_nodes.
 
 # -----------------------------------------------------------------------------
 # 2. CASE METADATA
 # -----------------------------------------------------------------------------
 
-case_name: null # Case identifier; null falls back to directory name
+case_name: null # Case identifier; null falls back to the directory name
 description: # Short experiment label (REQUIRED for tracking)
-fv3_debug: false # Verbose diagnostics during model run
-archive_data: true # Archive outputs after completion
+fv3_debug: false # Verbose diagnostics during the model run
+archive_data: true # Archive outputs after the final segment
 merge_freq: -1 # Merge frequency for regridded output, in restart segments.
 # -1 merges the whole run into one file per stream and grid, on the final restart
 #  0 disables merging and retains one file per restart segment
@@ -67,46 +72,61 @@ merge_freq: -1 # Merge frequency for regridded output, in restart segments.
 # 3. EXECUTION CONTROL
 # -----------------------------------------------------------------------------
 
-init_datetime: null # Initialization time YYYYMMDDHH, UTC (REQUIRED)
-run_nhours: null # Integration length [hours]
-forecast_hour: 0 # Offset from initialization [hours]
-continue_run: false # Restart from existing files (requires valid restarts)
-resubmit: 0 # Number of sequential job resubmissions
+init_datetime: null # Initialization cycle, UTC, format YYYYMMDDHHZ (REQUIRED).
+# The literal Z suffix is required. The cycle hour must be 00, 06, 12, or 18.
+# Example: "2026031200Z".
+run_nhours: null # Integration length of one segment [hours] (REQUIRED)
+forecast_hour: 0 # Lead hour of the source dataset used for ICs; 0 selects the analysis
+resubmit: 0 # Number of sequential resubmissions. The run has resubmit + 1 segments, each run_nhours long.
+continue_run: false # Managed internally by the driver. Segment 0 is a cold start; later segments are warm starts driven by resubmit.
 
 # -----------------------------------------------------------------------------
 # 4. ENSEMBLE CONFIGURATION
 # -----------------------------------------------------------------------------
+# Each member is submitted as an independent job with its own working directory
+# (memNN) and log.
 
 ensemble_run: false # Multi-member ensemble; false runs a single simulation
-n_ensembles: 0 # Number of members (used when ensemble_run = true)
+n_ensembles: 0 # Number of members. Must be at least 1 when ensemble_run is true.
+skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]
 
 # -----------------------------------------------------------------------------
 # 5. INITIAL CONDITIONS AND PREPROCESSING
 # -----------------------------------------------------------------------------
-external_ic_dir: null # Path to external IC files previously generated by another workflow
-generate_ic_data: true # Generate grid and IC files
-preprocess_only: false # Generate complete ICs and grid only, then exit
-preprocess_grid_only: false # Generate grid only, then exit
-preprocess_orog_only: false # Generate orography only, then exit
+# With generate_ic_data: true, the grid and orography are generated and ICs are
+# converted from GFS and HRRR GRIB2 data with chgres_cube. To override the
+# per-domain source assignment, place a case-local chgres_cube.yaml in the case
+# directory.
 
-# -------------------`----------------------------------------------------------
+external_ic_dir: null # Path to a pre-staged case bundle, used when generate_ic_data is false
+generate_ic_data: true # Generate the grid and IC files during preprocess
+preprocess_only: false # Stage the complete grid and ICs, then exit
+preprocess_grid_only: false # Generate the grid only, then exit (stages to IC/grid). Implies preprocess_only.
+preprocess_orog_only: false # Generate orography only, then exit (stages to IC/orography). Implies preprocess_only.
+
+# -----------------------------------------------------------------------------
 # 6. HORIZONTAL GRID
 # -----------------------------------------------------------------------------
 # Cubed-sphere resolution reference:
 #   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
 #   C768  ~ 13 km      C3072 ~ 3 km
 
-c_res: 96 # Cubed-sphere face resolution
+c_res: 96 # Cubed-sphere face resolution. One of C48, C96, C192, C384, C768, C1152, C3072 (integer or C-prefixed).
 gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
-target_lon: -96 # Grid center longitude [degrees]; used for stretch / regional
-target_lat: 35.0 # Grid center latitude  [degrees]; used for stretch / regional
-stretch_factor: 1.0 # Schmidt stretching coefficient; values > 1 refine the target region
+target_lon: -96 # Grid center longitude [degrees]; used for stretch and regional. For nest, set to the first nest box center.
+target_lat: 35.0 # Grid center latitude [degrees]; used for stretch and regional. For nest, set to the first nest box center.
+stretch_factor: 1.0 # Schmidt stretching coefficient. Must be greater than 1 for gtype: stretch. Values greater than 1 refine the target region.
 
 # 6a. Nested grids (active when gtype = nest)
-# Nesting options: for 3 nests set to [ 4, 4, 2 ]  so that inner nest is 3km
+# The nest layout is classified automatically from the bounding boxes. If each
+# box is contained inside its predecessor, the layout is telescoping and
+# refinement ratios compound. Otherwise the nests are independent nests on the
+# same parent grid.
+# Example: for 3 telescoping nests set refine_ratio to [4, 4, 2] so that, from a
+# C96 parent, the inner nest reaches about 3 km.
 refine_ratio: [3] # Refinement ratio for each nest relative to its parent grid
 parent_tile: 6 # Parent cubed-sphere tile, 1 to 6
-halo: 3 # Halo width for MPI exchange
+halo: 3 # Halo width for the nest boundary exchange
 
 lon_min: null # Western nest bound(s) [degrees east]; list required for multiple nests
 lon_max: null # Eastern nest bound(s) [degrees east]; list required for multiple nests
@@ -129,6 +149,11 @@ do_deep: false # Deep convection parameterization (disable for dx < 4 km)
 # -----------------------------------------------------------------------------
 # 8. TIME STEPPING (CFL CONSTRAINED)
 # -----------------------------------------------------------------------------
+# When dt_atmos, k_split, or n_split are null, values are derived from a base
+# table indexed by resolution, with off-table resolutions estimated by a
+# log-log fit and snapped to a divisor of 3600 s. For nested runs the finest
+# domain sets dt_atmos.
+#
 # Relationships:
 #   dt_dyn      = dt_atmos / k_split[i]
 #   dt_acoustic = dt_atmos / (k_split[i] * n_split[i])
@@ -143,11 +168,14 @@ do_deep: false # Deep convection parameterization (disable for dx < 4 km)
 #   dt_atmos is CFL constrained and should decrease with increasing horizontal
 #   resolution or refinement ratio.
 
-dt_atmos: null # Atmospheric timestep [s] for nested high c_res set to 90
-dt_ocean: null # Ocean coupling timestep [s], if coupled for nested high c_res set to 90
+dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
+dt_ocean: null # Ocean coupling timestep [s]. Null triggers automatic selection.
 
-# k_split: [ 1, 2, 2, 2 ]  for 3 nests with dt_atmos = 90 s, nest01 runs at 45 s, nest02 and nest03 run at 22.5 s
-# n_split: [ 3, 6, 6, 10 ] for 3 nests with dt_atmos = 90 s and k_split as above, global acoustic timestep is 30 s, nest01 acoustic timestep is 7.5 s, and nest02 and nest03 acoustic timestep is 2.25 s
+# When set, k_split and n_split must be lists of length n_nests + 1, with the
+# first value for the global grid and the remaining values for the nests in
+# order.
+# k_split: [ 1, 2, 2, 2 ]  for 3 nests with dt_atmos = 90 s,
+# n_split: [ 3, 6, 6, 10 ] for 3 nests with dt_atmos = 90 s
 k_split: null # Remap-split counts per dt_atmos for each grid; first value is global, remaining values are nests in nest order
 n_split: null # Acoustic-substep counts per remap split for each grid; first value is global, remaining values are nests in nest order
 
@@ -156,30 +184,34 @@ n_split: null # Acoustic-substep counts per remap split for each grid; first val
 # -----------------------------------------------------------------------------
 
 lake_cutoff: 0.2 # Land / water fractional threshold
-add_lake: false # Activate lake model
-make_gsl_orog: false # Generate GSL orography fields
+add_lake: false # Activate the lake model
+make_gsl_orog: false # Generate GSL orography fields (used by the gravity wave drag scheme)
 
 # -----------------------------------------------------------------------------
-# 11. LAND SURFACE PERTURBATIONS
+# 10. LAND SURFACE PERTURBATIONS
 # -----------------------------------------------------------------------------
-# Apply controlled perturbations to soil-state variables for ensemble spread
-# or sensitivity experiments.
+# Apply controlled perturbations to soil-state variables for ensemble spread or
+# sensitivity experiments. sm_perturbations is a single mapping, not a list.
+# Perturbations are applied to the surface restart files sfc_data.tile*.nc, and
+# sfc_data.nestNN.tile*.nc for nested tiles.
 #
-# Schema
-# ------
+# Schema (flat mapping)
+# ---------------------
 # sm_perturbations:
-#   perturbations:
-#     - target_var:  <str>                 # e.g., smc, slc, stc
-#       soil_layers: <int | list[int]>
-#       tiles:       <list[int]>
-#       method:      <str | list[str]>
+#   target_var:  <str>              # smc, slc, or stc
+#   soil_layers: <int | list[int]>  # zero-based layer indices; 0 to 3 for the default 4-layer soil
+#   tiles:       <list[int]>        # FV3 tile indices; 1 to 6 for global, 7+ for nests
+#   method:      <str | list[str]>  # one method or a list applied in order
+#   apply_on_restarts: <int | "all" | list[int]>  # required to take effect; absent means no perturbation
 #
-# Methods
-# -------
-#   std_shift       X = X + k * sigma
-#   mean_shift      X = mu * factor
-#   anom_shift      X = mu + alpha * (X - mu)
-#   constant_fill   X = constant (or mu)
+# Methods and the required key for each
+# -------------------------------------
+#   std_shift      X = X + n_sigma * sigma            requires n_sigma
+#   mean_shift     X = X * (1 + mean_scale)           requires mean_scale
+#   anom_shift     X = mu + (1 + anom_scale)*(X - mu) requires anom_scale
+#   constant_fill  X = fill_value (or the field mean) requires fill_value (float or "mean")
+#   climo_mean     X = monthly climatological mean    requires use_climo: true (climo_file optional)
+#     where mu is the mean over valid points and sigma is the standard deviation.
 #
 # Optional controls
 # -----------------
@@ -188,22 +220,33 @@ make_gsl_orog: false # Generate GSL orography fields
 #   anom_scale:        float
 #   fill_value:        float | "mean"
 #   use_climo:         bool
-#   do_nudge:          bool
-#   climo_file:        str          # global file; must contain target_var and
-#                                   # match soil_layers
-#   tau_hours:         float        # default 24
-#   do_hold:           bool
-#   apply_on_restarts: int | list[int]
+#   climo_file:        str      # global file; must contain target_var and match soil_layers.
+#                               # Defaults to fix/era5/sm_monthly_1950_2025.nc when use_climo is true.
+#   do_nudge:          bool     # relax toward a reference on restart segments (index >= 1)
+#   tau_hours:         float    # nudging timescale; default 24. alpha = run_nhours / tau_hours, clipped to [0, 1].
+#   do_hold:           bool     # carry the perturbed state forward on restart segments (index >= 1)
+#   apply_on_restarts: int | "all" | list[int]
 #
 # Constraints
 # -----------
-#   Physical bounds enforced (e.g., soil moisture in [0.01, 0.99]).
-#   Ice / water consistency preserved (smc, slc coupling).
-#   Multiple methods applied sequentially in the listed order.
+#   Volumetric soil moisture is clipped to [0.01, 0.99] m3 m-3.
+#   Ice content (smc - slc) is preserved; slc is reconstructed after an smc edit.
+#   Multiple methods are applied sequentially in the listed order.
+#   do_nudge and do_hold take effect only on restart segments (index >= 1).
 #
 # Warnings
 # --------
 #   do_nudge and do_hold are mutually exclusive.
 #   Improper perturbations may violate energy or water conservation.
+#
+# Example: dry the top three soil layers of the six global tiles at the initial
+# time by 20 percent.
+# sm_perturbations:
+#   target_var: smc
+#   soil_layers: [0, 1, 2]
+#   tiles: [1, 2, 3, 4, 5, 6]
+#   method: mean_shift
+#   mean_scale: -0.2
+#   apply_on_restarts: 0
 
 sm_perturbations: null
