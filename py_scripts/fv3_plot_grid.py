@@ -70,7 +70,7 @@ MESH_MAX_LINES = 60  # ceiling, bounds cost on the largest supergrids
 EARTH_RADIUS_KM = 6371.0088
 
 PANEL_FIG_IN = 3.4  # width of one face panel, inches
-FIG_DPI = 1200  # dots per inch for the figure, so a 3.4" panel is 4080 pixels wide
+FIG_DPI = 300  # dots per inch for the figure, so a 3.4" panel is 4080 pixels wide
 
 
 def earth_colors(n, seed=42):

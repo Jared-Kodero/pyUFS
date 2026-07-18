@@ -96,7 +96,7 @@ def run_driver(
             path = str(state.ic_data / "grid").replace(
                 str(state.work_dir), str(state.case_dir)
             )
-
+            state.preprocess_only = False
             state.preprocess_grid_only = False
             save_fv3_state()
             log.info(f"Grid files staged in {path}")
@@ -142,6 +142,7 @@ def run_driver(
             path = str(state.ic_data / "orography").replace(
                 str(state.work_dir), str(state.case_dir)
             )
+            state.preprocess_only = False
             state.preprocess_orog_only = False
             save_fv3_state()
             log.info(f"Orography files staged in {path}")
@@ -284,6 +285,7 @@ def run_driver(
                 jdim=jdim,
                 delx=delx,
                 dely=dely,
+                mod_dir=state.ic_data / "grid",
             )
 
             run_make_mosaic(
@@ -314,6 +316,7 @@ def run_driver(
                 jdim=jdim,
                 delx=delx,
                 dely=dely,
+                mod_dir=state.ic_data / "grid",
             )
 
             run_make_mosaic(
@@ -321,10 +324,12 @@ def run_driver(
                 gtype=gtype,
                 exec_dir=exe_dir,
                 out_dir=tmp / "grid",
+                mod_dir=state.ic_data / "grid",
             )
 
-            if state.preprocess_grids_only:
-                state.grids_preprocessed = True
+            if state.preprocess_grid_only:
+                state.preprocess_only = False
+                state.preprocess_grid_only = False
                 log.info(
                     "Preprocess grids only requested. Exiting after grid generation."
                 )
@@ -349,10 +354,12 @@ def run_driver(
             orog_dir=orog_dir,
             exec_dir=exe_dir,
             tmp=tmp,
+            mod_dir=state.ic_data / "orography",
         )
 
-        if state.preprocess_orography_only:
-            state.orography_preprocessed = True
+        if state.preprocess_orog_only:
+            state.preprocess_only = False
+            state.preprocess_orog_only = False
             log.info(
                 "Preprocess orography only requested. Exiting after orography generation."
             )
