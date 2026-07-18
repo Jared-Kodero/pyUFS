@@ -905,10 +905,10 @@ def plot_grid():
 
         if state.n_nests > 0:
             plot_nests(
-                state.resolved_lon_min,
-                state.resolved_lon_max,
-                state.resolved_lat_min,
-                state.resolved_lat_max,
+                state.lon_min,
+                state.lon_max,
+                state.lat_min,
+                state.lat_max,
                 nest_labels,
             )
     except Exception:
