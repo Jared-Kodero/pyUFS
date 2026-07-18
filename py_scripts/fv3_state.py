@@ -248,7 +248,9 @@ def save_fv3_state(cfg: dict = None, path: Path = None):
 
         data[k] = v
 
-    data["init_datetime"] = str(data["init_datetime"])
+    data["init_datetime"] = pd.to_datetime(data["init_datetime"]).dt.strftime(
+        "%Y%m%d%HZ"
+    )
 
     with open(path, "w") as f:
         yaml.safe_dump(dict(data), f, default_flow_style=None, sort_keys=False)
@@ -268,7 +270,10 @@ def load_fv3_state():
     with path.open("r") as file:
         data = yaml.safe_load(file)
 
-    parse_datetime(data)
+    if not isinstance(data, dict):
+        raise ValueError("Invalid state file format")
+
+    data["init_datetime"] = parse_datetime(data["init_datetime"])
 
     state.clear()
     state.update(data, **paths)

@@ -27,10 +27,6 @@ def get_launcher(n_procs: int = None) -> list:
     return ["mpirun", "-np", str(n_procs), "--host", "localhost"]
 
 
-def exit_code(code: int = 0) -> None:
-    (paths["work_dir"] / "exit_code").write_text(str(code))
-
-
 def open_yaml(path: Path) -> dict:
     with open(path, "r") as f:
         data = dict(yaml.safe_load(f))
