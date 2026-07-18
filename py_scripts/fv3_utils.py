@@ -15,6 +15,11 @@ from fv3_paths import paths
 log = logging.getLogger("PREPROCESS")
 
 
+def exit_code(code: int = 0) -> None:
+    """Write the exit code to a file in the work directory"""
+    (paths["work_dir"] / "exit_code").write_text(str(code))
+
+
 @contextmanager
 def redirect_streams(
     stdout: Path | None = None,
@@ -156,24 +161,17 @@ def env_setup():
     os.environ["PATH"] = f"{openmpi_bin}:{python_path}:{bin_paths}:{sys_path}"
 
 
-def parse_datetime(input_args):
-    datetime_str = input_args["init_datetime"]
-
-    try:
-        dt = pd.to_datetime(datetime_str, format="%Y%m%d%HZ")
-    except ValueError as exc:
-        try:
-            dt = pd.to_datetime(datetime_str)
-        except ValueError:
-            raise ValueError('Invalid cdate format. Expected "%Y%m%d%HZ".') from exc
-
+def parse_datetime(dt):
+    dt = pd.to_datetime(dt, format="%Y%m%d%HZ")
     valid_hours = [0, 6, 12, 18]
     if dt.hour not in valid_hours:
-        raise ValueError(
+        log.error(
             f"Invalid GFS cycle hour: {dt.hour:02d}Z. Valid GFS cycle times are 00Z, 06Z, 12Z, and 18Z."
         )
-    input_args["init_datetime"] = dt
-    return input_args
+        exit_code(1)
+        sys.exit(1)
+
+    return dt
 
 
 def cres_to_deg(C):

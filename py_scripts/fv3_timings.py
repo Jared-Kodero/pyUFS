@@ -95,6 +95,11 @@ def get_timings() -> dict:
     k_split = state.k_split or best_guess_timings["k_split"]
     n_split = state.n_split or best_guess_timings["n_split"]
 
+    if not isinstance(k_split, list):
+        raise ValueError(f"k_split must be a list, got {type(k_split)}")
+    if not isinstance(n_split, list):
+        raise ValueError(f"n_split must be a list, got {type(n_split)}")
+
     if len(k_split) != state.n_nests + 1:
         raise ValueError(
             f"Length of k_split ({len(k_split)}) does not match number of domains ({state.n_nests + 1})"
@@ -111,4 +116,5 @@ def get_timings() -> dict:
     timings["k_split"] = k_split
     timings["n_split"] = n_split
 
+    state.update(timings)
     return timings
