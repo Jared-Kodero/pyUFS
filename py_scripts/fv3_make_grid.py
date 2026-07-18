@@ -441,7 +441,7 @@ def run_make_grid(
 
     """
 
-    if mod_dir.exists() and len(mod_dir.glob("*")) > 0:
+    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
         src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
         log.info(f"Using existing grid files from {src}")
 

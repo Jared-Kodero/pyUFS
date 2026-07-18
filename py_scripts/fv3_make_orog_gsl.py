@@ -127,7 +127,7 @@ def run_make_orog_gsl(
         the function will use these files instead of generating new ones.
     """
 
-    if mod_dir.exists() and len(list(mod_dir.glob("*"))) > 0:
+    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
         return
 
     args = [

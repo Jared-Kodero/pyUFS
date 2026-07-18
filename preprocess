@@ -1,11 +1,12 @@
 #!/bin/sh
-set -e
 export TMPDIR="$TMP_DIR"
 
-cd $WORK_DIR
-/preprocess $UFS_UTILS_DIR/py_scripts/driver.py  
+cd "$WORK_DIR" || exit 1
 
+set +e
+/preprocess "$UFS_UTILS_DIR/py_scripts/driver.py"
 exit_code=$?
-echo $exit_code > $WORK_DIR/exit_code
-wait
-exit $exit_code
+set -e
+
+echo "$exit_code" > "$WORK_DIR/exit_code"
+exit "$exit_code"

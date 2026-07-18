@@ -156,7 +156,7 @@ def run_make_orog(
     """
 
     # check if mod_dir is presnt
-    if mod_dir.exists() and len(list(mod_dir.glob("*"))) > 0:
+    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
         src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
         log.info(f"Using existing orography files from {src}")
         files_to_copy = list(mod_dir.glob("*"))

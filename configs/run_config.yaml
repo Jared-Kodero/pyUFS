@@ -44,6 +44,8 @@ n_nodes: 4 # Number of nodes to request
 n_cpus: 192 # Total number of CPUs to request
 partition: batch # Partition to submit job to
 n_cpus_per_task: 1 # Number of CPUs per task (for MPI or OpenMP)
+mem: 0 # Total job memory [GB]; 0 lets the scheduler apply its default
+logfile: shield_driver # Basename of the driver log written in the case directory
 
 # SUBMIT CONFIGURATION
 skip_ensembles: null # Member indices to omit, e.g., [1, 3, 5]

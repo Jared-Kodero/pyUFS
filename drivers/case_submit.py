@@ -185,11 +185,13 @@ def get_config():
     n_tasks = int(user_cfg.get("n_cpus", default_cfg.get("n_cpus", 192)))
     partition = user_cfg.get("partition", default_cfg.get("partition", "batch"))
 
-    logfile = user_cfg.get("logfile", "shield_driver")
+    logfile = user_cfg.get("logfile", default_cfg.get("logfile", "shield_driver"))
     exclusive = int(user_cfg.get("exclusive_node", False))
     constraint = int(user_cfg.get("constraint_node", False))
-    cpu_per_task = int(user_cfg.get("cpus_per_task", 1))
-    mem = int(user_cfg.get("mem", 0))
+    cpu_per_task = int(
+        user_cfg.get("n_cpus_per_task", default_cfg.get("n_cpus_per_task", 1))
+    )
+    mem = int(user_cfg.get("mem", default_cfg.get("mem", 0)))
 
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
@@ -250,7 +252,7 @@ def get_config():
 
 def run(script: Path, proc_env: dict, cwd: Path) -> int:
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["bash", str(script)],
             env=proc_env,
             cwd=str(cwd),
@@ -259,6 +261,12 @@ def run(script: Path, proc_env: dict, cwd: Path) -> int:
     except subprocess.SubprocessError as e:
         logger.error(f"Job submission failed! {e}")
         sys.exit(1)
+
+    if result.returncode != 0:
+        logger.error(f"Job submission failed with exit code {result.returncode}")
+        sys.exit(result.returncode)
+
+    return result.returncode
 
 
 def main():

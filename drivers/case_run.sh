@@ -67,7 +67,7 @@ fi
 EXIT_CODE_FILE="$WORK_DIR/exit_code"
 SHIELD_NATIVE="$WORK_DIR/shield.native"
 
-touch "$EXIT_CODE_FILE"
+echo 0 > "$EXIT_CODE_FILE"
 
 # CHECK FOR PREVIOUS RUN
 if (( CASE_RESUBMIT_INDEX  > 0 )); then
@@ -108,6 +108,7 @@ if (( CASE_MULTI_NODE_FLAG == 1 )) || [[ -f "$SHIELD_NATIVE" ]]; then
 else
     SHIELD="$SHIELD_PREFIX $WORK_DIR/shield"
 fi
+
 
 
 
