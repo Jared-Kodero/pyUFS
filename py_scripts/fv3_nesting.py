@@ -22,12 +22,6 @@ def validate_nests(params: FV3State) -> list:
     x_max = params.lon_max
     y_min = params.lat_min
     y_max = params.lat_max
-
-    params.resolved_lon_min = x_min
-    params.resolved_lon_max = x_max
-    params.resolved_lat_min = y_min
-    params.resolved_lat_max = y_max
-
     n_nests = params.n_nests
     refine_ratios = params.refine_ratio
 
@@ -165,6 +159,7 @@ def calc_parent_grid_index(
     i_refine_ratio: int,
     alignment: int = 16,
     tile: int = None,
+    update_bounds: bool = False,
 ):
     """
     Compute supergrid index bounds for an FV3 two-way nest.
@@ -240,16 +235,18 @@ def calc_parent_grid_index(
     starts -= over
     ends -= over
 
-    ii = slice(starts[0] - 1, ends[0])
-    jj = slice(starts[1] - 1, ends[1])
+    if update_bounds:
+        # Update geographic bounds from the adjusted nest indices.
+        ii = slice(starts[0] - 1, ends[0])
+        jj = slice(starts[1] - 1, ends[1])
 
-    bbox_lons = (lons[jj, ii] + 180) % 360 - 180
-    bbox_lats = lats[jj, ii]
+        bbox_lons = (lons[jj, ii] + 180) % 360 - 180
+        bbox_lats = lats[jj, ii]
 
-    state.resolved_lon_min[idx] = round(float(bbox_lons.min()), 2)
-    state.resolved_lon_max[idx] = round(float(bbox_lons.max()), 2)
-    state.resolved_lat_min[idx] = round(float(bbox_lats.min()), 2)
-    state.resolved_lat_max[idx] = round(float(bbox_lats.max()), 2)
+        state.lon_min[idx] = round(float(bbox_lons.min()), 2)
+        state.lon_max[idx] = round(float(bbox_lons.max()), 2)
+        state.lat_min[idx] = round(float(bbox_lats.min()), 2)
+        state.lat_max[idx] = round(float(bbox_lats.max()), 2)
 
     return dict(
         istart_nest=int(starts[0]),
@@ -295,6 +292,7 @@ def get_nest_indices(
         grid_fname,
         i_refine_ratio,
         tile=tile,
+        update_bounds=state.nest_type != "telescoping",
     )
 
     state.parent_tile.append(parent_tile)
@@ -338,7 +336,7 @@ def get_nest_tele_indices(
         i_refine_ratio = np.prod(refine_ratio[: i + 1])
 
         indices = calc_parent_grid_index(
-            i, grid_parent_fname, i_refine_ratio, tile=tile
+            i, grid_parent_fname, i_refine_ratio, tile=tile, update_bounds=True
         )
 
         state.parent_tile.append(parent_tile)

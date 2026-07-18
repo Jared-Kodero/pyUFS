@@ -125,11 +125,6 @@ class FV3State(dict):
     lon_min: list[float]
     lon_max: list[float]
 
-    resolved_lon_min: list[float]
-    resolved_lon_max: list[float]
-    resolved_lat_min: list[float]
-    resolved_lat_max: list[float]
-
     # Initial-condition generation and external data sources
     generate_ic_data: bool
     external_ic_dir: Path | None
