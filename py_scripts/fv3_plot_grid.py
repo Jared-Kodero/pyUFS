@@ -22,7 +22,7 @@ import xarray as xr
 from fv3_state import state
 from matplotlib.collections import LineCollection
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
-from matplotlib.patches import PathPatch, Rectangle
+from matplotlib.patches import PathPatch, Polygon, Rectangle
 from matplotlib.path import Path as MplPath
 
 N_GLOBAL_TILES = 6
@@ -70,7 +70,7 @@ MESH_MAX_LINES = 60  # ceiling, bounds cost on the largest supergrids
 EARTH_RADIUS_KM = 6371.0088
 
 PANEL_FIG_IN = 3.4  # width of one face panel, inches
-FIG_DPI = 300
+FIG_DPI = 1200  # dots per inch for the figure, so a 3.4" panel is 4080 pixels wide
 
 
 def earth_colors(n, seed=42):
@@ -572,7 +572,8 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
         ax = axes[f - 1]
         lon, lat = load_lonlat(datasets[f - 1])
         lon0, lat0 = tile_center(lon, lat)
-        roll_deg = computational_roll_deg(lon, lat, lon0, lat0)
+        roll_deg = 0.0
+        # roll_deg = computational_roll_deg(lon, lat, lon0, lat0)
 
         # Limits are fixed first: each panel is zoomed to its own face, so its
         # map scale, and therefore its stride, follows from the zoom.
@@ -660,10 +661,22 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
     plt.close(fig)
 
 
-def plot_platecarree(
+def plot_nests(
     lon_min: list, lon_max: list, lat_min: list, lat_max: list, resolutions: list
 ):
-    """Plot nest domains on a PlateCarree map.
+    """Plot nest domains on a projection selected from their union bounds.
+
+    Candidate set is restricted to Robinson, cylindrical equidistant
+    (Plate Carree), Lambert conformal conic, and polar stereographic.
+    Assignment follows the WPS/ARW convention: polar stereographic for
+    high-latitude domains, Lambert conformal conic for mid-latitudes,
+    cylindrical equidistant for low-latitude and equator-straddling
+    domains, and Robinson for whole-world spans (Robinson, 1974). Conic
+    standard parallels use the one-sixth rule of Deetz and Adams (1934).
+
+    Longitudes are assumed to lie in [-180, 180] degrees east with
+    lon_min < lon_max for every nest, so no domain crosses the
+    antimeridian.
 
     Parameters
     ----------
@@ -680,19 +693,57 @@ def plot_platecarree(
 
     tile_colors = tile_palette(n_nests)[N_GLOBAL_TILES:]
 
-    span_x = max(lon_max) - min(lon_min)
-    span_y = max(lat_max) - min(lat_min)
-    pad_x = max(0.30 * span_x, 3.0)
-    pad_y = max(0.30 * span_y, 3.0)
+    # Union bounding box over all nests.
+    lon_w, lon_e = float(min(lon_min)), float(max(lon_max))
+    lat_s, lat_n = float(min(lat_min)), float(max(lat_max))
+    lon_c, lat_c = 0.5 * (lon_w + lon_e), 0.5 * (lat_s + lat_n)
+    d_lon, d_lat = lon_e - lon_w, lat_n - lat_s
+
+    # Projection selection. Order matters: a conic cannot contain a pole,
+    # and its cone constant collapses across the equator, so both cases are
+    # tested before the Lambert branch.
+    if d_lon >= 300.0 and d_lat >= 120.0:
+        proj = ccrs.Robinson(central_longitude=lon_c)
+    elif d_lon >= 300.0:
+        proj = ccrs.PlateCarree(central_longitude=lon_c)
+    elif abs(lat_c) >= 70.0 or lat_n >= 85.0 or lat_s <= -85.0:
+        true_scale = float(np.clip(abs(lat_c), 60.0, 89.0))
+        if lat_c >= 0.0:
+            proj = ccrs.NorthPolarStereo(
+                central_longitude=lon_c, true_scale_latitude=true_scale
+            )
+        else:
+            proj = ccrs.SouthPolarStereo(
+                central_longitude=lon_c, true_scale_latitude=-true_scale
+            )
+
+    elif abs(lat_c) <= 25.0 or lat_s * lat_n < 0.0:
+        proj = ccrs.PlateCarree(central_longitude=lon_c)
+
+    else:
+        # One-sixth rule; collapses to the tangent case for a thin domain.
+        if d_lat < 1.0:
+            parallels = (lat_c,)
+        else:
+            parallels = (lat_s + d_lat / 6.0, lat_n - d_lat / 6.0)
+        proj = ccrs.LambertConformal(
+            central_longitude=lon_c,
+            central_latitude=lat_c,
+            standard_parallels=parallels,
+            cutoff=-30.0 if lat_c >= 0.0 else 30.0,
+        )
+
+    pad_x = max(0.30 * d_lon, 3.0)
+    pad_y = max(0.30 * d_lat, 3.0)
     extent = [
-        min(lon_min) - pad_x,
-        max(lon_max) + pad_x,
-        max(min(lat_min) - pad_y, -90.0),
-        min(max(lat_max) + pad_y, 90.0),
+        max(lon_w - pad_x, -180.0),
+        min(lon_e + pad_x, 180.0),
+        max(lat_s - pad_y, -90.0),
+        min(lat_n + pad_y, 90.0),
     ]
 
     fig = plt.figure(figsize=(9, 7))
-    ax = plt.axes(projection=ccrs.PlateCarree())
+    ax = fig.add_subplot(1, 1, 1, projection=proj)
     ax.set_extent(extent, crs=ccrs.PlateCarree())
 
     ax.add_feature(cfeature.OCEAN, facecolor=OCEAN_FACE, zorder=0)
@@ -709,6 +760,7 @@ def plot_platecarree(
     ax.add_feature(cfeature.COASTLINE, edgecolor=COAST_COLOR, linewidth=0.6, zorder=2)
 
     gl = ax.gridlines(
+        crs=ccrs.PlateCarree(),
         draw_labels=True,
         linewidth=0.3,
         color=GRIDLINE_COLOR,
@@ -720,6 +772,9 @@ def plot_platecarree(
     gl.right_labels = False
     gl.xlabel_style = {"size": 8, "color": TEXT_COLOR}
     gl.ylabel_style = {"size": 8, "color": TEXT_COLOR}
+    if hasattr(gl, "rotate_labels"):
+        # Meridians converge off-vertical in conic and stereographic frames.
+        gl.rotate_labels = False
 
     # Draw the largest domain first so smaller nests are never hidden.
     areas = [
@@ -728,14 +783,37 @@ def plot_platecarree(
     order = np.argsort(areas)[::-1]
 
     for i in order:
-        width = lon_max[i] - lon_min[i]
-        height = lat_max[i] - lat_min[i]
         color = tile_colors[i]
+        # Edges are densified because a four-vertex rectangle renders as
+        # straight lines in a curvilinear frame and would not follow lines
+        # of constant latitude or longitude.
+        n_edge = 120
+        xs = np.linspace(lon_min[i], lon_max[i], n_edge)
+        ys = np.linspace(lat_min[i], lat_max[i], n_edge)
+        verts = np.column_stack(
+            [
+                np.concatenate(
+                    [
+                        xs,
+                        np.full(n_edge, lon_max[i]),
+                        xs[::-1],
+                        np.full(n_edge, lon_min[i]),
+                    ]
+                ),
+                np.concatenate(
+                    [
+                        np.full(n_edge, lat_min[i]),
+                        ys,
+                        np.full(n_edge, lat_max[i]),
+                        ys[::-1],
+                    ]
+                ),
+            ]
+        )
         ax.add_patch(
-            Rectangle(
-                (lon_min[i], lat_min[i]),
-                width,
-                height,
+            Polygon(
+                verts,
+                closed=True,
                 linewidth=1.8,
                 edgecolor=color,
                 facecolor=to_rgba(color, 0.08),
@@ -768,7 +846,6 @@ def plot_platecarree(
         edgecolor="none",
     )
 
-    fig.tight_layout()
     fig.savefig(state.run_dir / "nest_grids.png", dpi=FIG_DPI, bbox_inches="tight")
     plt.show()
     plt.close(fig)
@@ -826,7 +903,7 @@ def plot_grid():
         nest_labels = plot_tiles(state.grid)
 
         if state.n_nests > 0:
-            plot_platecarree(
+            plot_nests(
                 state.lon_min,
                 state.lon_max,
                 state.lat_min,

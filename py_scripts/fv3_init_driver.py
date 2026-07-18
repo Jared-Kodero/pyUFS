@@ -110,22 +110,16 @@ def _load_initial_state() -> None:
     state.clear()
     state.update(merged_config)
     state.update(runtime_env)
+    state.init_datetime = parse_datetime(state.init_datetime)
 
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
-
-    state.k_split = to_list(state.get("k_split"))
-    state.n_split = to_list(state.get("n_split"))
-
     state.case_description = state.get("description", "")
     state.continue_run = False
     state.warm_start = False
     state.restart_no = 0
     state.resubmit_idx = 0
     state.total_restarts = state.resubmit + 1
-
-    parse_datetime(state)
-
     description = [state.init_datetime, state.case_name]
     state.description = "_".join(str(value).upper() for value in description if value)
 

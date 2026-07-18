@@ -4,7 +4,7 @@ import os
 
 from fv3_init_driver import init_driver
 from fv3_restart_driver import restart_driver
-from fv3_runtime import exit_code
+from fv3_utils import exit_code
 
 
 def main() -> None:
