@@ -510,5 +510,5 @@ if __name__ == "__main__":
         regrid()
 
     except Exception as e:
-        exit_code(-1)
+        exit_code(1)
         raise e
