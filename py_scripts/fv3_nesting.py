@@ -1,12 +1,13 @@
 # nesting.py
 
+import sys
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
 from fv3_runtime import log
 from fv3_state import FV3State, save_fv3_state, state
-from fv3_utils import cres_to_deg, run_cmd
+from fv3_utils import cres_to_deg, exit_code, run_cmd
 
 nest_info = []
 
@@ -155,39 +156,10 @@ def gen_global_nest_parent(c_res: int, grid_dir: Path = None) -> Path:
 
 def calc_parent_grid_index(
     idx: int,
+    parent_tile: int,
     grid_fname: Path,
-    i_refine_ratio: int,
-    alignment: int = 16,
-    tile: int = None,
-    update_bounds: bool = False,
 ):
-    """
-    Compute supergrid index bounds for an FV3 two-way nest.
-
-    The returned indices satisfy three conditions:
-      1. Parity. Start indices are odd, end indices are even, so the
-         supergrid-to-cell conversion n = (end - start + 1) // 2 is exact.
-      2. Alignment. The nest cell count along each axis times
-         i_refine_ratio is a multiple of `alignment`, as required by
-         the FV3 layout decomposition and physics block loop.
-      3. Containment. Indices lie inside [1, nxp] and [1, nyp].
-
-    Parameters
-    ----------
-    grid_fname : str
-        Path to the parent supergrid file with variables x and y of
-        shape (nyp, nxp).
-    idx : int
-        Index of the domain for which to compute nest indices.
-    lon_min, lon_max : float
-        Longitude bounds in degrees east; reduced modulo 360.
-    lat_min, lat_max : float
-        Latitude bounds in degrees north.
-    i_refine_ratio : int
-        Nest refinement ratio.
-    alignment : int
-        Required divisor of the nest cell count along each axis.
-    """
+    """"""
 
     lon_min = state.lon_min[idx]
     lon_max = state.lon_max[idx]
@@ -206,47 +178,21 @@ def calc_parent_grid_index(
     j_idx, i_idx = np.where(mask)
 
     # Initial bracket with one-cell padding, packed as [i, j] vectors.
-    starts = np.array([i_idx.min() - 1, j_idx.min() - 1])
-    ends = np.array([i_idx.max() + 1, j_idx.max() + 1])
+    starts = np.array([i_idx.min(), j_idx.min()])
+    ends = np.array([i_idx.max(), j_idx.max()])
     limits = np.array([nxp, nyp])
 
     # Parity: odd starts, even ends.
     starts = np.where(starts & 1, starts, starts - 1)
     ends = np.where(ends & 1, ends - 1, ends)
 
-    # Symmetric expansion so parent_cells is a multiple of
-    # needed = alignment / gcd(alignment, i_refine_ratio).
-    needed = alignment // int(np.gcd(alignment, i_refine_ratio))
-    parent_cells = (ends - starts + 1) // 2
-    deficit = (needed - parent_cells % needed) % needed
-    left = deficit // 2
-    right = deficit - left
-    starts -= 2 * left
-    ends += 2 * right
-
-    # Containment. Any required shift is rounded up to even to keep parity.
-    under = np.maximum(0, 1 - starts)
-    under += under & 1
-    starts += under
-    ends += under
-
-    over = np.maximum(0, ends - limits)
-    over += over & 1
-    starts -= over
-    ends -= over
-
-    if update_bounds:
-        # Update geographic bounds from the adjusted nest indices.
-        ii = slice(starts[0] - 1, ends[0])
-        jj = slice(starts[1] - 1, ends[1])
-
-        bbox_lons = (lons[jj, ii] + 180) % 360 - 180
-        bbox_lats = lats[jj, ii]
-
-        state.lon_min[idx] = round(float(bbox_lons.min()), 2)
-        state.lon_max[idx] = round(float(bbox_lons.max()), 2)
-        state.lat_min[idx] = round(float(bbox_lats.min()), 2)
-        state.lat_max[idx] = round(float(bbox_lats.max()), 2)
+    if np.any(starts < 1) or np.any(ends > limits):
+        nest_tile = parent_tile + 1
+        log.error(
+            f"Tile {nest_tile} bounding box is larger than or crosses the parent tile {parent_tile} bounds, This is not supported!"
+        )
+        exit_code(-1)
+        sys.exit(1)
 
     return dict(
         istart_nest=int(starts[0]),
@@ -287,13 +233,7 @@ def get_nest_indices(
     i = tile_idx  # Nest index (0-based)
 
     grid_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
-    indices = calc_parent_grid_index(
-        i,
-        grid_fname,
-        i_refine_ratio,
-        tile=tile,
-        update_bounds=state.nest_type != "telescoping",
-    )
+    indices = calc_parent_grid_index(i, parent_tile, grid_fname)
 
     state.parent_tile.append(parent_tile)
     state.istart_nest.append(indices["istart_nest"])
@@ -332,12 +272,8 @@ def get_nest_tele_indices(
     for i, tile in enumerate(tiles):
         parent_tile = tile - 1
         grid_parent_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
-
-        i_refine_ratio = np.prod(refine_ratio[: i + 1])
-
-        indices = calc_parent_grid_index(
-            i, grid_parent_fname, i_refine_ratio, tile=tile, update_bounds=True
-        )
+        i_refine_ratio = np.prod(refine_ratio[: i + 1])  # not used now
+        indices = calc_parent_grid_index(i, parent_tile, grid_parent_fname)
 
         state.parent_tile.append(parent_tile)
         state.istart_nest.append(indices["istart_nest"])
