@@ -191,7 +191,7 @@ def calc_parent_grid_index(
         log.error(
             f"Tile {nest_tile} bounding box is larger than or crosses the parent tile {parent_tile} bounds, This is not supported!"
         )
-        exit_code(-1)
+        exit_code(1)
         sys.exit(1)
 
     return dict(
