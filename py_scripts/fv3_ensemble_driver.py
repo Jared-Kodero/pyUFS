@@ -97,7 +97,17 @@ def ensemble_config():
 
     log.info(f"Generating ensemble member for ensemble {state.ensemble_id}")
 
-    checksum = compute_checksum(state, hash_keys=["ensemble_id", "n_ensembles"])
+    checksum = compute_checksum(
+        state,
+        hash_keys=[
+            "ensemble_id",
+            "n_ensembles",
+            "k_split",
+            "n_split",
+            "dt_atmos",
+            "dt_ocean",
+        ],
+    )
 
     seed = int(checksum, 16) % (2**32)
     rng = np.random.default_rng(seed)

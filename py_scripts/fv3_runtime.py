@@ -192,7 +192,6 @@ def handle_errors(exc_type, value, tb):
 
     file_name = Path(frame.filename).name
     lineno = f"{frame.lineno}"
-    code_line = frame.line.strip() if frame.line else ""
 
     log.warning(f"An error has been detected in file: {file_name},  line no: {lineno}")
     log.error(f"{exc_type.__qualname__}: {value}")

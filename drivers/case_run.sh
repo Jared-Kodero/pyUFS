@@ -49,7 +49,7 @@ mkdir -p "$TMP_DIR"
 
 
 if [ ! -d "$CONTAINERS_DIR" ] || [ -z "$(ls -A "$CONTAINERS_DIR")" ]; then
-    source "$UFS_UTILS_DIR/configs/install_images.sh" > $WORK_DIR/image_build.log 2>&1
+    source "$UFS_UTILS_DIR/configs/install_images.sh" > "$WORK_DIR"/image_build.log 2>&1
 fi
 
 
@@ -187,7 +187,7 @@ fi
 
 
 
-exit $EXIT_CODE
+exit "$EXIT_CODE"
 
 
 

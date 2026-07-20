@@ -492,7 +492,7 @@ def regrid():
 
     static_path.mkdir(parents=True, exist_ok=True)
 
-    for f in Path(state.hist).glob("*"):
+    for f in list(Path(state.hist).glob("*")):
         if "spec" in f.name or "static" in f.name:
             dest = static_path / f.name.replace(f".{state.restart_no:02d}", "")
             if dest.exists():
