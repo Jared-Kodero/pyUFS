@@ -341,7 +341,7 @@ def run_driver(
         c_res = get_newres(tmp / "grid" / f"C{c_res}_grid.tile7.nc")
 
         # replace c_res part in the prev generated grid/orog files with the new c_res for consistency
-        for f in (tmp / "grid").glob(f"*{old_res}*"):
+        for f in list((tmp / "grid").glob(f"*{old_res}*")):
             new_name = f.name.replace(f"{old_res}", f"{c_res}")
             f.rename(tmp / "grid" / new_name)
 
