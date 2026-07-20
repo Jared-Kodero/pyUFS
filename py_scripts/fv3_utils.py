@@ -111,6 +111,9 @@ def rename(src: str | Path, dest: str | Path):
     src = Path(src).resolve()
     dest = Path(dest).resolve()
 
+    if src == dest:
+        return
+
     if dest.exists():
         dest.unlink()
 

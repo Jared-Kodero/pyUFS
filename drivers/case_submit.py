@@ -8,6 +8,7 @@ import subprocess
 import sys
 from difflib import get_close_matches
 from pathlib import Path
+from time import sleep
 
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("Case.Submit")
@@ -341,6 +342,7 @@ def main():
             proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
             run(script, proc_env, case_pwd)
             logger.info(f"Submitted ensemble {ensemble_id}/{n_ensembles}")
+            sleep(1)
 
         logger.info("Success! Case Submitted")
 

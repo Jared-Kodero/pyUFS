@@ -29,19 +29,24 @@ def stage_files() -> None:
             f"Number of nest directories [{len(nest_tile_dirs)}] does not match n_nests [{n_nests}]."
         )
 
-    # Process global 1st
-    global_dir = chgres_cube / "global"
-    global_files = global_dir.glob("*.nc")
-    for f in global_files:
-        if "tile" in f.name and "mosaic" not in f.name:
-            tile_str = f.stem.split(".")[-1]  # e.g., tile1, tile7
-            kind = "atm" if "atm" in f.name else "sfc"
-            name = "gfs" if kind == "atm" else "sfc"
-            dest = state.input / f"{name}_data.{tile_str}.nc"
+    # Process global and regional domains first. Both use tile-named output
+    # (regional owns tile7), and chgres writes each domain to its own subdir
+    # (chgres_cube/<domain>). Without the regional case, a regional run stages
+    # no atm/sfc ICs at all.
+    for domain in ("global", "regional"):
+        domain_dir = chgres_cube / domain
+        if not domain_dir.is_dir():
+            continue
+        for f in domain_dir.glob("*.nc"):
+            if "tile" in f.name and "mosaic" not in f.name:
+                tile_str = f.stem.split(".")[-1]  # e.g., tile1, tile7
+                kind = "atm" if "atm" in f.name else "sfc"
+                name = "gfs" if kind == "atm" else "sfc"
+                dest = state.input / f"{name}_data.{tile_str}.nc"
 
-        else:
-            dest = state.input / f.name
-        cp(f, dest)
+            else:
+                dest = state.input / f.name
+            cp(f, dest)
 
     # Now process nests
     for nest_dir, nest_idx in nest_dict.items():
@@ -59,13 +64,13 @@ def stage_files() -> None:
 
             cp(f, dest)
 
-    fix_sfc_files = (state.tmp / "input" / "fix_sfc").glob("*")
+    fix_sfc_files = list((state.tmp / "input" / "fix_sfc").glob("*"))
     for f in fix_sfc_files:
         f = Path(f)
         if f.is_symlink() and f.name.startswith("."):
             f.unlink()
 
-    tmp_ic_dir_files = (state.tmp / "input").glob("*")
+    tmp_ic_dir_files = list((state.tmp / "input").glob("*"))
     for f in tmp_ic_dir_files:
         dest_file = state.input / f.name
 
@@ -85,8 +90,12 @@ def stage_files() -> None:
     shutil.rmtree(fix_sfc_dest, ignore_errors=True)
     fix_sfc_src.rename(fix_sfc_dest)
 
-    # Rename global orography files
-    for f in state.input.glob("*oro*.tile*.nc"):
+    # Rename global orography files.
+    # Match only the raw make_orog/filter_topo output (oro.C{res}.tile{N}.nc).
+    # A broad *oro* pattern also matches this loop's own output (oro_data.*)
+    # and the GSL products (C{res}_oro_data_ss/ls.tile{N}.nc), which would
+    # collide on the same destination and either crash or clobber the field.
+    for f in list(state.input.glob("oro.C*.tile*.nc")):
         tile_str = f.stem.split(".")[-1]
 
         # Global domain owns tiles 1 through 6.
@@ -98,12 +107,11 @@ def stage_files() -> None:
     for nest_dir, nest_idx in nest_dict.items():
         tile = int(nest_idx) + 5
 
-        for f in state.input.glob(f"*oro*.tile{tile}.nc"):
+        for f in list(state.input.glob(f"oro.C*.tile{tile}.nc")):
             new_file = state.input / f"oro_data.nest{nest_idx}.tile{tile}.nc"
             rename(f, new_file)
 
-    # for file in INPUT, if "grid" in file name,or mosaic in file name, move to GRID dir
-    for f in state.input.glob("*"):
+    for f in list(state.input.glob("*")):
         if "grid" in f.name or "mosaic" in f.name:
             dest = state.grid / f.name
             shutil.move(str(f), str(dest))
