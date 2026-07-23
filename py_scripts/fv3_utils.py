@@ -312,7 +312,7 @@ def require_minimum_cpus(minimum: int = 32) -> int:
 
     if available < minimum:
         raise RuntimeError(
-            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum} is required."
+            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum} per node is required."
         )
 
     return available

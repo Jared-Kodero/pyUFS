@@ -286,7 +286,7 @@ def main():
     n_ensembles = int(env["CASE_ENSEMBLES"])
     logfile = Path(env["CASE_OUTPUT"])
     script = ufs_utils_dir / "drivers" / "sbatch.sh"
-    skipped_ensembles = env["CASE_SKIP_ENSEMBLES"]
+    skipped_ensembles = env.pop("CASE_SKIP_ENSEMBLES")
 
     jobs = [i for i in range(n_ensembles)]
 
