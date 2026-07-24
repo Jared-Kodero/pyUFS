@@ -311,20 +311,97 @@ data. Source data are downloaded with retry and multi-source fallback:
 * GFS: NOAA AWS S3 and NCAR GDEX.
 * HRRR: NOAA AWS S3 and Google Cloud Storage.
 
-The default source assignment converts the global domain from GFS for both
-atmospheric and surface fields. For nested domains the default converts
-atmospheric fields from HRRR and surface fields from GFS. HRRR covers the CONUS
-region only, and the workflow checks whether a nest lies inside the HRRR domain
-before assigning it. A nest outside HRRR coverage falls back to another model.
+### Default source assignment
 
-To override the source assignment, place a case-local `chgres_cube.yaml` in the
-case directory. Supported top-level keys are `global`, `regional`, and
-`nestXX`, where `nestXX` is a template expanded across nests, or explicit
-`nest02`, `nest03`, and so on. Each entry sets `external_model` and the
-`convert_atm`, `convert_sfc`, and `convert_nst` switches. A field category
-supplied by two models for the same domain is expressed with an
-`external_models` list. See [configs/chgres_cube.yaml](configs/chgres_cube.yaml)
-for annotated examples.
+Each model domain is converted independently, and the preprocess stage builds
+one `chgres_cube` invocation per source model per domain. With no case-local
+override file the built-in defaults apply:
+
+* Global domain: GFS supplies both atmospheric and surface fields in a single
+  conversion.
+* Regional domain: GFS supplies both atmospheric and surface fields in a single
+  conversion.
+* Nested domains: the atmosphere defaults to HRRR, subject to HRRR coverage.
+  HRRR covers the CONUS region only, and the workflow tests each nest against the
+  HRRR domain before assigning it. A nest inside HRRR coverage is converted
+  twice, taking atmospheric fields from HRRR and surface fields from GFS. A nest
+  outside HRRR coverage is converted once from GFS for both field categories. The
+  surface is always taken from GFS because HRRR carries no soil levels; a
+  case-local nest file can change the atmospheric source but not this surface
+  assignment.
+
+The model that supplied each field category is recorded per domain in
+`state.yaml` under the `{domain}_ic_source` key, with separate entries for `atm`,
+`sfc`, and `nst`. A nest converted from two sources writes a separate log per
+field set, for example `chgres_cube_nest02_atm.log` for the HRRR atmospheric
+conversion and `chgres_cube_nest02_sfc.log` for the GFS surface conversion, so
+each conversion is traceable.
+
+### Case-local overrides
+
+Overrides are supplied per domain, one file per domain, placed in the case
+directory. Each file is a flat mapping of `chgres_cube` settings that uses the
+variable names from [configs/chgres_cube.yaml](configs/chgres_cube.yaml). Every
+override file is optional. When a domain has no file, that domain uses the
+built-in default above, so a case may override some domains and leave others on
+the default.
+
+| Domain | Override files, in precedence order |
+| --- | --- |
+| Global | `chgres_cube.yaml`, then `fort.41` |
+| Regional | `chgres_cube.yaml`, then `fort.41` |
+| Nest `NN` | `chgres_cube_nest{NN}.yaml`, then `fort_nest{NN}.41` |
+
+`NN` is the zero-padded nest index and matches the regridded output names in
+Section 14, so the first nest is `nest02`, the second `nest03`, and so on. The
+YAML form is read in preference to the namelist form when both are present.
+
+The scope of an override depends on the domain.
+
+Global and regional files may set the source model with `external_model` and the
+field switches `convert_atm`, `convert_sfc`, and `convert_nst`, together with any
+land, soil, tracer, or halo setting. A file that requests `external_model: HRRR`
+for a domain outside HRRR coverage is downgraded to GFS automatically.
+
+Nest files may set the atmospheric source model with `external_model`. HRRR is
+used for the atmosphere when requested, subject to HRRR coverage: a request for a
+nest outside the HRRR domain is downgraded to GFS. The surface is always taken
+from GFS because HRRR carries no soil levels. An HRRR atmosphere therefore
+produces two conversions for the nest, HRRR for the atmosphere and GFS for the
+surface, while a GFS atmosphere produces one combined conversion. When
+`external_model` is omitted, the nest defaults to an HRRR atmosphere where
+coverage permits and GFS otherwise. Because the surface source is fixed by this
+physical constraint, the `convert_atm`, `convert_sfc`, and `convert_nst` switches
+follow the resulting split and are not read from the nest file. All other
+settings, for example `nsoill_out`, the climatology switches, the tracer lists,
+and the halo widths, are applied as written.
+
+Any key that is not a recognized `chgres_cube` setting stops the run with an
+error that names the file and the offending keys.
+
+Example global override selecting GFS for both categories, which is also the
+default and shown for form:
+
+```yaml
+external_model: GFS
+convert_atm: true
+convert_sfc: true
+convert_nst: false
+```
+
+Example nest override that requests an HRRR atmosphere, which pairs with the
+fixed GFS surface, while increasing the soil layer count and disabling the
+vegetation-fraction climatology:
+
+```yaml
+external_model: HRRR
+nsoill_out: 9
+vgfrc_from_climo: false
+```
+
+Setting `external_model: GFS` instead forces a GFS atmosphere and produces a
+single combined GFS conversion for the nest. Omitting `external_model` selects an
+HRRR atmosphere where coverage permits and GFS otherwise.
 
 To stage only the grid and initial conditions without running the model, set
 `preprocess_only: true`. The job exits after preprocessing.
