@@ -44,7 +44,7 @@ modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Host modules loaded f
 # -----------------------------------------------------------------------------
 # Parameters forwarded to sbatch. Override defaults as required by the host.
 
-constraint_node: false # Apply a core-count node constraint
+constraint_node: null # Apply node constraint
 exclusive_node: false # Request exclusive node access
 walltime: 24 # Walltime in hours
 n_nodes: 4 # Number of nodes to request

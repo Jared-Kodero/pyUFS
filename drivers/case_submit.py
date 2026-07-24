@@ -122,20 +122,25 @@ def get_paths(cfg: dict):
     return paths
 
 
+def get_node_constraint(constraint: str):
+    node_constraint_flag = ""
+    if constraint:
+        node_constraint_flag = f"--constraint={constraint}"
+    return node_constraint_flag
+
+
 def get_runtime_flags(cfg: dict) -> dict:
     nnodes = cfg["CASE_NNODES"]
-    ntasks_per_node = cfg["CASE_NTASKS_PER_NODE"]
     exclusive = cfg["CASE_EXCLUSIVE_NODE"]
-    use_constraint = cfg["CASE_NODE_CONSTRAINT"]
+    constraint = cfg["CASE_NODE_CONSTRAINT"]
     n_tasks = cfg["CASE_NTASKS"]
+    memory = cfg["CASE_MEM"]
 
-    mem = cfg["CASE_MEM"]
-
-    if mem > n_tasks * 2:  # at least 2GB per task
-        mem_per_cpu = mem // n_tasks
+    if memory > n_tasks * 2:  # at least 2GB per task
+        mem_per_cpu = memory // n_tasks
     else:
         mem_per_cpu = None
-        mem = None
+        memory = None
 
     if nnodes > 1:
         if mem_per_cpu is not None:
@@ -144,29 +149,18 @@ def get_runtime_flags(cfg: dict) -> dict:
             memory_flag = ""
         multi_node = 1
     else:
-        if mem is not None:
-            memory_flag = f"--mem={mem}g"
+        if memory is not None:
+            memory_flag = f"--mem={memory}g"
         else:
             memory_flag = ""
         multi_node = 0
-
-    node_constraint_flag = ""  # --constraint="
-    if use_constraint == 1:
-        tasks = (24, 32, 48, 64)
-        constraint = next(
-            (f"{c}core" for c in tasks if ntasks_per_node <= c), "192core"
-        )
-
-        node_constraint_flag = f"--constraint={constraint}"
-
-    exclusive_flag = "--exclusive" if exclusive == 1 else ""
 
     flags = {
         "CASE_MEMORY_FLAG": memory_flag,
         "CASE_EXCLUSIVE_NODE": exclusive,
         "CASE_MULTI_NODE_FLAG": multi_node,
-        "CASE_NODE_CONSTRAINT_FLAG": node_constraint_flag,
-        "CASE_NODE_EXCLUSIVE_FLAG": exclusive_flag,
+        "CASE_NODE_CONSTRAINT_FLAG": get_node_constraint(constraint),
+        "CASE_NODE_EXCLUSIVE_FLAG": "--exclusive" if exclusive == 1 else "",
     }
     return flags
 
@@ -178,17 +172,19 @@ def get_config():
     preprocess_grid_only = int(user_cfg.get("preprocess_grid_only", False))
     preprocess_orog_only = int(user_cfg.get("preprocess_orog_only", False))
     preprocess_only = int(user_cfg.get("preprocess_only", False))
+
     if preprocess_grid_only or preprocess_orog_only:
         preprocess_only = 1
 
+    constraint = user_cfg.get("constraint_node", None)
+    exclusive = int(user_cfg.get("exclusive_node", False))
     walltime = int(user_cfg.get("walltime", default_cfg.get("walltime", 24)))
     n_nodes = int(user_cfg.get("n_nodes", default_cfg.get("n_nodes", 4)))
     n_tasks = int(user_cfg.get("n_cpus", default_cfg.get("n_cpus", 192)))
     partition = user_cfg.get("partition", default_cfg.get("partition", "batch"))
 
     logfile = user_cfg.get("logfile", default_cfg.get("logfile", "shield_driver"))
-    exclusive = int(user_cfg.get("exclusive_node", False))
-    constraint = int(user_cfg.get("constraint_node", False))
+
     cpu_per_task = int(
         user_cfg.get("n_cpus_per_task", default_cfg.get("n_cpus_per_task", 1))
     )

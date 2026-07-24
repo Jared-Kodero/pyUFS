@@ -2,7 +2,13 @@
 
 __MODULES__
 
+export OMP_NUM_THREADS=1
+export OMP_DYNAMIC=FALSE
+
 cd __WORK_DIR__ 
+
+
+
 
 
 start_time=$(date +%s)
