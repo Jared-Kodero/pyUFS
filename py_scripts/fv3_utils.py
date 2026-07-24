@@ -303,6 +303,13 @@ def runtime_env_vars() -> dict[str, object]:
     return {key: value for key, value in values.items() if value is not None}
 
 
+def get_nodelist(state):
+    if not state.get("node_list", None):
+        state["node_list"] = []
+
+    state["node_list"].append(os.getenv("SLURM_JOB_NODELIST", None))
+
+
 def require_minimum_cpus(minimum: int = 32) -> int:
     """Validate the number of CPUs visible to the current process."""
     try:

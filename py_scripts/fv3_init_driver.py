@@ -19,6 +19,7 @@ from fv3_state import compute_checksum, save_fv3_state, state
 from fv3_utils import (
     cres_to_deg,
     format_forecast_length,
+    get_nodelist,
     parse_datetime,
     parse_resolution,
     require_minimum_cpus,
@@ -127,6 +128,7 @@ def _load_initial_state() -> None:
     state.forecast_length = format_forecast_length(state.total_run_hours)
 
     state.update(configure_directories(state))
+    get_nodelist(state)
 
     refine_ratio = state.refine_ratio
     state.refine_ratio = to_list(refine_ratio)
