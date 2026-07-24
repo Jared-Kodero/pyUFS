@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import copy
 import logging
 import os
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Literal
 
 import f90nml
 from fv3_ic_data import get_ic_data, validate_hrrr_bounds
-from fv3_runtime import get_launcher, log, read_namelist
+from fv3_runtime import get_launcher, read_namelist
 from fv3_stage_data import stage_files
-from fv3_state import FV3State, state
+from fv3_state import state
 from fv3_utils import cp, env_setup, run_cmd
 
 log = logging.getLogger("PREPROCESS")
@@ -106,328 +105,297 @@ class ChgresCubeConfig:
     wam_cold_start: bool = False
 
 
-def load_yml(n_tiles: int) -> dict:
-    """Load and validate a YAML configuration for CHGRES with normal tiles."""
-
-    fort_41 = Path(state.run_dir / "fort.41")
-    yml_41 = Path(state.run_dir / "chgres_cube.yaml")
-    fort_41_exists = fort_41.exists()
-    yml_41_exists = yml_41.exists()
-
-    config_path = fort_41 if fort_41_exists else yml_41 if yml_41_exists else None
-
-    if config_path:
-        cfg = read_namelist(config_path)
-
-        valid_keys = ["global", "regional", "nestXX"] + [
-            f"nest{nest_idx:02d}" for nest_idx in range(2, 2 + n_tiles)
-        ]
-
-        invalid_keys = [k for k in cfg if k not in valid_keys]
-        if invalid_keys:
-            raise KeyError(
-                f"{config_path}: invalid keys {invalid_keys} Expected one or more of {valid_keys}."
-            )
-
-    else:
-        cfg = {
-            "global": {
-                "external_model": "GFS",
-                "convert_atm": True,
-                "convert_sfc": True,
-                "convert_nst": False,
-            },
-            "nestXX": {
-                "external_models": [
-                    {
-                        "external_model": "HRRR",
-                        "convert_atm": True,
-                        "convert_sfc": False,
-                        "convert_nst": False,
-                    },
-                    {
-                        "external_model": "GFS",
-                        "convert_atm": False,
-                        "convert_sfc": True,
-                        "convert_nst": False,
-                    },
-                ]
-            },
-        }
-
-    # -------------------------
-    # Handle zero-tile case
-    # -------------------------
-    if n_tiles == 0:
-        return {k: v for k, v in cfg.items() if not k.startswith("nest")}
-
-    # -------------------------
-    # Expand nestXX template
-    # -------------------------
-    nestXX = cfg.pop("nestXX", None)
-
-    nests = {}
-    for nest_idx in range(2, 2 + n_tiles):
-        key = f"nest{nest_idx:02d}"
-
-        if key in cfg:
-            nests[key] = cfg[key]
-        elif nestXX is not None:
-            nests[key] = copy.deepcopy(nestXX)
-        else:
-            raise KeyError(f"Missing configuration for {key} and no nestXX provided.")
-    # -------------------------
-    # Assemble output
-    # -------------------------
-    out = {k: v for k, v in cfg.items() if not k.startswith("nest")}
-    out.update(nests)
-
-    return out
+# Valid override keys accepted from a user config block.
+CONFIG_FIELDS = {f.name for f in fields(ChgresCubeConfig)}
 
 
-def run_chgres_cube(fort_41: dict = None) -> None:
-    env_setup()
+@dataclass(frozen=True)
+class RunSpec:
+    """One fully populated chgres_cube invocation plus its domain label.
 
-    yml_configs = fort_41 or load_yml(state.n_nests)
+    source_mosaic is the per-domain mosaic on disk; it is copied onto the
+    shared canonical path in config.mosaic_file_target_grid at run time.
+    """
 
-    # Determine IC directory based on run_chgres_only flag
-    ic_dir = state.tmp / "input"
-
-    # Prepare fort.41 configuration
-    f41 = FV3State(asdict(ChgresCubeConfig()))
-
-    # Normalize tuple values for YAML compatibility
-    for k, v in f41.items():
-        if isinstance(v, tuple):
-            f41[k] = list(v)
-
-    if not state.levels:
-        raise ValueError("Vertical levels  must be specified in run_config.yaml")
-
-    log.info("Running chgres_cube to generate initial conditions")
-
-    f41.cycle_year = state.init_datetime.year
-    f41.cycle_mon = state.init_datetime.month
-    f41.cycle_day = state.init_datetime.day
-    f41.cycle_hour = state.init_datetime.hour
-    f41.orog_dir_target_grid = ic_dir
-    f41.fix_dir_target_grid = ic_dir / "fix_sfc"
-    f41.vcoord_file_target_grid = (
-        state.fix_src / "am" / f"global_hyblev.l{state.levels}.txt"
-    )
-    f41.varmap_file = state.fix_src / "varmap_tables" / "GFSphys_var_map.txt"
-
-    # Create symlinks for fix files
-    link_fix_files(state.c_res, f41)
-
-    mosaic_dir = state.tmp / "chgres_cube" / "mosaics"
-    mosaic_dir.mkdir(parents=True, exist_ok=True)
-    mosaic_file = mosaic_dir / f"C{state.c_res}_mosaic.nc"
-
-    local_cpus = len(os.sched_getaffinity(0))
-    norm_cpu = (local_cpus // 6) * 6
-    n_cpus = min(60, norm_cpu)
-
-    for domain, yml_cfg in yml_configs.items():
-        domain_f41 = copy.deepcopy(f41)
-        yml_cfg = FV3State(yml_cfg)
-        tile = None
-
-        # --------------------
-        # Domain-specific grid setup
-        # --------------------
-        if domain == "global":
-            orog = [f"oro.C{state.c_res}.tile{i}.nc" for i in range(1, 7)]
-            if state.n_nests > 0:
-                mosaic = ic_dir / f"C{state.c_res}_coarse_mosaic.nc"
-            else:
-                mosaic = ic_dir / f"C{state.c_res}_mosaic.nc"
-
-        elif domain.startswith("nest"):
-            nest_idx = domain.replace("nest", "")
-            tile = int(nest_idx) + 5
-            mosaic = ic_dir / f"C{state.c_res}_nested{nest_idx}_mosaic.nc"
-            orog = [f"oro.C{state.c_res}.tile{tile}.nc"]
-
-        elif domain == "regional":
-            tile = 7
-            mosaic = ic_dir / f"C{state.c_res}_mosaic.nc"
-            orog = [f"oro.C{state.c_res}.tile7.nc"]
-        else:
-            raise ValueError(f"Unrecognized domain key: {domain}")
-
-        mosaic_file.unlink(missing_ok=True)
-        cp(mosaic, mosaic_file)
-
-        domain_f41.orog_files_target_grid = orog
-        domain_f41.mosaic_file_target_grid = mosaic_file
-
-        # --------------------
-        # External model handling
-        # --------------------
-
-        multi_external_models = yml_cfg.get("external_models")
-
-        if multi_external_models:
-            for ext_model_cfg in multi_external_models:
-                requested_model = ext_model_cfg["external_model"]
-
-                # Fresh namelist state for every source-model conversion.
-                # This prevents HRRR-specific settings from leaking into GFS.
-                model_f41 = copy.deepcopy(domain_f41)
-
-                apply_config_settings(
-                    domain=domain,
-                    tile=tile,
-                    n_cpus=n_cpus,
-                    ext_model=requested_model,
-                    yml_cfg=ext_model_cfg,
-                    domain_f41=model_f41,
-                )
-        else:
-            requested_model = yml_cfg.get("external_model") or f41.external_model
-            model_f41 = copy.deepcopy(domain_f41)
-
-            apply_config_settings(
-                domain=domain,
-                tile=tile,
-                n_cpus=n_cpus,
-                ext_model=requested_model,
-                yml_cfg=yml_cfg,
-                domain_f41=model_f41,
-            )
-
-    # set flag indicating IC generation complete
-    stage_files()
-    state.generate_ic_data = False
+    domain: str
+    source_mosaic: Path
+    config: ChgresCubeConfig
 
 
-def apply_config_settings(
-    domain: str,
-    tile: int | None,
-    n_cpus: int,
-    ext_model: str,
-    yml_cfg: dict,
-    domain_f41: dict,
-) -> str:
-    requested_model = ext_model.upper()
+def config_candidates(domain: str) -> list[str]:
+    """Accepted filenames for a domain, in precedence order (YAML then namelist)."""
+    if domain in ("global", "regional"):
+        return ["chgres_cube.yaml", "fort.41"]
+    nn = domain.removeprefix("nest")  # e.g. "02"
+    return [f"chgres_cube_nest{nn}.yaml", f"fort_nest{nn}.41"]
 
-    # Resolve the actual model to use.
-    if requested_model == "HRRR":
+
+def load_block(domain: str) -> dict:
+    """Load a domain's flat config block, or an empty block if no file is present.
+
+    Accepted files (YAML preferred over namelist) are read verbatim. When none
+    exist, an empty block is returned so the built-in GFS default applies.
+    """
+    for name in config_candidates(domain):
+        path = state.run_dir / name
+        if path.exists():
+            block = {k: v for k, v in read_namelist(path).items() if v is not None}
+            unknown = set(block) - CONFIG_FIELDS
+            if unknown:
+                raise KeyError(f"{path}: unknown chgres_cube keys {sorted(unknown)}")
+            return block
+    return {}
+
+
+def resolve_model(requested: str, domain: str, tile: int | None) -> str:
+    """Resolve a requested external model, downgrading HRRR to GFS off-coverage."""
+    requested = requested.upper()
+    if requested == "HRRR":
         if tile is None or tile < 7:
             raise ValueError(
                 f"HRRR ICs are only supported for nested/regional domains, got {domain}"
             )
+        return validate_hrrr_bounds(tile)
+    if requested == "GFS":
+        return "GFS"
+    raise NotImplementedError(
+        f"Only GFS and HRRR external models are supported, got {requested}"
+    )
 
-        resolved_model = validate_hrrr_bounds(tile)
 
-    elif requested_model == "GFS":
-        resolved_model = "GFS"
+def resolve_atm_model(requested: str, domain: str, tile: int, explicit: bool) -> str:
+    """Resolve a limited-area atmosphere model (nest or regional).
+
+    GFS is always accepted. HRRR is accepted only inside HRRR coverage. An
+    explicit external_model: HRRR outside coverage raises; otherwise GFS is used.
+    """
+    requested = requested.upper()
+    if requested == "GFS":
+        return "GFS"
+    if requested == "HRRR":
+        if validate_hrrr_bounds(tile) == "HRRR":
+            return "HRRR"
+        if explicit:
+            raise ValueError(
+                f"{domain}: external_model HRRR requested but tile {tile} lies outside HRRR coverage"
+            )
+        return "GFS"
+    raise NotImplementedError(
+        f"Only GFS and HRRR external models are supported, got {requested}"
+    )
+
+
+def plan_runs(domain: str, tile: int | None, block: dict) -> list[tuple[str, dict]]:
+    """Return (external_model, override_dict) for each run of a domain.
+
+    Global takes its model and convert flags from the file, or GFS with default
+    flags when the file is absent, as a single conversion.
+
+    Nests and regional domains (limited-area, tile >= 7) may take the atmosphere
+    from HRRR but always take the surface from GFS, because HRRR carries no soil
+    levels. All limited-area domains default to GFS when no user configuration
+    specifies a model. An explicit external_model: HRRR outside HRRR coverage
+    raises. An HRRR atmosphere yields two conversions (HRRR atmosphere, GFS
+    surface); a GFS atmosphere yields one combined conversion. The convert
+    switches follow this split and are not read from the file; all other file
+    keys are applied as overrides.
+    """
+    if domain == "global":
+        resolved = resolve_model(block.get("external_model", "GFS"), domain, tile)
+        overrides = {k: v for k, v in block.items() if k != "external_model"}
+        return [(resolved, overrides)]
+
+    atm_model = resolve_atm_model(
+        block.get("external_model", "GFS"),
+        domain,
+        tile,
+        explicit="external_model" in block,
+    )
+    plans = (
+        [("HRRR", True, False), ("GFS", False, True)]
+        if atm_model == "HRRR"
+        else [("GFS", True, True)]
+    )
+
+    plan_controlled = {"external_model", "convert_atm", "convert_sfc", "convert_nst"}
+    file_overrides = {k: v for k, v in block.items() if k not in plan_controlled}
+    return [
+        (
+            model,
+            {
+                **file_overrides,
+                "convert_atm": ca,
+                "convert_sfc": cs,
+                "convert_nst": False,
+            },
+        )
+        for model, ca, cs in plans
+    ]
+
+
+def build_run_specs() -> list[RunSpec]:
+    """Enumerate domains from state.gtype and expand each into full configs.
+
+    uniform / stretch : global grid on tiles 1-6, no nests.
+    nest              : global coarse grid plus one nest per additional tile.
+    regional_*        : a single limited-area domain on tile 7.
+    """
+    res = state.c_res
+    ic_dir = state.tmp / "input"
+    canonical_mosaic = state.tmp / "chgres_cube" / "mosaics" / f"C{res}_mosaic.nc"
+    tiles_1_6 = [f"oro.C{res}.tile{i}.nc" for i in range(1, 7)]
+
+    # (domain, tile, source mosaic, orography tiles).
+    if state.gtype in ("uniform", "stretch"):
+        grids = [("global", None, ic_dir / f"C{res}_mosaic.nc", tiles_1_6)]
+
+    elif state.gtype == "nest":
+        grids = [("global", None, ic_dir / f"C{res}_coarse_mosaic.nc", tiles_1_6)]
+        for n in range(2, 2 + state.n_nests):
+            tile = n + 5
+            grids.append(
+                (
+                    f"nest{n:02d}",
+                    tile,
+                    ic_dir / f"C{res}_nested{n:02d}_mosaic.nc",
+                    [f"oro.C{res}.tile{tile}.nc"],
+                )
+            )
+
+    elif state.gtype in ("regional_gfdl", "regional_esg"):
+        grids = [
+            ("regional", 7, ic_dir / f"C{res}_mosaic.nc", [f"oro.C{res}.tile7.nc"])
+        ]
 
     else:
-        raise NotImplementedError(
-            f"Only GFS and HRRR external models are supported, got {requested_model}"
-        )
+        raise ValueError(f"Unrecognized grid type: {state.gtype}")
 
-    # Set model-specific defaults before applying YAML overrides.
-    if resolved_model == "HRRR":
-        domain_f41.varmap_file = state.fix_src / "varmap_tables" / "GSDphys_var_map.txt"
-        domain_f41.geogrid_file_input_grid = state.fix / "am" / "geo_em.d01.nc_HRRRX"
+    base = ChgresCubeConfig(
+        cycle_year=state.init_datetime.year,
+        cycle_mon=state.init_datetime.month,
+        cycle_day=state.init_datetime.day,
+        cycle_hour=state.init_datetime.hour,
+        orog_dir_target_grid=ic_dir,
+        fix_dir_target_grid=ic_dir / "fix_sfc",
+        vcoord_file_target_grid=state.fix_src
+        / "am"
+        / f"global_hyblev.l{state.levels}.txt",
+    )
 
-    elif resolved_model == "GFS":
-        domain_f41.varmap_file = state.fix_src / "varmap_tables" / "GFSphys_var_map.txt"
-        domain_f41.geogrid_file_input_grid = None
+    specs: list[RunSpec] = []
+    for domain, tile, mosaic, orog in grids:
+        block = load_block(domain)  # empty dict falls back to the built-in default
+        for model, overrides in plan_runs(domain, tile, block):
+            data_dir, data_file = get_ic_data(model)
+            varmap_dir = state.fix_src / "varmap_tables"
+            geogrid_file_input_grid = None
 
-    # Apply all YAML values except external_model.
-    # external_model must reflect resolved_model, not the requested model.
-    for key, value in yml_cfg.items():
-        if key == "external_model" or value is None:
-            continue
-        domain_f41[key] = value
+            if model == "HRRR":
+                varmap_file = varmap_dir / "GSDphys_var_map.txt"
+                geogrid_file_input_grid = state.fix / "am" / "geo_em.d01.nc_HRRRX"
+            else:
+                varmap_file = varmap_dir / "GFSphys_var_map.txt"
 
-    domain_f41.external_model = resolved_model
-
-    data_dir, data_file = get_ic_data(resolved_model)
-    domain_f41.data_dir_input_grid = data_dir
-    domain_f41.grib2_file_input_grid = data_file
-
-    # Record provenance only after all settings are finalized.
-    if f"{domain}_ic_source" not in state:
-        state[f"{domain}_ic_source"] = {
-            "atm": None,
-            "sfc": None,
-            "nst": None,
-        }
-
-    if domain_f41.convert_atm:
-        state[f"{domain}_ic_source"]["atm"] = resolved_model
-
-    if domain_f41.convert_sfc:
-        state[f"{domain}_ic_source"]["sfc"] = resolved_model
-
-    if domain_f41.convert_nst:
-        state[f"{domain}_ic_source"]["nst"] = resolved_model
-
-    chgres_exe(domain_f41, n_cpus, domain, resolved_model)
-
-    return resolved_model
+            settings = {
+                "mosaic_file_target_grid": canonical_mosaic,
+                "orog_files_target_grid": orog,
+                "external_model": model,
+                "varmap_file": varmap_file,
+                "geogrid_file_input_grid": geogrid_file_input_grid,
+                "data_dir_input_grid": data_dir,
+                "grib2_file_input_grid": data_file,
+            }
+            settings.update(overrides)  # file values win over derived defaults
+            cfg = replace(base, **settings)
+            specs.append(RunSpec(domain=domain, source_mosaic=mosaic, config=cfg))
+    return specs
 
 
-def chgres_exe(input_dict: dict, n_cpus: int, domain: str, ext_model: str) -> None:
-
-    # check if we are converting atm, sfc, nst or any combination
-    converts = []
-    if input_dict["convert_atm"] is True:
-        converts.append("atm")
-    if input_dict["convert_sfc"] is True:
-        converts.append("sfc")
-    if input_dict["convert_nst"] is True:
-        converts.append("nst")
-    converts = " and ".join(converts)
-
-    chgres_cube = state.ufs_exe / "chgres_cube"
+def run_chgres(spec: RunSpec, n_cpus: int) -> None:
+    """Stage the mosaic, record IC provenance, write fort.41, and run chgres_cube."""
+    cfg = spec.config
+    domain = spec.domain
+    model = cfg.external_model
 
     tmp_dir = state.tmp / "chgres_cube" / domain
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    log_file = state.logs / f"chgres_cube_{domain}.log"
+    fields_on = [
+        ("atm", cfg.convert_atm),
+        ("sfc", cfg.convert_sfc),
+        ("nst", cfg.convert_nst),
+    ]
+    active = [name for name, on in fields_on if on]
+    converts = " and ".join(active)
 
-    # Any instances in fort_41 that are PathLike, convert to str
-    for key, value in input_dict.items():
-        if isinstance(value, (Path)):
-            input_dict[key] = str(value)
+    # Distinct log per converted-field set so a nest's HRRR (atm) and GFS (sfc)
+    # runs write separate files instead of overwriting one another, e.g.
+    # chgres_cube_nest02_atm.log and chgres_cube_nest02_sfc.log. The log lives in
+    # state.logs, separate from the executable's working directory, so this name
+    # never affects how chgres_cube resolves its inputs.
+    log_file = state.logs / f"chgres_cube_{domain}_{'_'.join(active) or 'none'}.log"
 
-    # Write fort.41 namelist
-    fort_41 = {"config": input_dict}
-    with open(tmp_dir / "fort.41", "w") as f:
-        f90nml.write(fort_41, f)
+    # Stage this domain's mosaic onto the shared canonical path.
+    canonical = Path(cfg.mosaic_file_target_grid)
+    canonical.unlink(missing_ok=True)
+    cp(spec.source_mosaic, canonical)
 
-    # Run chgres_cube
+    # Record which model supplied each field group.
+    key = f"{domain}_ic_source"
+    if key not in state:
+        state[key] = {"atm": None, "sfc": None, "nst": None}
+    for name, on in fields_on:
+        if on:
+            state[key][name] = model
 
-    cmd = [*get_launcher(n_cpus), f"{chgres_cube}"]
+    # Serialise the dataclass, coercing Path to str and tuple to list for f90nml.
+    # fort.41 stays in tmp_dir as in the original: consumed by the launch below
+    # before any later run for the same domain rewrites it, so no unsafe clobber.
+    config = {
+        k: str(v) if isinstance(v, Path) else list(v) if isinstance(v, tuple) else v
+        for k, v in asdict(cfg).items()
+    }
+    with open(tmp_dir / "fort.41", "w") as fh:
+        f90nml.write({"config": config}, fh)
+
+    cmd = [*get_launcher(n_cpus), str(state.ufs_exe / "chgres_cube")]
     result, msgs = run_cmd(cmd, cwd=tmp_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
-        raise RuntimeError(
-            f"chgres_cube failed : {ext_model},  {str(domain)},  {converts}"
-        )
+        raise RuntimeError(f"chgres_cube failed: {model}, {domain}, {converts}")
 
 
-def link_fix_files(c_res: int, fort_41: dict) -> None:
-    files = Path(fort_41.fix_dir_target_grid).glob("*")
-    files = [Path(f) for f in files if f.name.startswith(f"C{c_res}")]
-    symlinks = [f.parent / f.name.replace(f"C{c_res}", "", 1) for f in files]
+def run_chgres_cube() -> None:
+    env_setup()
 
+    if not state.levels:
+        raise ValueError("Vertical levels must be specified in run_config.yaml")
+
+    link_fix_files(state.c_res, state.tmp / "input" / "fix_sfc")
+
+    (state.tmp / "chgres_cube" / "mosaics").mkdir(parents=True, exist_ok=True)
+
+    specs = build_run_specs()
+    n_cpus = min(60, (len(os.sched_getaffinity(0)) // 6) * 6)
+
+    log.info("Running chgres_cube to generate initial conditions")
+    for spec in specs:
+        run_chgres(spec, n_cpus)
+
+    stage_files()
+    state.generate_ic_data = False
+
+
+def link_fix_files(c_res: int, fix_dir: Path) -> None:
+    """Symlink resolution-prefixed fix files to their unprefixed names.
+
+    C96.name.tile1.nc -> .name.tile1.nc
+    """
+    files = [f for f in Path(fix_dir).glob("*") if f.name.startswith(f"C{c_res}")]
     if not files:
-        raise ValueError(
-            f"No fix files found for resolution C{c_res} in {fort_41.fix_dir_target_grid}"
-        )
-    #
-    # create symlinks in in fix_dir_target_grid
-    # C96.name.tile1.nc -> .name.tile1.nc
+        raise ValueError(f"No fix files found for resolution C{c_res} in {fix_dir}")
 
-    for src, dest in zip(files, symlinks):
-        src_path = Path(src)
-        dest_path = Path(dest)
-        if not dest_path.exists():
-            dest_path.symlink_to(src_path.resolve())
+    for src in files:
+        dest = src.parent / src.name.replace(f"C{c_res}", "", 1)
+        if not dest.exists():
+            dest.symlink_to(src.resolve())
