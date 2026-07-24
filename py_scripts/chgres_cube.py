@@ -185,10 +185,10 @@ def load_yml(n_tiles: int) -> dict:
     return out
 
 
-def run_chgres_cube() -> None:
+def run_chgres_cube(fort_41: dict = None) -> None:
     env_setup()
 
-    yml_configs = load_yml(state.n_nests)
+    yml_configs = fort_41 or load_yml(state.n_nests)
 
     # Determine IC directory based on run_chgres_only flag
     ic_dir = state.tmp / "input"
