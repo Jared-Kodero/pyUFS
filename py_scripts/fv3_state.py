@@ -129,6 +129,7 @@ class FV3State(dict):
     generate_ic_data: bool
     external_ic_dir: Path | None
     ic_data: Path
+    bc_data: Path
 
     global_ic_source: dict[str, str]
     nest02_ic_source: dict[str, str]
