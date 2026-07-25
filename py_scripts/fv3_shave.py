@@ -99,9 +99,11 @@ def run_shave(
     cmd = [get_launcher(1), f"{shave}"]
 
     # ----------------------------------------------------------------------------
-    # Run three shave passes: halo+1, halo, and halo=0
+    # Run three shave passes: halo+1, halo, and halo=0. All land in tmp_ic_dir so
+    # the halo+1 grid/orography are present for the regional sfc_climo symlinks
+    # and for staging alongside the halo and halo0 files.
     # ----------------------------------------------------------------------------
-    run_single_shave(halop1, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_dir, log_file)
+    run_single_shave(halop1, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
     run_single_shave(halo, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
     run_single_shave(0, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
 

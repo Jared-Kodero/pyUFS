@@ -221,19 +221,22 @@ def run_driver(
     # === REGIONAL GRIDS: gfdl, esg ============================
     # ==========================================================
     elif gtype in ["regional_gfdl", "regional_esg"]:
-        raise NotImplementedError("Regional grids is currently not supported!")
 
         tile = 7
         halop1 = halo + 1 if halo else 4
 
+        # A regional domain is placed on its parent tile like a single length-1
+        # nest. Obtain the parent-grid bracket the same way nested runs do; the
+        # bounding box was coerced to length-1 lists in the init driver. The ESG
+        # grid is defined from idim/jdim/delx/dely and does not consume the
+        # bracket, but the indices are still recorded in state for consistency.
+        refine = refine_ratio[0] if isinstance(refine_ratio, list) else refine_ratio
         get_nest_indices(
             c_res=c_res,
-            tile_idx=0,  # parent tile 6 is always tile_idx 0 for nesting
+            tile_idx=0,  # single regional domain
             grid_dir=None,
-            parent_tile=6,
-            i_refine_ratio=refine_ratio[0]
-            if isinstance(refine_ratio, list)
-            else refine_ratio,
+            parent_tile=parent_tile[0] if isinstance(parent_tile, list) else parent_tile,
+            i_refine_ratio=refine,
         )
 
         istart_nest = state.istart_nest[0]
@@ -244,10 +247,12 @@ def run_driver(
 
         # --- Expand halo region for regional_gfdl ---
         if gtype == "regional_gfdl":
+            # The GFDL regional grid is carved from the parent tile, so the
+            # bracket is widened until it gains at least the blend halo width.
             nptsx = int(iend_nest - istart_nest + 1)
             nptsy = int(jend_nest - jstart_nest + 1)
-            idim = int(nptsx * refine_ratio / 2)
-            jdim = int(nptsy * refine_ratio / 2)
+            idim = int(nptsx * refine / 2)
+            jdim = int(nptsy * refine / 2)
 
             add = 0
             while True:
@@ -257,7 +262,7 @@ def run_driver(
                 jend_halo = jend_nest + add
                 jstart_halo = jstart_nest - add
                 new_nptsx = iend_halo - istart_halo + 1
-                new_idim = int(new_nptsx * refine_ratio / 2)
+                new_idim = int(new_nptsx * refine / 2)
                 if new_idim - idim >= 10:
                     break
             istart_nest, iend_nest, jstart_nest, jend_nest = (
@@ -339,8 +344,17 @@ def run_driver(
                 return
 
         # --- Replace c_res with derived resolution ---
+        # global_equiv_resol wrote the equivalent global resolution into the
+        # tile-7 grid, which make_mosaic already used to name the grid file. The
+        # ESG file is named with that derived resolution rather than the input
+        # c_res, so discover it by pattern instead of assuming the input value.
         old_res = c_res
-        c_res = get_newres(tmp / "grid" / f"C{c_res}_grid.tile7.nc")
+        grid_tile7 = next(iter((tmp / "grid").glob("C*_grid.tile7.nc")))
+        c_res = get_newres(grid_tile7)
+
+        # Downstream chgres_cube and staging key off state.c_res; keep it aligned
+        # with the derived regional resolution.
+        state.c_res = c_res
 
         # replace c_res part in the prev generated grid/orog files with the new c_res for consistency
         for f in list((tmp / "grid").glob(f"*{old_res}*")):
