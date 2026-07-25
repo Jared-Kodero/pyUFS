@@ -12,6 +12,7 @@ from fv3_runtime import (
 from fv3_state import state
 from fv3_timings import get_timings
 from fv3_utils import cp, cres_to_deg, env_setup
+from regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
 
 
 def restart_config():
@@ -172,6 +173,18 @@ def update_global_nml(
 
     else:
         del nml["fv_nest_nml"]
+
+    if state.gtype in ("regional_gfdl", "regional_esg"):
+        # Standalone regional domain (single tile with a prescribed lateral
+        # boundary). regional activates the boundary-forcing path in the
+        # dynamical core; bc_update_interval must match the cadence of the
+        # boundary files written by regional_bc, and nrows_blend must match the
+        # halo_blend width passed to chgres_cube. Reference values follow a
+        # working UFS regional input.nml (Harris et al., 2021).
+        nml["fv_core_nml"]["regional"] = True
+        nml["fv_core_nml"]["ntiles"] = 1
+        nml["fv_core_nml"]["bc_update_interval"] = BC_INTERVAL_HOURS
+        nml["fv_core_nml"]["nrows_blend"] = HALO_BLEND
 
     nml = disable_deep_convection(nml, 1, "global")
     nml = update_namsfc(nml)
