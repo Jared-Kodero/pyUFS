@@ -11,6 +11,7 @@ from fv3_state import (
     state,
 )
 from fv3_utils import env_setup, get_nodelist, require_minimum_cpus, runtime_env_vars
+from regional_bc import link_bc_to_input
 from sm_perturbations import apply_perturbations
 
 
@@ -68,6 +69,11 @@ def restart_driver() -> None:
 
     restart_config()
     update_table_files()
+
+    # Promoting RESTART to INPUT drops the previous segment's boundary links, so
+    # relink the full sequence from state.bc_data (no-op for non-regional grids).
+    link_bc_to_input()
+
     apply_perturbations()
 
     gen_shield_run_sh()

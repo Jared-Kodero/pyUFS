@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import f90nml
+import regional_bc
 from fv3_ic_data import get_ic_data, validate_hrrr_bounds
 from fv3_runtime import get_launcher, read_namelist
 from fv3_stage_data import stage_files
@@ -264,7 +265,12 @@ def build_run_specs() -> list[RunSpec]:
 
     elif state.gtype in ("regional_gfdl", "regional_esg"):
         grids = [
-            ("regional", 7, ic_dir / f"C{res}_mosaic.nc", [f"oro.C{res}.tile7.nc"])
+            (
+                "regional",
+                7,
+                ic_dir / f"C{res}_mosaic.nc",
+                [f"C{res}_oro_data.tile7.halo0.nc"],
+            )
         ]
 
     else:
@@ -305,14 +311,28 @@ def build_run_specs() -> list[RunSpec]:
                 "data_dir_input_grid": data_dir,
                 "grib2_file_input_grid": data_file,
             }
+            if domain == "regional":
+                # regional = 1 produces the interior IC and the hour-0 boundary;
+                # halo_bndy is the lateral halo (halo + 1 rows) that the model
+                # reads, halo_blend the tendency-blend width. regional_bc reuses
+                # this config for the boundary-only passes.
+                settings.update(
+                    regional=regional_bc.REGIONAL_IC,
+                    halo_bndy=state.halo + 1,
+                    halo_blend=regional_bc.HALO_BLEND,
+                )
             settings.update(overrides)  # file values win over derived defaults
             cfg = replace(base, **settings)
             specs.append(RunSpec(domain=domain, source_mosaic=mosaic, config=cfg))
     return specs
 
 
-def run_chgres(spec: RunSpec, n_cpus: int) -> None:
-    """Stage the mosaic, record IC provenance, write fort.41, and run chgres_cube."""
+def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
+    """Stage the mosaic, record IC provenance, write fort.41, and run chgres_cube.
+
+    Returns the working directory holding the run output, so the caller can
+    collect per-domain products such as the regional boundary file.
+    """
     cfg = spec.config
     domain = spec.domain
     model = cfg.external_model
@@ -364,6 +384,8 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> None:
         log.error(msgs)
         raise RuntimeError(f"chgres_cube failed: {model}, {domain}, {converts}")
 
+    return tmp_dir
+
 
 def run_chgres_cube() -> None:
     env_setup()
@@ -381,6 +403,19 @@ def run_chgres_cube() -> None:
     log.info("Running chgres_cube to generate initial conditions")
     for spec in specs:
         run_chgres(spec, n_cpus)
+
+    if state.gtype in ("regional_gfdl", "regional_esg"):
+        regional = next(spec for spec in specs if spec.domain == "regional")
+
+        def run_bc(domain_label: str, source_mosaic, config) -> Path:
+            spec = RunSpec(
+                domain=domain_label, source_mosaic=source_mosaic, config=config
+            )
+            return run_chgres(spec, n_cpus)
+
+        regional_bc.generate_boundary_files(
+            regional.config, regional.source_mosaic, run_bc
+        )
 
     stage_files()
     state.generate_ic_data = False

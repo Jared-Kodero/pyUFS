@@ -146,6 +146,20 @@ def _load_initial_state() -> None:
         state.n_nests = 0
         state.refine_ratio = 1
 
+        if state.gtype in ("regional_gfdl", "regional_esg"):
+            # A regional domain is placed on its parent tile like a single
+            # length-1 nest. The bounding box is coerced to length-1 lists so
+            # get_nest_indices can consume it exactly as nested runs do. The
+            # domain is standalone in the model, so n_nests stays 0 and no
+            # fv_nest_nml is written.
+            for key in ("lon_min", "lon_max", "lat_min", "lat_max"):
+                state[key] = to_list(state[key])
+            if any(v is None for v in state.lon_min + state.lon_max):
+                raise ValueError(
+                    "Regional grids require a bounding box: set lon_min, "
+                    "lon_max, lat_min, lat_max in run_config.yaml."
+                )
+
     _log_initial_state()
 
 
