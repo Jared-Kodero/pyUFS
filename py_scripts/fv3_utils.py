@@ -169,7 +169,7 @@ def parse_datetime(dt):
     valid_hours = [0, 6, 12, 18]
     if dt.hour not in valid_hours:
         log.error(
-            f"Invalid GFS cycle hour: {dt.hour:02d}Z. Valid GFS cycle times are 00Z, 06Z, 12Z, and 18Z."
+            f"Invalidcycle hour: {dt.hour:02d}Z. Valid GFS cycle times are 00Z, 06Z, 12Z, and 18Z."
         )
         exit_code(1)
         sys.exit(1)
