@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
+import pandas as pd
 import xarray as xr
 from fv3_runtime import log
 from fv3_state import save_fv3_state, state
@@ -13,7 +14,7 @@ from fv3_utils import run_cmd
 from pyproj import Proj
 
 
-def _wget(url: str, output_path: Path) -> bool:
+def wget(url: str, output_path: Path) -> bool:
     """
     Attempt to download a single URL. Returns True on success, False on failure.
     Does not raise; caller is responsible for fallback logic.
@@ -37,7 +38,7 @@ def _wget(url: str, output_path: Path) -> bool:
     return False
 
 
-def _download_data(
+def download_data(
     urls: list[str],
     output_path: Path,
     external_model: str,
@@ -45,7 +46,7 @@ def _download_data(
     sources: list[str],
 ) -> None:
     for url, source in zip(urls, sources):
-        if _wget(url, output_path):
+        if wget(url, output_path):
             log.info(f"Successfully retrieved {external_model} IC data from {source}")
             return external_model
         log.warning(f"Failed to retrieve {external_model} IC data from {source}")
@@ -55,7 +56,11 @@ def _download_data(
     )
 
 
-def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
+def get_ic_data(
+    external_model: Literal["GFS", "HRRR"],
+    datetime: pd.Timestamp = state.init_datetime,
+    forecast_hour: int = state.forecast_hour,
+) -> tuple[str, str]:
     """
     Get initialization data for the specified external model
 
@@ -74,8 +79,6 @@ def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
     https://storage.googleapis.com/high-resolution-rapid-refresh/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfsfcf00.grib2 => Google Cloud Storage HRRR
 
     """
-    datetime = state.init_datetime
-    forecast_hour = state.forecast_hour
 
     date = datetime.strftime("%Y%m%d")
     year = datetime.strftime("%Y")
@@ -100,7 +103,7 @@ def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
         output_path = root_dir / local_file
 
         if not output_path.exists():
-            _download_data(
+            download_data(
                 urls=[noaa_url, ncar_url],
                 sources=["NOAA AWS S3", "NCAR GDEX"],
                 output_path=output_path,
@@ -127,7 +130,7 @@ def get_ic_data(external_model: Literal["GFS", "HRRR"]) -> tuple[str, str]:
         output_path = root_dir / local_file
 
         if not output_path.exists():
-            _download_data(
+            download_data(
                 urls=[noaa_url, gcs_url],
                 sources=["NOAA AWS S3", "Google Cloud Storage"],
                 output_path=output_path,
