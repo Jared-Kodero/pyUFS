@@ -221,6 +221,8 @@ def run_driver(
     # === REGIONAL GRIDS: gfdl, esg ============================
     # ==========================================================
     elif gtype in ["regional_gfdl", "regional_esg"]:
+        raise NotImplementedError("Regional grids is currently not supported!")
+
         tile = 7
         halop1 = halo + 1 if halo else 4
 
