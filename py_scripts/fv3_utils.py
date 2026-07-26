@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -302,30 +301,6 @@ def runtime_env_vars() -> dict[str, object]:
     }
 
     return {key: value for key, value in values.items() if value is not None}
-
-
-def get_node_cpu_pairs() -> list[str]:
-    nodelist = os.environ["SLURM_JOB_NODELIST"]
-    cpu_spec = os.environ["SLURM_JOB_CPUS_PER_NODE"]
-
-    nodes = subprocess.check_output(
-        ["scontrol", "show", "hostnames", nodelist],
-        text=True,
-    ).splitlines()
-
-    cpus: list[int] = []
-    for count, repetitions in re.findall(
-        r"(\d+)(?:\(x(\d+)\))?",
-        cpu_spec,
-    ):
-        cpus.extend([int(count)] * int(repetitions or 1))
-
-    return [f"({cpu_count} cores, {node})" for node, cpu_count in zip(nodes, cpus)]
-
-
-def get_nodelist(state: dict) -> None:
-    state.setdefault("node_list", [])
-    state["node_list"].extend(get_node_cpu_pairs())
 
 
 def require_minimum_cpus(minimum: int = 32) -> int:
