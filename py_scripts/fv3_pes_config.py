@@ -18,6 +18,8 @@ def calc_cpu_alloc(dir: Path) -> None:
     get_grid_info()
     if state.gtype == "nest":
         calc_nest_pes()
+    elif state.gtype in ("regional_gfdl", "regional_esg"):
+        calc_regional_pes()
     else:
         calc_uniform_pes()
 
@@ -27,6 +29,10 @@ def get_grid_info() -> None:
     state.ntiles = []
     state.npx = []
     state.npy = []
+
+    if state.gtype in ("regional_gfdl", "regional_esg"):
+        get_regional_grid_info()
+        return
 
     files = sorted(list(grid_dir.glob("C*_grid.tile*.nc")), key=sort_paths)
 
@@ -55,6 +61,42 @@ def get_grid_info() -> None:
         state.ntiles.append(n)
         state.npx.append(npx)
         state.npy.append(npy)
+
+
+def get_regional_grid_info() -> None:
+    """Read the single, unshaved tile-7 grid used by a regional domain."""
+    files = sorted(grid_dir.glob("C*_grid.tile7.nc"), key=sort_paths)
+
+    if not files:
+        raise FileNotFoundError(
+            f"No regional grid file matching C*_grid.tile7.nc found in {grid_dir}."
+        )
+    if len(files) > 1:
+        names = ", ".join(path.name for path in files)
+        raise ValueError(f"Multiple regional tile-7 grid files found: {names}")
+
+    with xr.open_dataset(files[0]) as ds:
+        nx = ds.nx.size
+        ny = ds.ny.size
+
+    state.ngrid_cells = [nx * ny]
+    state.ntiles = [1]
+    state.npx = [int((nx // 2) + 1)]
+    state.npy = [int((ny // 2) + 1)]
+
+
+def calc_regional_pes() -> None:
+    """Allocate all available PEs to a standalone single-tile regional grid."""
+    if state.n_cpus <= 0:
+        raise ValueError(f"Invalid CPU count for regional grid: {state.n_cpus}")
+
+    state.grid_pes = [state.n_cpus]
+    state.total_pes = state.n_cpus
+
+    layouts = get_layouts(state.grid_pes)
+    state.layout = layouts["layout"]
+    state.io_layout = layouts["io_layout"]
+    state.blocksize = layouts["blocksize"]
 
 
 def calc_uniform_pes() -> None:
