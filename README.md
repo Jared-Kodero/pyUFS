@@ -605,6 +605,36 @@ The `merge_freq` key controls how per-segment regridded files are combined.
 * `0` disables merging and retains one file per segment.
 * `n` merges every `n` segments and flushes any remainder on the final segment.
 
+### 14.1 Grid visualization
+
+The initial driver optionally renders the generated grid through
+`py_scripts/fv3_plot_grid.py`. Plotting is a diagnostic step: it reads the
+`C*_grid.tile*.nc` supergrid files from `state.grid`, requires `cartopy` and its
+Natural Earth cache under `fix_src/carto`, and writes to `state.run_dir`. Two
+figures are produced.
+
+* `grid_faces.png` places one panel per global cubed-sphere face. Each panel is
+  an orthographic view centred on the centroid of its own face, with every nest
+  hosted by that face drawn on it and the host mesh masked out beneath each
+  nest, so a mesh is shown only where it is the finest grid present. Nest
+  hosting follows `state.parent_tile` up the parent chain, so a telescoping
+  chain resolves to the single global face at its root. Line density is set by
+  physical grid spacing rather than array size, so a fine nest and its coarse
+  host read at a comparable spacing on the page.
+* `nest_grids.png` draws the nest bounding boxes from `state.lon_min`,
+  `state.lon_max`, `state.lat_min`, and `state.lat_max` on a map whose
+  projection is selected from the union of those bounds: Robinson for
+  whole-world spans, cylindrical equidistant (PlateCarree) for low-latitude or
+  equator-straddling domains, polar stereographic for high-latitude domains, and
+  Lambert conformal conic for mid-latitudes. Bounds are read in degrees east in
+  the range [-180, 180] and each nest is assumed not to cross the antimeridian.
+
+Coordinate units are taken from the `units` attribute of the supergrid `x` and
+`y` variables; absent that attribute, degrees are assumed, in line with the FV3
+supergrid convention. Both figures are written to disk and no interactive window
+is opened, so plotting is safe on a headless compute node. Failures in the
+plotting stage are logged and do not interrupt the run.
+
 ## 15. Restarts and segmented runs
 
 A run is divided into `resubmit + 1` segments, each of length `run_nhours`. The
