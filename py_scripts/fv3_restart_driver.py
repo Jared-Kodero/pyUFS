@@ -10,7 +10,7 @@ from fv3_state import (
     save_fv3_state,
     state,
 )
-from fv3_utils import env_setup, get_nodelist, require_minimum_cpus, runtime_env_vars
+from fv3_utils import env_setup, require_minimum_cpus, runtime_env_vars
 from regional_bc import link_bc_to_input
 from sm_perturbations import apply_perturbations
 
@@ -46,7 +46,6 @@ def _load_restart_state() -> None:
         )
 
     state.update(configure_directories(state))
-    get_nodelist(state)
 
     current_checksum = compute_checksum(state)
 
