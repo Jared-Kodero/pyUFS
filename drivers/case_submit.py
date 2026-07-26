@@ -113,9 +113,8 @@ def get_paths(cfg: dict):
         else:
             value = str(Path(os.path.expandvars(value)))
 
-        if v in ("jobtmp", "case_root", "archive_root"):
-            if not Path(value).exists():
-                Path(value).mkdir(parents=True, exist_ok=True)
+        if v in ("jobtmp", "case_root", "archive_root") and not Path(value).exists():
+            Path(value).mkdir(parents=True, exist_ok=True)
 
         paths[k] = value
 
@@ -250,9 +249,7 @@ def get_config():
 def run(script: Path, proc_env: dict, cwd: Path) -> int:
     try:
         result = subprocess.run(
-            ["bash", str(script)],
-            env=proc_env,
-            cwd=str(cwd),
+            ["bash", str(script)], env=proc_env, cwd=str(cwd), check=False
         )
 
     except subprocess.SubprocessError as e:
