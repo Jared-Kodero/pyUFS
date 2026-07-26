@@ -57,9 +57,7 @@ def download_data(
 
 
 def get_ic_data(
-    external_model: Literal["GFS", "HRRR"],
-    datetime: pd.Timestamp = state.init_datetime,
-    forecast_hour: int = state.forecast_hour,
+    external_model: Literal["GFS", "HRRR"], datetime: pd.Timestamp, forecast_hour: int
 ) -> tuple[str, str]:
     """
     Get initialization data for the specified external model

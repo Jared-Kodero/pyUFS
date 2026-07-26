@@ -292,7 +292,9 @@ def build_run_specs() -> list[RunSpec]:
     for domain, tile, mosaic, orog in grids:
         block = load_block(domain)  # empty dict falls back to the built-in default
         for model, overrides in plan_runs(domain, tile, block):
-            data_dir, data_file = get_ic_data(model)
+            data_dir, data_file = get_ic_data(
+                model, state.init_datetime, state.forecast_hour
+            )
             varmap_dir = state.fix_src / "varmap_tables"
             geogrid_file_input_grid = None
 
