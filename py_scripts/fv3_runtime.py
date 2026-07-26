@@ -23,8 +23,8 @@ def get_newres(gridfile: Path) -> int:
     return int(nx / 2)
 
 
-def get_launcher(n_procs: int = None) -> list:
-    return ["mpirun", "-np", str(n_procs), "--host", "localhost"]
+def get_launcher(n_procs: int | None = None) -> list:
+    return ["mpirun", "-np", str(n_procs), "--host", f"localhost:{n_procs}"]
 
 
 def open_yaml(path: Path) -> dict:
