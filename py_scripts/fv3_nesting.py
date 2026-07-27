@@ -119,7 +119,7 @@ def classify_nesting(params: FV3State) -> FV3State:
     return params
 
 
-def gen_global_nest_parent(c_res: int, grid_dir: Path = None) -> Path:
+def gen_global_nest_parent(c_res: int, grid_dir: Path | None = None) -> Path:
     log_file = state.logs / "make_global_grid.log"
     make_hgrid = state.ufs_exe / "make_hgrid"
 
@@ -159,7 +159,6 @@ def calc_parent_grid_index(
     parent_tile: int,
     grid_fname: Path,
 ):
-    """"""
 
     lon_min = state.lon_min[idx]
     lon_max = state.lon_max[idx]
@@ -194,21 +193,21 @@ def calc_parent_grid_index(
         exit_code(1)
         sys.exit(1)
 
-    return dict(
-        istart_nest=int(starts[0]),
-        iend_nest=int(ends[0]),
-        jstart_nest=int(starts[1]),
-        jend_nest=int(ends[1]),
-    )
+    return {
+        "istart_nest": int(starts[0]),
+        "iend_nest": int(ends[0]),
+        "jstart_nest": int(starts[1]),
+        "jend_nest": int(ends[1]),
+    }
 
 
 def get_nest_indices(
     c_res: int,
     tile_idx: int,
-    grid_dir: Path = None,
-    parent_tile: int = None,
-    i_refine_ratio: int = None,
-    tile: int = None,
+    grid_dir: Path | None = None,
+    parent_tile: int | None = None,
+    i_refine_ratio: int | None = None,
+    tile: int | None = None,
 ) -> None:
     """
     normal: normal static nests each embedded directly in the same parent (global) grid.

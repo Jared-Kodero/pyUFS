@@ -221,7 +221,7 @@ def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
     return hashlib.sha256(hash_data_str.encode("utf-8")).hexdigest()
 
 
-def save_fv3_state(cfg: dict = None, path: Path = None):
+def save_fv3_state(cfg: dict = None, path: Path | None = None):
     """
     Save the current state to a YAML file
     """
