@@ -175,7 +175,7 @@ def run_make_mosaic(
     gtype: str,
     exec_dir: Path,
     out_dir: Path,
-    mod_dir: Path = None,
+    mod_dir: Path | None = None,
 ):
     """
     Generate a cubed-sphere mosaic file for the FV3 dynamical core.

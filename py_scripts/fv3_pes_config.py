@@ -9,7 +9,7 @@ from fv3_runtime import read_namelist, sort_paths
 from fv3_state import save_fv3_state, state
 from fv3_timings import get_timings
 
-grid_dir: Path = None
+grid_dir: Path | None = None
 
 
 def calc_cpu_alloc(dir: Path) -> None:

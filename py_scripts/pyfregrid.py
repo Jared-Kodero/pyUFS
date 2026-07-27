@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import logging
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -60,11 +61,11 @@ class RegridOptions:
     extrapolate: bool
     standard_dimension: bool
     check_conserve: bool
-    KlevelBegin: Optional[int]
-    KlevelEnd: Optional[int]
-    LstepBegin: Optional[int]
-    LstepEnd: Optional[int]
-    dst_z: Optional[np.ndarray]
+    KlevelBegin: int | None
+    KlevelEnd: int | None
+    LstepBegin: int | None
+    LstepEnd: int | None
+    dst_z: np.ndarray | None
 
 
 # --------------------------------------------------------------------------- #
@@ -86,11 +87,11 @@ def is_rectilinear_latlon(tile: MosaicTile, atol: float = 1e-10) -> bool:
     return bool(lon_ok and lat_ok)
 
 
-def char_array_to_list(da: xr.DataArray) -> List[str]:
+def char_array_to_list(da: xr.DataArray) -> list[str]:
     arr = da.values
     if arr.ndim == 1:
         arr = np.expand_dims(arr, axis=0)
-    items: List[str] = []
+    items: list[str] = []
     for row in arr:
         if row.dtype.kind in {"S", "U"}:
             text = b"".join(
@@ -144,7 +145,7 @@ def get_axis_type(ds: xr.Dataset, dim: str) -> str:
     return "?"
 
 
-def get_axis_dimension(ds: xr.Dataset, da: xr.DataArray, axis: str) -> Optional[str]:
+def get_axis_dimension(ds: xr.Dataset, da: xr.DataArray, axis: str) -> str | None:
     for dim in da.dims:
         if get_axis_type(ds, dim) == axis:
             return dim
@@ -154,7 +155,7 @@ def get_axis_dimension(ds: xr.Dataset, da: xr.DataArray, axis: str) -> Optional[
 # --------------------------------------------------------------------------- #
 # grid / mosaic loading
 # --------------------------------------------------------------------------- #
-def load_mosaic_tiles(mosaic_path: Path) -> List[MosaicTile]:
+def load_mosaic_tiles(mosaic_path: Path) -> list[MosaicTile]:
     with xr.open_dataset(mosaic_path, decode_cf=False) as ds:
         if "gridfiles" not in ds:
             raise ValueError(f"mosaic file {mosaic_path} does not contain gridfiles")
@@ -167,7 +168,7 @@ def load_mosaic_tiles(mosaic_path: Path) -> List[MosaicTile]:
     if len(tile_names) != len(gridfiles):
         raise ValueError("mosaic gridtiles and gridfiles lengths do not match")
 
-    tiles: List[MosaicTile] = []
+    tiles: list[MosaicTile] = []
     for tile_name, grid_rel in zip(tile_names, gridfiles):
         grid_path = (mosaic_path.parent / grid_rel).resolve()
         with xr.open_dataset(grid_path, decode_cf=False) as gds:
@@ -281,9 +282,9 @@ def create_regridder_grid(tile: MosaicTile) -> xr.Dataset:
 
 def get_tile_paths(
     base_name: str, directory: Path, tile_names: Sequence[str]
-) -> List[Path]:
+) -> list[Path]:
     base = str(base_name)
-    base = base[:-3] if base.endswith(".nc") else base
+    base = base.removesuffix(".nc")
     if len(tile_names) == 1:
         names = [f"{base}.nc"]
     else:
@@ -291,7 +292,7 @@ def get_tile_paths(
     return [(directory / n).resolve() for n in names]
 
 
-def get_mosaic_grid_paths(mosaic_path: Path) -> List[Path]:
+def get_mosaic_grid_paths(mosaic_path: Path) -> list[Path]:
     with xr.open_dataset(mosaic_path, decode_cf=False) as ds:
         if "gridfiles" not in ds:
             raise ValueError(f"mosaic file {mosaic_path} does not contain gridfiles")
@@ -401,7 +402,7 @@ def smooth_for_finer_step(
 
 def get_basis_vectors_from_lonlat(
     lon_deg: np.ndarray, lat_deg: np.ndarray
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Unit east/north basis vectors in Cartesian coordinates (C unit_vect_latlon)."""
     lon = np.deg2rad(np.asarray(lon_deg))
     lat = np.deg2rad(np.asarray(lat_deg))
@@ -526,8 +527,8 @@ def get_xesmf_method(
 
 
 def get_weight_filename(
-    remap_file: Optional[str], src_idx: int, dst_idx: int, nsrc: int, ndst: int
-) -> Optional[str]:
+    remap_file: str | None, src_idx: int, dst_idx: int, nsrc: int, ndst: int
+) -> str | None:
     if not remap_file:
         return None
     base = remap_file if remap_file.endswith(".nc") else f"{remap_file}.nc"
@@ -540,10 +541,10 @@ def create_regridders(
     src_tiles: Sequence[MosaicTile],
     dst_tiles: Sequence[MosaicTile],
     method: str,
-    remap_file: Optional[str],
-) -> Dict[Tuple[int, int], xe.Regridder]:
+    remap_file: str | None,
+) -> dict[tuple[int, int], xe.Regridder]:
     dst_grids = [create_regridder_grid(dst) for dst in dst_tiles]
-    regridders: Dict[Tuple[int, int], xe.Regridder] = {}
+    regridders: dict[tuple[int, int], xe.Regridder] = {}
     for si, src in enumerate(src_tiles):
         src_grid = create_regridder_grid(src)
         for di, dst_grid in enumerate(dst_grids):
@@ -589,17 +590,17 @@ def _combine_regridded_pieces(
 
 def regrid_scalar_field(
     src_data: Sequence[xr.DataArray],
-    src_weights: Optional[Sequence[xr.DataArray]],
+    src_weights: Sequence[xr.DataArray] | None,
     src_tiles: Sequence[MosaicTile],
     dst_tiles: Sequence[MosaicTile],
-    regridders: Dict[Tuple[int, int], xe.Regridder],
+    regridders: dict[tuple[int, int], xe.Regridder],
     method: str,
     apply_fill_missing: bool,
     finer_step: int,
-) -> List[xr.DataArray]:
-    outputs: List[xr.DataArray] = []
+) -> list[xr.DataArray]:
+    outputs: list[xr.DataArray] = []
     for di in range(len(dst_tiles)):
-        pieces: List[xr.DataArray] = []
+        pieces: list[xr.DataArray] = []
         for si in range(len(src_tiles)):
             da = src_data[si]
             ydim, xdim = da.dims[-2], da.dims[-1]
@@ -631,18 +632,18 @@ def regrid_vector_field_bilinear(
     v_src: Sequence[xr.DataArray],
     src_tiles: Sequence[MosaicTile],
     dst_tiles: Sequence[MosaicTile],
-    regridders: Dict[Tuple[int, int], xe.Regridder],
+    regridders: dict[tuple[int, int], xe.Regridder],
     apply_fill_missing: bool,
     finer_step: int,
-) -> List[Tuple[xr.DataArray, xr.DataArray]]:
+) -> list[tuple[xr.DataArray, xr.DataArray]]:
     if len(u_src) != len(v_src) or len(u_src) != len(src_tiles):
         raise ValueError(
             "u/v source fields and source tiles must have matching lengths"
         )
 
-    x_src: List[xr.DataArray] = []
-    y_src: List[xr.DataArray] = []
-    z_src: List[xr.DataArray] = []
+    x_src: list[xr.DataArray] = []
+    y_src: list[xr.DataArray] = []
+    z_src: list[xr.DataArray] = []
     for si, src_tile in enumerate(src_tiles):
         u_da = u_src[si]
         v_da = v_src[si]
@@ -693,7 +694,7 @@ def regrid_vector_field_bilinear(
         finer_step,
     )
 
-    uv_out: List[Tuple[xr.DataArray, xr.DataArray]] = []
+    uv_out: list[tuple[xr.DataArray, xr.DataArray]] = []
     for di, dst_tile in enumerate(dst_tiles):
         x_da, y_da, z_da = x_out[di], y_out[di], z_out[di]
         ydim, xdim = x_da.dims[-2], x_da.dims[-1]
@@ -827,7 +828,7 @@ def get_destination_tiles(
     latEnd: float,
     nlon: int,
     nlat: int,
-) -> Tuple[List[MosaicTile], Optional[Path]]:
+) -> tuple[list[MosaicTile], Path | None]:
     if output_mosaic:
         path = Path(output_mosaic).resolve()
         return load_mosaic_tiles(path), path
@@ -844,11 +845,11 @@ def load_weight_tiles(
     input_file,
     input_dir: Path,
     src_names: Sequence[str],
-) -> Tuple[List[xr.Dataset], List[xr.DataArray]]:
+) -> tuple[list[xr.Dataset], list[xr.DataArray]]:
     weight_base = weight_file if weight_file else input_file[0]
     paths = get_tile_paths(weight_base, input_dir, src_names)
     datasets = [xr.open_dataset(p) for p in paths]
-    tiles: List[xr.DataArray] = []
+    tiles: list[xr.DataArray] = []
     for dsw in datasets:
         if weight_field not in dsw:
             raise ValueError(
@@ -866,14 +867,14 @@ def regrid_scalar_fields(
     ds1_tiles: Sequence[xr.Dataset],
     src_tiles: Sequence[MosaicTile],
     dst_tiles: Sequence[MosaicTile],
-    regridders: Dict[Tuple[int, int], xe.Regridder],
-    weight_tiles: Optional[Sequence[xr.DataArray]],
+    regridders: dict[tuple[int, int], xe.Regridder],
+    weight_tiles: Sequence[xr.DataArray] | None,
     opts: RegridOptions,
     out_file1_tiles: Sequence[xr.Dataset],
-) -> List[str]:
-    skipped: List[str] = []
+) -> list[str]:
+    skipped: list[str] = []
     for field in scalar_field:
-        src_field_data: List[xr.DataArray] = []
+        src_field_data: list[xr.DataArray] = []
         for ds in ds1_tiles:
             if field not in ds:
                 raise ValueError(
@@ -891,7 +892,7 @@ def regrid_scalar_fields(
         if not src_field_data:
             continue
 
-        field_weights: Optional[List[xr.DataArray]] = None
+        field_weights: list[xr.DataArray] | None = None
         if weight_tiles is not None:
             field_weights = []
             for wt in weight_tiles:
@@ -944,15 +945,15 @@ def regrid_vector_fields(
     ds2_tiles: Sequence[xr.Dataset],
     src_tiles: Sequence[MosaicTile],
     dst_tiles: Sequence[MosaicTile],
-    regridders: Dict[Tuple[int, int], xe.Regridder],
+    regridders: dict[tuple[int, int], xe.Regridder],
     opts: RegridOptions,
     out_file1_tiles: Sequence[xr.Dataset],
     out_file2_tiles: Sequence[xr.Dataset],
 ) -> None:
     paired_files = len(ds2_tiles) == len(ds1_tiles)
     for uf, vf in zip(u_field, v_field):
-        u_src: List[xr.DataArray] = []
-        v_src: List[xr.DataArray] = []
+        u_src: list[xr.DataArray] = []
+        v_src: list[xr.DataArray] = []
         for i, ds in enumerate(ds1_tiles):
             if uf not in ds:
                 raise ValueError(
@@ -1007,14 +1008,14 @@ def regrid_vector_fields(
 def fregrid(
     input_mosaic: str,
     input_file: list | Path = None,
-    output_mosaic: Path = None,
+    output_mosaic: Path | None = None,
     output_file: list | Path = None,
-    input_dir: Path = None,
-    output_dir: Path = None,
+    input_dir: Path | None = None,
+    output_dir: Path | None = None,
     scalar_field: list = None,
     u_field: list = None,
     v_field: list = None,
-    remap_file: Path = None,
+    remap_file: Path | None = None,
     interp_method: str = "conserve_order1",
     grid_type: str = "AGRID",
     symmetry: bool = False,
@@ -1029,23 +1030,23 @@ def fregrid(
     latEnd: float = 90.0,
     nlon: int = 0,
     nlat: int = 0,
-    KlevelBegin: int = None,
-    KlevelEnd: int = None,
-    LstepBegin: int = None,
-    LstepEnd: int = None,
-    weight_file: Path = None,
+    KlevelBegin: int | None = None,
+    KlevelEnd: int | None = None,
+    LstepBegin: int | None = None,
+    LstepEnd: int | None = None,
+    weight_file: Path | None = None,
     weight_field: str = None,
     dst_vgrid: str = None,
     extrapolate: bool = False,
     stop_crit: float = 0.005,
     standard_dimension: bool = False,
-    associated_file_dir: Path = None,
+    associated_file_dir: Path | None = None,
     fill_missing: bool = True,  # C default is off; enabled here
     format: str = None,
     deflation: int = -1,
     shuffle: int = -1,
     tiles_type: str = None,
-) -> List[str]:
+) -> list[str]:
     """Remap scalar and/or vector fields from input_mosaic onto the target grid.
 
     Returns the sorted list of scalar fields skipped because their
@@ -1118,15 +1119,15 @@ def fregrid(
     file1_out = get_tile_paths(output_file[0], output_dir, dst_names)
     ds1_tiles = [xr.open_dataset(p) for p in file1_in]
 
-    ds2_tiles: List[xr.Dataset] = []
-    file2_out: List[Path] = []
+    ds2_tiles: list[xr.Dataset] = []
+    file2_out: list[Path] = []
     if len(input_file) == 2:
         file2_in = get_tile_paths(input_file[1], input_dir, src_names)
         file2_out = get_tile_paths(output_file[1], output_dir, dst_names)
         ds2_tiles = [xr.open_dataset(p) for p in file2_in]
 
-    dsw_tiles: List[xr.Dataset] = []
-    weight_tiles: Optional[List[xr.DataArray]] = None
+    dsw_tiles: list[xr.Dataset] = []
+    weight_tiles: list[xr.DataArray] | None = None
     if weight_field:
         dsw_tiles, weight_tiles = load_weight_tiles(
             weight_field, weight_file, input_file, input_dir, src_names

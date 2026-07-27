@@ -26,7 +26,7 @@ def run_emcsfc_snow(
     wgrib: str = "wgrib",
     sendcom: bool = False,
     n_nests: int = 0,  # NEW: number of nests for multinest support
-    nest_idx: int = None,  # NEW: current nest index being processed
+    nest_idx: int | None = None,  # NEW: current nest index being processed
 ):
     """
     Python wrapper for emcsfc_snow.sh.

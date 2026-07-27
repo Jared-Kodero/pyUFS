@@ -20,35 +20,35 @@ log = logging.getLogger("PREPROCESS")
 @dataclass
 class ChgresCubeConfig:
     # === Target grid ===
-    mosaic_file_target_grid: Path = None
-    fix_dir_target_grid: Path = None
-    orog_dir_target_grid: Path = None
+    mosaic_file_target_grid: Path | None = None
+    fix_dir_target_grid: Path | None = None
+    orog_dir_target_grid: Path | None = None
     orog_files_target_grid: list[str] = None
-    vcoord_file_target_grid: Path = None
+    vcoord_file_target_grid: Path | None = None
 
     # === Input grid ===
-    data_dir_input_grid: Path = None
+    data_dir_input_grid: Path | None = None
     atm_files_input_grid: list[str] = None
     sfc_files_input_grid: list[str] = None
     nst_files_input_grid: list[str] = None
     atm_core_files_input_grid: list[str] = None
     atm_tracer_files_input_grid: list[str] = None
-    orog_dir_input_grid: Path = None
+    orog_dir_input_grid: Path | None = None
     orog_files_input_grid: list[str] = None
-    grib2_file_input_grid: Path = None
-    geogrid_file_input_grid: Path = None
-    mosaic_file_input_grid: Path = None
+    grib2_file_input_grid: Path | None = None
+    geogrid_file_input_grid: Path | None = None
+    mosaic_file_input_grid: Path | None = None
 
     # === Physics / mapping ===
-    varmap_file: Path = None
-    thomp_mp_climo_file: Path = None
-    wam_parm_file: Path = None
+    varmap_file: Path | None = None
+    thomp_mp_climo_file: Path | None = None
+    wam_parm_file: Path | None = None
 
     # === Cycle ===
-    cycle_year: int = None
-    cycle_mon: int = None
-    cycle_day: int = None
-    cycle_hour: int = None
+    cycle_year: int | None = None
+    cycle_mon: int | None = None
+    cycle_day: int | None = None
+    cycle_hour: int | None = None
 
     # === Conversion flags ===
     convert_atm: bool = True

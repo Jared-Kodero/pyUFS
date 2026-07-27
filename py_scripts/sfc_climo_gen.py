@@ -23,7 +23,7 @@ def _run_single_sfc_climo(
     n_cpus: int,
     orog_files: list[str],
     grid_type: str,
-    log_file: Path = None,
+    log_file: Path | None = None,
 ):
     """
     Internal helper to run a single instance of sfc_climo_gen.
