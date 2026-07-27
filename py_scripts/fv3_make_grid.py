@@ -376,12 +376,12 @@ def run_make_grid(
     iend_nest: int | list[int] = None,
     jend_nest: int | list[int] = None,
     parent_tile: int | list[int] = 6,
-    halo: int = None,
-    idim: int = None,
-    jdim: int = None,
+    halo: int | None = None,
+    idim: int | None = None,
+    jdim: int | None = None,
     delx: float = None,
     dely: float = None,
-    mod_dir: Path = None,
+    mod_dir: Path | None = None,
 ):
     """
     Generate FV3 grid NetCDF files and a mosaic using fv3 grid tools.

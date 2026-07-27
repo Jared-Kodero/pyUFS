@@ -16,7 +16,7 @@ from sfc_climo_gen import run_sfc_climo_gen
 
 
 def run_driver(
-    c_res: int = None,
+    c_res: int | None = None,
     gtype: str = None,
     add_lake: bool = None,
     lake_cutoff: float = None,
@@ -34,17 +34,17 @@ def run_driver(
     lon_max: float = None,
     lat_min: float = None,
     lat_max: float = None,
-    n_nests: int = None,
-    halo: int = None,
-    idim: int = None,
-    jdim: int = None,
+    n_nests: int | None = None,
+    halo: int | None = None,
+    idim: int | None = None,
+    jdim: int | None = None,
     delx: float = None,
     dely: float = None,
     # Paths
-    tmp: Path = None,
-    exe_dir: Path = None,
-    orog_dir: Path = None,
-    fix_dir: Path = None,
+    tmp: Path | None = None,
+    exe_dir: Path | None = None,
+    orog_dir: Path | None = None,
+    fix_dir: Path | None = None,
 ):
     """
     Python driver for FV3 grid/orography/sfc_climo generation.
@@ -163,17 +163,7 @@ def run_driver(
             tmp=tmp,
         )
 
-        if gtype in ["uniform", "stretch"]:
-            run_filter_topo(
-                c_res=c_res,
-                gtype=gtype,
-                exec_dir=exe_dir,
-                grid_dir=tmp / "grid",
-                orog_dir=tmp / "orog",
-                tmp_dir=tmp / "filter_topo",
-                stretch_factor=stretch_factor,
-            )
-        elif gtype == "nest":
+        if gtype in ["uniform", "stretch"] or gtype == "nest":
             run_filter_topo(
                 c_res=c_res,
                 gtype=gtype,
@@ -221,7 +211,6 @@ def run_driver(
     # === REGIONAL GRIDS: gfdl, esg ============================
     # ==========================================================
     elif gtype in ["regional_gfdl", "regional_esg"]:
-
         tile = 7
         halop1 = halo + 1 if halo else 4
 
@@ -235,7 +224,9 @@ def run_driver(
             c_res=c_res,
             tile_idx=0,  # single regional domain
             grid_dir=None,
-            parent_tile=parent_tile[0] if isinstance(parent_tile, list) else parent_tile,
+            parent_tile=parent_tile[0]
+            if isinstance(parent_tile, list)
+            else parent_tile,
             i_refine_ratio=refine,
         )
 

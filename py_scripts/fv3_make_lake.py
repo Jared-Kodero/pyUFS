@@ -68,7 +68,7 @@ def run_add_lakefrac(
     grid_dir: Path,
     topo: Path,
     lake_cutoff: float,
-    tmp: Path = None,
+    tmp: Path | None = None,
 ):
     """
     Python wrapper for fv3_lakefrac.sh.
@@ -96,7 +96,7 @@ def run_add_lakefrac(
         Temporary working directory (default: $tmp or /tmp).
     """
     if not add_lake:
-        return None
+        return
 
     if gtype not in ["uniform", "regional_gfdl"]:
         log.warning(

@@ -153,8 +153,7 @@ def _load_initial_state() -> None:
                 state[key] = to_list(state[key])
             if any(v is None for v in state.lon_min + state.lon_max):
                 raise ValueError(
-                    "Regional grids require a bounding box: set lon_min, "
-                    "lon_max, lat_min, lat_max in run_config.yaml."
+                    "Regional grids require a bounding box: set lon_min, lon_max, lat_min, lat_max in run_config.yaml."
                 )
 
     _log_initial_state()
