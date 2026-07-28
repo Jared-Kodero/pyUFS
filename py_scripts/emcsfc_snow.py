@@ -19,7 +19,7 @@ def run_emcsfc_snow(
     model_lat_file: str = "global_latitudes.t1534.3072.1536.grb",
     model_lon_file: str = "global_longitudes.t1534.3072.1536.grb",
     gfs_lpl_file: str = "global_lonsperlat.t1534.3072.1536.txt",
-    climo_qc: str = None,
+    climo_qc: str | None = None,
     model_snow_file: str = "snogrb_model",
     output_grib2: bool = False,
     wgrib2: str = "/wgrib2",

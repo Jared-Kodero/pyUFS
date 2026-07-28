@@ -34,7 +34,7 @@ def get_grid_info() -> None:
         get_regional_grid_info()
         return
 
-    files = sorted(list(grid_dir.glob("C*_grid.tile*.nc")), key=sort_paths)
+    files = sorted(grid_dir.glob("C*_grid.tile*.nc"), key=sort_paths)
 
     for f in files:
         tile_num = int(f.stem.split(".")[-1].replace("tile", ""))
