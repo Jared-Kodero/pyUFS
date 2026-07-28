@@ -367,9 +367,9 @@ def run_make_grid(
     gtype: str,
     exec_dir: Path,
     out_dir: Path,
-    stretch_factor: float = None,
-    target_lon: float = None,
-    target_lat: float = None,
+    stretch_factor: float | None = None,
+    target_lon: float | None = None,
+    target_lat: float | None = None,
     refine_ratio: int | list[int] = None,
     istart_nest: int | list[int] = None,
     jstart_nest: int | list[int] = None,
@@ -379,8 +379,8 @@ def run_make_grid(
     halo: int | None = None,
     idim: int | None = None,
     jdim: int | None = None,
-    delx: float = None,
-    dely: float = None,
+    delx: float | None = None,
+    dely: float | None = None,
     mod_dir: Path | None = None,
 ):
     """

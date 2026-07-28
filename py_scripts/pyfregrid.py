@@ -1035,17 +1035,17 @@ def fregrid(
     LstepBegin: int | None = None,
     LstepEnd: int | None = None,
     weight_file: Path | None = None,
-    weight_field: str = None,
-    dst_vgrid: str = None,
+    weight_field: str | None = None,
+    dst_vgrid: str | None = None,
     extrapolate: bool = False,
     stop_crit: float = 0.005,
     standard_dimension: bool = False,
     associated_file_dir: Path | None = None,
     fill_missing: bool = True,  # C default is off; enabled here
-    format: str = None,
+    format: str | None = None,
     deflation: int = -1,
     shuffle: int = -1,
-    tiles_type: str = None,
+    tiles_type: str | None = None,
 ) -> list[str]:
     """Remap scalar and/or vector fields from input_mosaic onto the target grid.
 

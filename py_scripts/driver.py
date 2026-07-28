@@ -10,7 +10,7 @@ from fv3_utils import exit_code
 
 
 def main() -> None:
-    if int(os.environ.get("CASE_RESUBMIT_INDEX", 0)) > 0:
+    if int(os.environ.get("CASE_RESUBMIT_INDEX", "0")) > 0:
         restart_driver()
     else:
         init_driver()

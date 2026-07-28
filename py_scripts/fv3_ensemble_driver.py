@@ -28,7 +28,7 @@ def _get_delta(
     shape: tuple = None,
     dims: tuple = None,
     coords: tuple = None,
-    dx: float = None,
+    dx: float | None = None,
 ) -> xr.DataArray:
 
     delta = rng.normal(0.0, scale, size=shape)

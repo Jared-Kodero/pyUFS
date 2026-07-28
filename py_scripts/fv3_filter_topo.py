@@ -13,7 +13,7 @@ def run_filter_topo(
     grid_dir: Path,
     orog_dir: Path,
     tmp_dir: Path,
-    stretch_factor: float = None,
+    stretch_factor: float | None = None,
 ):
     """
     Apply topographic filtering to FV3 orography fields.
