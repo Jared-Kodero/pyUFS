@@ -109,6 +109,13 @@ class ChgresCubeConfig:
 # Valid override keys accepted from a user config block.
 CONFIG_FIELDS = {f.name for f in fields(ChgresCubeConfig)}
 
+# Nest atmosphere source when a nest config sets no external_model. A nest
+# inside HRRR coverage takes the HRRR atmosphere (GFS surface); a nest outside
+# coverage falls back to GFS. Regional and global domains still default to GFS.
+# To disable the HRRR default for a nest, set external_model in its per-domain
+# config file (chgres_cube_nest<NN>.yaml, or fort_nest<NN>.41).
+NEST_DEFAULT_MODEL = "HRRR"
+
 
 @dataclass(frozen=True)
 class RunSpec:
@@ -135,7 +142,7 @@ def load_block(domain: str) -> dict:
     """Load a domain's flat config block, or an empty block if no file is present.
 
     Accepted files (YAML preferred over namelist) are read verbatim. When none
-    exist, an empty block is returned so the built-in GFS default applies.
+    exist, an empty block is returned so the built-in default applies.
     """
     for name in config_candidates(domain):
         path = state.run_dir / name
@@ -168,7 +175,9 @@ def resolve_atm_model(requested: str, domain: str, tile: int, explicit: bool) ->
     """Resolve a limited-area atmosphere model (nest or regional).
 
     GFS is always accepted. HRRR is accepted only inside HRRR coverage. An
-    explicit external_model: HRRR outside coverage raises; otherwise GFS is used.
+    explicit external_model: HRRR outside coverage raises. A defaulted HRRR
+    (nest with no user config) outside coverage falls back to GFS silently; the
+    fallback is announced once up front by run_chgres_cube.
     """
     requested = requested.upper()
     if requested == "GFS":
@@ -194,20 +203,22 @@ def plan_runs(domain: str, tile: int | None, block: dict) -> list[tuple[str, dic
 
     Nests and regional domains (limited-area, tile >= 7) may take the atmosphere
     from HRRR but always take the surface from GFS, because HRRR carries no soil
-    levels. All limited-area domains default to GFS when no user configuration
-    specifies a model. An explicit external_model: HRRR outside HRRR coverage
-    raises. An HRRR atmosphere yields two conversions (HRRR atmosphere, GFS
-    surface); a GFS atmosphere yields one combined conversion. The convert
-    switches follow this split and are not read from the file; all other file
-    keys are applied as overrides.
+    levels. With no user config a nest defaults to HRRR and a regional domain
+    defaults to GFS. A defaulted HRRR nest outside HRRR coverage falls back to
+    GFS silently (announced once up front by run_chgres_cube); an explicit
+    external_model: HRRR outside coverage raises. An HRRR atmosphere yields two
+    conversions (HRRR atmosphere, GFS surface); a GFS atmosphere yields one
+    combined conversion. The convert switches follow this split and are not read
+    from the file; all other file keys are applied as overrides.
     """
     if domain == "global":
         resolved = resolve_model(block.get("external_model", "GFS"), domain, tile)
         overrides = {k: v for k, v in block.items() if k != "external_model"}
         return [(resolved, overrides)]
 
+    default_model = NEST_DEFAULT_MODEL if domain.startswith("nest") else "GFS"
     atm_model = resolve_atm_model(
-        block.get("external_model", "GFS"),
+        block.get("external_model", default_model),
         domain,
         tile,
         explicit="external_model" in block,
@@ -232,6 +243,18 @@ def plan_runs(domain: str, tile: int | None, block: dict) -> list[tuple[str, dic
         )
         for model, ca, cs in plans
     ]
+
+
+def nests_defaulting_to_hrrr() -> list[str]:
+    """Return nest domains that set no external_model and take the HRRR default.
+
+    Empty for non-nested grids or when every nest sets external_model
+    explicitly, in which case no HRRR-default notice is emitted.
+    """
+    if state.gtype != "nest":
+        return []
+    domains = [f"nest{n:02d}" for n in range(2, 2 + state.n_nests)]
+    return [d for d in domains if "external_model" not in load_block(d)]
 
 
 def build_run_specs() -> list[RunSpec]:
@@ -403,6 +426,18 @@ def run_chgres_cube() -> None:
     n_cpus = min(60, (len(os.sched_getaffinity(0)) // 6) * 6)
 
     log.info("Running chgres_cube to generate initial conditions")
+
+    # Announce the HRRR nest default once, only when nests are present and no
+    # external_model is configured for them. Nests outside HRRR coverage fall
+    # back to GFS silently; this notice covers that case in place of a per-nest
+    # warning.
+    defaulting = nests_defaulting_to_hrrr()
+    if defaulting:
+        log.info(
+            f"No external_model configured for {', '.join(defaulting)}; will "
+            + "try HRRR and default to GFS if nest is not fully within HRRR domain"
+        )
+
     for spec in specs:
         run_chgres(spec, n_cpus)
 
