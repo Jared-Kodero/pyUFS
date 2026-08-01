@@ -85,7 +85,7 @@ def get_merge_freq() -> int:
         return -1
 
     if isinstance(merge_freq, bool) or not isinstance(merge_freq, int):
-        raise ValueError(f"merge_freq must be an integer, got {merge_freq!r}")
+        raise TypeError(f"merge_freq must be an integer, got {merge_freq!r}")
 
     if merge_freq < -1:
         raise ValueError(
@@ -239,7 +239,7 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
             ds[var].attrs["units"] = "mm/hr"
 
     ds = calc_derived_vars(ds)
-    ds = ds[sorted(list(ds.data_vars))]
+    ds = ds[sorted(ds.data_vars)]
 
     for dim in ds.dims:
         ds[dim].attrs.update(dim_attrs.get(dim, {}))
@@ -509,6 +509,6 @@ if __name__ == "__main__":
     try:
         regrid()
 
-    except Exception as e:
+    except Exception:
         exit_code(1)
-        raise e
+        raise

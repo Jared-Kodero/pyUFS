@@ -17,7 +17,7 @@ def _run_make_orog(
     latb: int | None = None,
     inputorog: Path | None = None,
     tmp: Path | None = None,
-    local_state: dict = None,
+    local_state: dict | None = None,
 ):
     state.update(local_state)
 

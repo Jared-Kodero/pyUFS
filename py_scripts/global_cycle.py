@@ -2,6 +2,7 @@ from pathlib import Path
 
 import f90nml
 import pandas as pd
+
 from fv3_runtime import get_launcher, log
 from fv3_state import state
 from fv3_utils import cp, run_cmd
@@ -38,7 +39,7 @@ def run_global_cycle(
     max_tasks: int = 99999,
     nst_file: str = "NULL",
     lnd_soi_file: str = "NULL",
-    cycle_vars: dict = None,
+    cycle_vars: dict | None = None,
     n_nests: int = 0,  # NEW: number of nests for multinest support
     nest_idx: int | None = None,  # NEW: current nest index being processed
 ):

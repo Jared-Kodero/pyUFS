@@ -178,7 +178,7 @@ state = FV3State({})
 log = logging.getLogger("UFS_UTILS")
 
 
-def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
+def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> str:
     if not isinstance(hash_keys, list) and hash_keys is not None:
         raise ValueError("hash_keys must be a list of keys to include in the hash")
 
@@ -221,7 +221,7 @@ def compute_checksum(data: dict | FV3State, hash_keys: list = None) -> str:
     return hashlib.sha256(hash_data_str.encode("utf-8")).hexdigest()
 
 
-def save_fv3_state(cfg: dict = None, path: Path | None = None):
+def save_fv3_state(cfg: dict | None = None, path: Path | None = None):
     """
     Save the current state to a YAML file
     """
@@ -270,7 +270,7 @@ def load_fv3_state():
         data = yaml.safe_load(file)
 
     if not isinstance(data, dict):
-        raise ValueError("Invalid state file format")
+        raise TypeError("Invalid state file format")
 
     data["init_datetime"] = parse_datetime(data["init_datetime"])
 
