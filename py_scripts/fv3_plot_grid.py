@@ -12,6 +12,7 @@ nest: parent_tile[k] is the tile hosting nest k + 1, which occupies tile 7 + k.
 A chain such as [6, 7, 8] telescopes, so all three nests resolve to face 6.
 """
 
+import random
 import time
 from pathlib import Path
 
@@ -902,7 +903,7 @@ def plot_tiles(grid_dir: Path):
 def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
 
-    time.sleep(np.random(0, 60))
+    time.sleep(random.uniform(0, 60))
 
     try:
         plot_lock.touch(exist_ok=False)
