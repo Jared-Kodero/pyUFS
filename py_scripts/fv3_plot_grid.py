@@ -30,7 +30,6 @@ from matplotlib.path import Path as MplPath
 
 matplotlib.use("Agg")
 
-plot_lock = state.run_dir / "plot.lock"
 
 N_GLOBAL_TILES = 6
 
@@ -904,6 +903,8 @@ def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
 
     time.sleep(random.uniform(0, 60))
+
+    plot_lock = state.run_dir / "plot.lock"
 
     try:
         plot_lock.touch(exist_ok=False)
