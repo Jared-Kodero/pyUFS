@@ -75,13 +75,11 @@ def stage_files() -> None:
     for f in tmp_ic_dir_files:
         dest_file = state.input / f.name
 
-        if dest_file.exists():
-            if dest_file.is_file():
-                dest_file.unlink()
-            elif dest_file.is_symlink():
-                dest_file.unlink()
-            elif dest_file.is_dir():
-                shutil.rmtree(dest_file)
+        if dest_file.exists() and dest_file.is_file():
+            dest_file.unlink()
+
+        elif dest_file.is_dir():
+            shutil.rmtree(dest_file)
 
         cp(f, state.input)
 
@@ -112,12 +110,6 @@ def stage_files() -> None:
             new_file = state.input / f"oro_data.nest{nest_idx}.tile{tile}.nc"
             rename(f, new_file)
 
-    # Regional orography is produced as shaved halo files; the model reads the
-    # halo0 field as oro_data.tile7.nc (the halo3/halo4 grid and mosaic files
-    # are moved to GRID by the grid/mosaic loop below).
-    for f in list(state.input.glob("C*_oro_data.tile7.halo0.nc")):
-        rename(f, state.input / "oro_data.tile7.nc")
-
     for f in list(state.input.glob("*")):
         if "grid" in f.name or "mosaic" in f.name:
             dest = state.grid / f.name
@@ -125,8 +117,15 @@ def stage_files() -> None:
             rel_target = os.path.relpath(dest, start=f.parent)
             f.symlink_to(rel_target)
 
-    # Link the regional boundary files (kept in state.bc_data) into INPUT. The
-    # links target state.bc_data, outside state.tmp, so they survive the cleanup.
-    link_bc_to_input()
+    if state.gtype in ("regional_gfdl", "regional_esg"):
+        # Regional orography is produced as shaved halo files; the model reads the
+        # halo0 field as oro_data.tile7.nc (the halo3/halo4 grid and mosaic files
+        # are moved to GRID by the grid/mosaic loop below).
+        for f in list(state.input.glob("C*_oro_data.tile7.halo0.nc")):
+            rename(f, state.input / "oro_data.tile7.nc")
+
+        # Link the regional boundary files (kept in state.bc_data) into INPUT. The
+        # links target state.bc_data, outside state.tmp, so they survive the cleanup.
+        link_bc_to_input()
 
     os.system(f"rm -rf {state.tmp}/*")
