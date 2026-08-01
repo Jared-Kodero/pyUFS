@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pandas as pd
-
 from fv3_paths import paths
 
 log = logging.getLogger("PREPROCESS")
