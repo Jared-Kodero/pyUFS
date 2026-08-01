@@ -5,7 +5,6 @@ from typing import Literal
 
 import xarray as xr
 import xesmf as xe
-
 from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import cp
