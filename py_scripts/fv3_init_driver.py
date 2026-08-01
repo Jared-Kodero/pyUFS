@@ -204,6 +204,7 @@ def init_driver() -> None:
         ensemble_config()
         plot_grid()
 
+        log.info("Preprocessing complete!")
         if state.preprocess_only:
             preprocess_only()
             save_fv3_state()

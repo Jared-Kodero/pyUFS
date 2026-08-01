@@ -12,18 +12,24 @@ nest: parent_tile[k] is the tile hosting nest k + 1, which occupies tile 7 + k.
 A chain such as [6, 7, 8] telescopes, so all three nests resolve to face 6.
 """
 
+import time
 from pathlib import Path
 
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from fv3_state import state
+from fv3_state import log, state
 from matplotlib.collections import LineCollection
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
 from matplotlib.patches import PathPatch, Polygon, Rectangle
 from matplotlib.path import Path as MplPath
+
+matplotlib.use("Agg")
+
+plot_lock = state.run_dir / "plot.lock"
 
 N_GLOBAL_TILES = 6
 
@@ -656,8 +662,7 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
             frameon=False,
         )
 
-    fig.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight")
-    plt.show()
+    plt.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -831,7 +836,11 @@ def plot_nests(
             va="bottom",
             ha="left",
             zorder=10,
-            bbox=dict(boxstyle="round,pad=0.18", facecolor=color, edgecolor="none"),
+            bbox={
+                "boxstyle": "round,pad=0.18",
+                "facecolor": color,
+                "edgecolor": "none",
+            },
         )
 
     legend_elements = [
@@ -847,8 +856,10 @@ def plot_nests(
     )
 
     plt.title("Resolved Nest Bounds")
-    fig.savefig(state.run_dir / "nest_grids.png", dpi=FIG_DPI, bbox_inches="tight")
-    plt.show()
+
+    outfile = state.run_dir / "nest_grids.png"
+    outfile.unlink(missing_ok=True)
+    plt.savefig(outfile, dpi=FIG_DPI, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -877,14 +888,10 @@ def plot_tiles(grid_dir: Path):
         tile_colors = tile_palette(n_nests)
         face_titles, nest_labels = tile_labels(len(datasets), parents)
 
-        plot_faces(
-            datasets,
-            tile_colors,
-            face_titles,
-            nest_labels,
-            parents,
-            state.run_dir / "grid_faces.png",
-        )
+        outfile = state.run_dir / "grid_faces.png"
+        outfile.unlink(missing_ok=True)
+
+        plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, outfile)
     finally:
         for ds in datasets:
             ds.close()
@@ -894,22 +901,35 @@ def plot_tiles(grid_dir: Path):
 
 def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
-    import cartopy
 
-    cartopy_data = state.fix_src / "carto"
-    cartopy.config["pre_existing_data_dir"] = cartopy_data
-    cartopy.config["data_dir"] = cartopy_data
+    time.sleep(np.random(0, 60))
 
     try:
-        nest_labels = plot_tiles(state.grid)
-
-        if state.n_nests > 0:
-            plot_nests(
-                state.lon_min,
-                state.lon_max,
-                state.lat_min,
-                state.lat_max,
-                nest_labels,
-            )
-    except Exception:
+        plot_lock.touch(exist_ok=False)
+    except FileExistsError:
         return
+
+    try:
+        import cartopy
+
+        cartopy_data = state.fix_src / "carto"
+        cartopy.config["pre_existing_data_dir"] = cartopy_data
+        cartopy.config["data_dir"] = cartopy_data
+
+        try:
+            nest_labels = plot_tiles(state.grid)
+
+            if state.n_nests > 0:
+                plot_nests(
+                    state.lon_min,
+                    state.lon_max,
+                    state.lat_min,
+                    state.lat_max,
+                    nest_labels,
+                )
+
+            log.info(f"Grid plots saved in: {state.run_dir}")
+        except Exception:
+            return
+    finally:
+        plot_lock.unlink(missing_ok=True)
