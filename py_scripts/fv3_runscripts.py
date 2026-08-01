@@ -43,22 +43,22 @@ def gen_shield_container_scripts(
     if state.shield_exe:
         modules = "\n".join(f"module load {m}" for m in native_modules)
 
-        cfg = dict(
-            log_file=log_file,
-            exe=state.shield_exe,
-            modules=modules,
-            launcher=native_launcher,
-        )
+        cfg = {
+            "log_file": log_file,
+            "exe": state.shield_exe,
+            "modules": modules,
+            "launcher": native_launcher,
+        }
 
         (state.work_dir / "shield.native").touch()
 
     else:
-        cfg = dict(
-            log_file=log_file,
-            exe="SHiELD_nh.prod.64bit.x",
-            modules=modules,
-            launcher=container_launcher,
-        )
+        cfg = {
+            "log_file": log_file,
+            "exe": "SHiELD_nh.prod.64bit.x",
+            "modules": modules,
+            "launcher": container_launcher,
+        }
 
     write_shield_sh(
         exit_code=state.work_dir / "exit_code",

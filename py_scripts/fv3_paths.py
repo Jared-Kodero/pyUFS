@@ -54,7 +54,7 @@ def configure_directories(state: FV3State) -> dict:
         _clear(paths["output"])
         _clear(paths["hist"])
 
-    for _, d in case_paths.items():
+    for d in case_paths.values():
         d.mkdir(parents=True, exist_ok=True)
 
     return paths

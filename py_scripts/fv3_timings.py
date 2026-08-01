@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import pandas as pd
+
 from fv3_state import state
 
 BASE_TIMINGS = {
@@ -96,9 +97,9 @@ def get_timings() -> dict:
     n_split = state.n_split or best_guess_timings["n_split"]
 
     if not isinstance(k_split, list):
-        raise ValueError(f"k_split must be a list, got {type(k_split)}")
+        raise TypeError(f"k_split must be a list, got {type(k_split)}")
     if not isinstance(n_split, list):
-        raise ValueError(f"n_split must be a list, got {type(n_split)}")
+        raise TypeError(f"n_split must be a list, got {type(n_split)}")
 
     if len(k_split) != state.n_nests + 1:
         raise ValueError(

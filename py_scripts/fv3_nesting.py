@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+
 from fv3_runtime import log
 from fv3_state import FV3State, save_fv3_state, state
 from fv3_utils import cres_to_deg, exit_code, run_cmd
@@ -271,7 +272,7 @@ def get_nest_tele_indices(
     for i, tile in enumerate(tiles):
         parent_tile = tile - 1
         grid_parent_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
-        i_refine_ratio = np.prod(refine_ratio[: i + 1])  # not used now
+        np.prod(refine_ratio[: i + 1])  # not used now
         indices = calc_parent_grid_index(i, parent_tile, grid_parent_fname)
 
         state.parent_tile.append(parent_tile)

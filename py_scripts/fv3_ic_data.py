@@ -8,10 +8,11 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import xarray as xr
+from pyproj import Proj
+
 from fv3_runtime import log
 from fv3_state import save_fv3_state, state
 from fv3_utils import run_cmd
-from pyproj import Proj
 
 
 def wget(url: str, output_path: Path) -> bool:

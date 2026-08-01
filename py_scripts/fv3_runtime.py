@@ -11,16 +11,28 @@ from pathlib import Path
 import f90nml
 import xarray as xr
 import yaml
+
 from fv3_paths import paths
 
 log = logging.getLogger("PREPROCESS")
 
 
 def get_newres(gridfile: Path) -> int:
+    """Return the global-equivalent cubed-sphere resolution of a regional grid.
+
+    global_equiv_resol writes this value to the grid file as the global
+    attribute RES_equiv (UFS_UTILS, global_equiv_resol.f90). The supergrid
+    dimension nx is twice the zonal cell count of the regional domain and bears
+    no relation to the equivalent resolution, so it cannot be used in its place.
+    """
     with xr.open_dataset(gridfile) as ds:
         nx = ds.nx.shape[0]
+        res_equiv = ds.attrs.get("RES_equiv", None)
 
-    return int(nx / 2)
+    if res_equiv is None:
+        res_equiv = int(nx / 2)
+
+    return int(res_equiv)
 
 
 def get_launcher(n_procs: int | None = None) -> list:

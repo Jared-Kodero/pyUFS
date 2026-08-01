@@ -22,11 +22,12 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from fv3_state import log, state
 from matplotlib.collections import LineCollection
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
 from matplotlib.patches import PathPatch, Polygon, Rectangle
 from matplotlib.path import Path as MplPath
+
+from fv3_state import log, state
 
 matplotlib.use("Agg")
 
@@ -902,11 +903,10 @@ def plot_tiles(grid_dir: Path):
 def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
 
-    time.sleep(random.uniform(0, 60))
-
     plot_lock = state.run_dir / "plot.lock"
 
     try:
+        time.sleep(random.uniform(0, 60))
         plot_lock.touch(exist_ok=False)
     except FileExistsError:
         return

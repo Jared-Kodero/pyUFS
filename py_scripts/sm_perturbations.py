@@ -5,6 +5,7 @@ from typing import Literal
 
 import xarray as xr
 import xesmf as xe
+
 from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import cp
@@ -518,7 +519,7 @@ def apply_perturbations():
         "fill_value",
     )
 
-    for k in p.keys():
+    for k in p:
         if k not in required and k not in soft_keys:
             raise ValueError(f"Unknown key in perturbation config: {k}")
 

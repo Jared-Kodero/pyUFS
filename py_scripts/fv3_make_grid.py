@@ -3,6 +3,7 @@ from pathlib import Path
 
 import f90nml
 import numpy as np
+
 from fv3_nesting import (
     gen_global_nest_parent,
     get_nest_indices,
@@ -370,11 +371,11 @@ def run_make_grid(
     stretch_factor: float | None = None,
     target_lon: float | None = None,
     target_lat: float | None = None,
-    refine_ratio: int | list[int] = None,
-    istart_nest: int | list[int] = None,
-    jstart_nest: int | list[int] = None,
-    iend_nest: int | list[int] = None,
-    jend_nest: int | list[int] = None,
+    refine_ratio: int | list[int] | None = None,
+    istart_nest: int | list[int] | None = None,
+    jstart_nest: int | list[int] | None = None,
+    iend_nest: int | list[int] | None = None,
+    jend_nest: int | list[int] | None = None,
     parent_tile: int | list[int] = 6,
     halo: int | None = None,
     idim: int | None = None,
