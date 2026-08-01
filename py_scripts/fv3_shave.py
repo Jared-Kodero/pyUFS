@@ -103,7 +103,9 @@ def run_shave(
     # the halo+1 grid/orography are present for the regional sfc_climo symlinks
     # and for staging alongside the halo and halo0 files.
     # ----------------------------------------------------------------------------
-    run_single_shave(halop1, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
+    run_single_shave(
+        halop1, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file
+    )
     run_single_shave(halo, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
     run_single_shave(0, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
 

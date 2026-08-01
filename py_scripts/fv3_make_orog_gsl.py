@@ -16,7 +16,7 @@ def _run_make_orog_gsl(
     topo_dir: Path,
     exec_dir: Path,
     tmp: Path | None = None,
-    local_state: dict = None,
+    local_state: dict | None = None,
 ):
 
     if not make_gsl_orog:

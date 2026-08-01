@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+
 from fv3_runtime import log
 from fv3_state import compute_checksum, state
 
@@ -25,9 +26,9 @@ def _get_stds(in_file: Path, target_vars: set) -> dict:
 def _get_delta(
     scale: float,
     rng: np.random.Generator,
-    shape: tuple = None,
-    dims: tuple = None,
-    coords: tuple = None,
+    shape: tuple | None = None,
+    dims: tuple | None = None,
+    coords: tuple | None = None,
     dx: float | None = None,
 ) -> xr.DataArray:
 
