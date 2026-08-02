@@ -22,12 +22,11 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
+from fv3_state import state
 from matplotlib.collections import LineCollection
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
 from matplotlib.patches import PathPatch, Polygon, Rectangle
 from matplotlib.path import Path as MplPath
-
-from fv3_state import log, state
 
 matplotlib.use("Agg")
 
@@ -930,7 +929,6 @@ def plot_grid():
                     nest_labels,
                 )
 
-            log.info(f"Grid plots saved in: {state.run_dir}")
         except Exception:
             return
     finally:
