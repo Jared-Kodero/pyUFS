@@ -3,7 +3,6 @@ from pathlib import Path
 
 import f90nml
 import numpy as np
-
 from fv3_runtime import (
     get_stream_handles,
     log,
@@ -359,7 +358,7 @@ def update_table_files():
 
     with open(diag_table_path) as f:
         lines = f.readlines()
-        lines = [line for line in lines if not line.strip().startswith("#")]
+        lines = [line for line in lines if line and not line.strip().startswith("#")]
         lines = lines[2:]  # Skip the first two lines (title and base_date)
 
     dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
