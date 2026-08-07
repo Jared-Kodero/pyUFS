@@ -23,7 +23,7 @@ def wget(url: str, output_path: Path) -> bool:
     cmd = ["/wget", "-q", "--no-check-certificate", url, "-O", str(output_path)]
 
     result = 1
-    for _ in range(10):
+    for _ in range(100):
         result, _ = run_cmd(cmd, warn_on_error=False)
 
         if result == 0:
@@ -33,7 +33,7 @@ def wget(url: str, output_path: Path) -> bool:
         if output_path.exists():
             output_path.unlink()
 
-        time.sleep(np.random.uniform(0, 5))
+        time.sleep(np.random.uniform(0, 120))
 
     return False
 
