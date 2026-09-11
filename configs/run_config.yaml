@@ -34,7 +34,7 @@ fregrid_image: /oscar/data/deeps/shared/gfdl_shield/containers/fregrid.sif
 preprocess_image: /oscar/data/deeps/shared/gfdl_shield/containers/preprocess.sif
 shield_root: /oscar/data/deeps/shared/gfdl_shield
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/SHiELD_nh.prod.64bit.gnu.x # Native executable. Required for multi-node native runs; otherwise the container image is used.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x # Native executable. Required for multi-node native runs; otherwise the container image is used.
 containers_root: /oscar/data/deeps/shared/gfdl_shield/containers # If empty, images are built by configs/install_images.sh before the first stage.
 container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers. Must include every directory used by the workflow.
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Host modules loaded for the workflow. Must include every library used by the workflow.
