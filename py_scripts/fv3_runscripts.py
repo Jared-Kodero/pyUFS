@@ -13,6 +13,8 @@ def gen_shield_run_sh() -> None:
         "--mpi=pmix",
         "--distribution=block:block",
         "--cpu-bind=cores",
+        "--ntasks-per-core=1",
+        "--kill-on-bad-exit=1",
         "-n",
     ]
     mpi_launcher = ["mpirun", "-np"]

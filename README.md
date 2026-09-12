@@ -45,7 +45,8 @@ For model background, use the official references below.
 
 ## 2. Requirements and runtime environment
 
-The workflow runs inside three Apptainer containers, referenced from `run_config.yaml`:
+The workflow uses three Apptainer images referenced from `run_config.yaml`; SHiELD itself
+may instead run from a native executable:
 
 - `preprocess_image` runs the preprocessing driver `py_scripts/driver.py`.
 - `shield_image` runs the SHiELD executable when a native binary is not supplied.
@@ -131,8 +132,8 @@ mkdir -p "$CASE_DIR"
 Submit from this directory so case-local overrides are read from the same location. After a
 successful run the case directory contains staged subdirectories such as `FIXED`, `GRID`,
 `IC`, `INPUT`, `LOGS`, `OUTPUT`, `RESTART`, `HIST`, and `TMP`, depending on the case
-settings. A `run` symlink points at the active working directory during the job, and at the
-archived case after archiving.
+settings. A `run` symlink points at the active working directory during a single-case job,
+and at the archived case after archiving. Ensemble members use `memNN` symlinks instead.
 
 ## 6. Configuration reference (`run_config.yaml`)
 
@@ -147,12 +148,12 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
 | `case_root` | Root of the persistent case tree. |
 | `jobtmp` | Node-local scratch root. When present, the model runs here and syncs back to `case_root`. |
 | `fix_src` | Source tree for static datasets (the `fix` directory). |
-| `ufs_utils` | Path to this workflow on the host. |
+| `ufs_utils` | Configured workflow path. The launcher ultimately derives the active repository from `drivers/case_submit.py`. |
 | `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for each stage. |
 | `containers_root` | Directory holding the container images. |
-| `shield_root` | Root of the shared SHiELD installation. |
+| `shield_root` | Reserved configuration key; it is not consumed by the current launcher. |
 | `archive_root` | Root of the archive tree. |
-| `shield_exe` | Optional path to a native SHiELD executable. Required for multi-node native runs. |
+| `shield_exe` | Path to a native SHiELD executable. Required for any multi-node run; an empty value selects the container path for single-node runs. |
 | `container_bindpath` | Host paths bound into the containers. |
 | `modules` | Host modules loaded for the job. |
 
@@ -164,16 +165,17 @@ Environment variables such as `$USER` and `$HOME` are expanded.
 | --- | --- | --- |
 | `walltime` | 24 | Wall time in hours. |
 | `n_nodes` | 4 | Nodes requested. |
-| `n_cpus` | 192 | Total tasks requested. |
+| `n_cpus` | 192 | Requested task count. The submitted count is rounded down to a multiple of `n_nodes`. |
 | `n_cpus_per_task` | 1 | CPUs per task. |
 | `partition` | batch | SLURM partition. |
 | `mem` | 0 | Total job memory in GB. 0 uses the scheduler default. |
-| `constraint_node` | false | Apply a core-count node constraint. |
+| `constraint_node` | null | Optional SLURM node constraint passed as `--constraint=<value>`. |
 | `exclusive_node` | false | Request exclusive node access. |
 | `logfile` | shield_driver | Base name of the driver log written in the case directory. |
 
-Tasks per node are computed as `n_cpus // n_nodes`. When `mem` exceeds twice the task count,
-a per-CPU or per-job memory flag is derived.
+Tasks per node are computed as `n_cpus // n_nodes`, and the submitted task count is
+`(n_cpus // n_nodes) * n_nodes`. When `mem` exceeds twice the task count, a per-CPU or
+per-job memory flag is derived.
 
 ### 6.3 Case metadata
 
@@ -183,7 +185,7 @@ a per-CPU or per-job memory flag is derived.
 | `description` | Short experiment label. |
 | `fv3_debug` | Verbose model diagnostics. |
 | `archive_data` | Archive outputs after the final segment. |
-| `merge_freq` | Merge frequency for regridded output in restart segments (see Section 14). |
+| `merge_freq` | Merge frequency for regridded output across run segments (see Section 14). |
 
 ### 6.4 Execution control
 
@@ -195,7 +197,9 @@ a per-CPU or per-job memory flag is derived.
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 
-`c_res` accepts either an integer such as `96` or the labeled form `C96`.
+`c_res` must use the labeled form, for example `C96`; bare integers such as `96` are
+rejected by `parse_resolution()`. The current default template still shows a bare integer, so
+set a `C`-prefixed value in the case-local file.
 
 ### 6.5 Initial conditions and preprocessing
 
@@ -204,8 +208,8 @@ a per-CPU or per-job memory flag is derived.
 | `generate_ic_data` | true | Generate the grid and initial conditions during preprocess. |
 | `external_ic_dir` | null | Path to a pre-staged case bundle used when `generate_ic_data` is false. |
 | `preprocess_only` | false | Stage the complete grid and initial conditions, then exit. |
-| `preprocess_grid_only` | false | Generate the grid only, then exit (see Section 9). |
-| `preprocess_orog_only` | false | Generate orography only, then exit (see Section 10). |
+| `preprocess_grid_only` | false | Generate and stage the grid, then exit for `uniform`, `stretch`, and `nest` cases (see Section 9). |
+| `preprocess_orog_only` | false | Generate and stage orography, then exit for `uniform`, `stretch`, and `nest` cases (see Section 10). |
 
 Setting `preprocess_grid_only` or `preprocess_orog_only` implies `preprocess_only`.
 
@@ -225,14 +229,16 @@ Nested grids, active when `gtype: nest`:
 | `refine_ratio` | Refinement ratio for each nest relative to its parent. A list defines multiple nests. |
 | `parent_tile` | Parent cubed-sphere tile, 1 to 6. |
 | `halo` | Halo width for the nest boundary exchange. |
-| `lon_min`, `lon_max`, `lat_min`, `lat_max` | Bounding box for each nest. Lists are required for multiple nests. |
+| `lon_min`, `lon_max`, `lat_min`, `lat_max` | Bounding box for each nest. For `gtype: nest`, all four values must be lists, including for a single nest. |
 
 When `gtype: nest`, the target longitude and latitude are set to the center of the first
 bounding box. The nest layout is classified automatically from the bounding boxes. If each
 box is contained inside its predecessor, the layout is telescoping and refinement ratios
 compound. Otherwise the nests are treated as independent nests on the same parent grid. For
 telescoping nests the effective refinement of nest `i` is the product of ratios up to and
-including `i`. Regional ESG grids, active when `gtype: regional_esg`:
+including `i`. Both regional grid types also require `lon_min`, `lon_max`, `lat_min`, and
+`lat_max`; the initialization driver uses these bounds to determine the parent-grid bracket.
+Regional ESG grids, active when `gtype: regional_esg`, additionally use:
 
 | Key | Meaning |
 | --- | --- |
@@ -302,8 +308,7 @@ retrieved with retry and multi-source fallback:
 
 The source model is selected per model domain. It is **not** selected with a key in
 `run_config.yaml`. To override the built-in source assignment, place a domain-specific
-`chgres_cube` YAML file, or its namelist equivalent, in the case directory from which
-`case_submit.sh` is launched.
+`chgres_cube` YAML file in the case directory from which `case_submit.sh` is launched.
 
 ### 8.1 Default GFS/HRRR source assignment
 
@@ -339,14 +344,16 @@ Overrides are supplied per domain as flat `chgres_cube` configuration mappings i
 case directory. Every override file is optional. Domains without an override retain the
 built-in behavior described above.
 
-| Domain | Preferred YAML file | Namelist fallback |
-| --- | --- | --- |
-| Global | `chgres_cube.yaml` | `fort.41` |
-| Regional | `chgres_cube.yaml` | `fort.41` |
-| Nest `NN` | `chgres_cube_nest{NN}.yaml` | `fort_nest{NN}.41` |
+| Domain | YAML override file |
+| --- | --- |
+| Global | `chgres_cube.yaml` |
+| Regional | `chgres_cube.yaml` |
+| Nest `NN` | `chgres_cube_nest{NN}.yaml` |
 
-YAML takes precedence over the namelist form when both files for the same domain are
-present. `NN` is the zero-padded nest index used throughout the workflow: the first nest
+`chgres_cube.py` also lists `fort.41` and `fort_nest{NN}.41` as candidates, but the current
+loader validates top-level keys directly; a conventional namelist with a `&config` section
+is therefore not equivalent to the flat YAML override. `NN` is the zero-padded nest index
+used throughout the workflow: the first nest
 is `nest02`, the second is `nest03`, and so on. For example:
 
 ```text
@@ -531,22 +538,24 @@ generate_ic_data: false
 external_ic_dir: /path/to/prestaged_case
 ```
 
-The workflow expects a staged case directory containing the files it reads at startup,
-not a single NetCDF file that it modifies in place. Use the repository code as the
-handoff point when building a custom conversion pipeline rather than mutating the
-default files directly.
+The workflow expects a staged case directory containing non-empty `FIXED`, `GRID`, and
+`INPUT` directories plus `state.yaml`, not a single NetCDF file that it modifies in place.
+Use the repository code as the handoff point when building a custom conversion pipeline
+rather than mutating the default files directly.
 
 ## 9. Modifying the grid
 
-Grid generation is driven from `py_scripts/fv3_make_grid.py` and staged through a
-modification directory. The generator copies user-supplied files verbatim when a non-empty
-modification directory is present, so the procedure is stage, edit, and re-inject.
+For `uniform`, `stretch`, and `nest` cases, grid generation is driven from
+`py_scripts/fv3_make_grid.py` and staged through a modification directory. The generator
+copies user-supplied files verbatim when a non-empty modification directory is present, so
+the procedure is stage, edit, and re-inject. The regional branches do not currently stage
+and terminate through this same grid-only path.
 
 1. Set `preprocess_grid_only: true` and submit. The workflow generates the grid and mosaic,
    stages them into the case-local `IC/grid` directory, and exits. The driver log reports
    the staging path.
-2. Copy the staged files to a backup directory. The staged content is
-   `C{c_res}_grid.tile*.nc` and `C{c_res}_mosaic.nc`.
+2. Copy the staged files to a backup directory. The staged content includes
+   `C{c_res}_grid.tile*.nc` and the corresponding `C{c_res}_*mosaic*.nc` files.
 3. Edit the tile files. If you change tile geometry, keep the mosaic consistent, because the
    mosaic is staged and re-injected from the same directory. Preserve filenames exactly.
 4. Set `preprocess_grid_only: false`, keep `generate_ic_data: true`, and resubmit. The
@@ -554,9 +563,10 @@ modification directory is present, so the procedure is stage, edit, and re-injec
 
 ## 10. Modifying orography
 
-Orography generation is driven from `py_scripts/fv3_make_orog.py` and follows the same
-stage, edit, and re-inject pattern as the grid. Orography is generated after the grid, so a
-grid must exist first.
+For `uniform`, `stretch`, and `nest` cases, orography generation is driven from
+`py_scripts/fv3_make_orog.py` and follows the same stage, edit, and re-inject pattern as the
+grid. Orography is generated after the grid, so a grid must exist first. The regional
+branches do not currently stage and terminate through this same orography-only path.
 
 1. Set `preprocess_orog_only: true` and submit. The workflow stages the orography into the
    case-local `IC/orography` directory and exits. The `shield_driver*.log` file reports the
@@ -569,7 +579,8 @@ grid must exist first.
    Preserve filenames exactly.
 4. Set `preprocess_orog_only: false`, keep `generate_ic_data: true`, and resubmit.
 
-The topography filter runs after orography generation for uniform and stretched grids.
+The topography filter runs after orography generation for uniform, stretched, and nested
+grids.
 Inject edited orography as the staged tile files rather than relying on the filter to
 preserve raw edits.
 
@@ -704,9 +715,9 @@ case-local `diag_table` in the case directory to override the default in
 `configs/diag_table`. The default defines three streams: `grid_spec` and `atmos_static`
 written once, and `fv3_hist` written hourly. The variable reference list is in
 [configs/diag_field.csv](configs/diag_field.csv). After the model runs, `fregrid` remaps
-native cubed-sphere history to a latitude-longitude grid. Regridded files are named by
-domain, `global` for the global grid and `nest02`, `nest03`, and so on for nests, where nest
-tile 7 maps to `nest02`.
+native cubed-sphere history to a latitude-longitude grid for global and nested output. Regridded files are named by domain, `global` for the
+global grid and `nest02`, `nest03`, and so on for nests, where nest tile 7 maps to `nest02`.
+The current regridder does not special-case standalone regional tile-7 history.
 
 The `merge_freq` key controls how per-segment regridded files are combined.
 
@@ -745,10 +756,11 @@ do not interrupt the run.
 
 A run is divided into `resubmit + 1` segments, each of length `run_nhours`. The first
 segment is a cold start produced by the initial driver. Each later segment is a warm start
-produced by the restart driver, which resumes from the previous segment restart files. The
-driver records a configuration checksum in `state.yaml` and verifies it at the start of
-every segment, so a restart cannot proceed against a changed grid or initial time. Segments
-are resubmitted automatically until the maximum index is reached.
+produced by the restart driver, which resumes from the previous segment restart files.
+Restart segments load the persisted `state.yaml`; they do not re-read `run_config.yaml`.
+The checksum stored in `state.yaml` covers the grid geometry, vertical levels, and
+initialization time used by `compute_checksum()`. Segments are resubmitted automatically
+until the maximum index is reached.
 
 ## 16. Ensembles
 
@@ -761,8 +773,9 @@ moisture perturbations to build spread.
 
 When `archive_data: true`, the final segment copies the regridded output to the archive tree
 under `archive_root`, writes a copy of `state.yaml` and the model log, and compresses the
-case directory into `case.tar.gz`. After archiving, the case directory is replaced by a
-symlink to the archived location.
+persistent working case tree into `case.tar.gz`. After archiving, that working tree is
+removed and the case-local `run` (or ensemble `memNN`) symlink points to the archived
+location.
 
 ## 18. Example cases
 
@@ -772,7 +785,7 @@ symlink to the archived location.
 description: C96 control run
 init_datetime: "2026031200Z"
 run_nhours: 6
-c_res: 96
+c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
@@ -792,7 +805,7 @@ partition: batch
 description: Stretched C96 over central North America
 init_datetime: "2026031200Z"
 run_nhours: 24
-c_res: 96
+c_res: C96
 gtype: stretch
 stretch_factor: 2.5
 target_lon: -96
@@ -812,7 +825,7 @@ partition: batch
 description: Nested SHiELD case
 init_datetime: "2026031200Z"
 run_nhours: 24
-c_res: 96
+c_res: C96
 gtype: nest
 levels: 64
 refine_ratio: [4, 2]
@@ -836,10 +849,14 @@ partition: batch
 description: Regional ESG domain
 init_datetime: "2026031200Z"
 run_nhours: 12
-c_res: 3072
+c_res: C3072
 gtype: regional_esg
 target_lon: -96
 target_lat: 39
+lon_min: -102
+lon_max: -90
+lat_min: 33
+lat_max: 45
 idim: 200
 jdim: 200
 delx: 0.0585
@@ -857,8 +874,11 @@ partition: batch
 ## 19. Compiling a custom SHiELD executable
 
 If you need a custom binary, build it from the SHiELD source tree and point `shield_exe` at
-the result. The workflow uses the native executable when `shield_exe` is set and otherwise
-falls back to the container image. Multi-node native runs require `shield_exe`.
+the result. The workflow uses the native executable when the resolved `shield_exe` value is
+non-empty.
+An empty value selects the container image for a single-node run; all multi-node runs require
+a native `shield_exe`. Because the non-null repository default is restored when a case sets
+`shield_exe: null`, use `shield_exe: ""` to force the single-node container path.
 
 ```bash
 git clone https://github.com/NOAA-GFDL/SHiELD_build.git
