@@ -101,7 +101,7 @@ def merge_window(
     """Return the inclusive restart range to merge at this restart, or None.
 
     merge_freq  < 0 : merge the complete run once, on the final restart
-    merge_freq == 0 : never merge, retain one file per restart segment
+    merge_freq == 0 : never merge, publish one file per restart segment
     merge_freq  > 0 : merge every merge_freq restarts, flushing any
                       remainder on the final restart
     """
@@ -185,6 +185,32 @@ def merge_files(inputs: list[Path], target: Path) -> None:
             p.unlink(missing_ok=True)
 
 
+def promote_segment_outputs(output_dir: Path, streams: list, n_nests: int) -> None:
+    """Move the current restart's unmerged segment files into output_dir.
+
+    Segment indices are taken from the stream names so each restart is promoted
+    independently. Existing targets are atomically replaced, which makes a
+    rerun of the same restart deterministic without affecting other restarts.
+    """
+    output_dir = Path(output_dir)
+    segment_dir = output_dir / "seg"
+    current = sorted(
+        {(stream_family(stream), segment_index(stream)) for stream in streams}
+    )
+
+    for handle, seg in current:
+        for path in segment_dir.glob(f"{handle}.seg{seg:02d}.*.nc"):
+            parsed = parse_segment(path, handle)
+            if parsed is None:
+                continue
+            idx, group = parsed
+            if idx != seg:
+                continue
+            alias = group_alias(group, n_nests)
+            target = output_dir / f"{handle}.seg{seg:02d}.{alias}.nc"
+            os.replace(path, target)
+
+
 def merge_outputs(
     output_dir: Path,
     streams: list,
@@ -193,7 +219,11 @@ def merge_outputs(
     total_restarts: int,
     merge_freq: int,
 ) -> None:
-    """Merge per-restart regridded files according to merge_freq."""
+    """Finalize per-restart regridded files according to merge_freq."""
+    if merge_freq == 0:
+        promote_segment_outputs(output_dir, streams, n_nests)
+        return
+
     window = merge_window(restart_no, total_restarts, merge_freq)
 
     if window is None:
