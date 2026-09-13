@@ -87,7 +87,7 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
-SYNC_DIRS="rsync -a "$WORK_DIR/" "$CASE_DIR/""
+SYNC_DIRS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
 
 
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
