@@ -2,10 +2,11 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-
 from fv3_runtime import log
 from fv3_state import compute_checksum, state
 
+# ENSEMBLE_AMP is the dimensionless factor that controls the perturbation amplitude relative to the
+# natural spatial variability of the variable being perturbed.
 ENSEMBLE_AMP = 1e-3
 
 
