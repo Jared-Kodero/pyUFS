@@ -52,6 +52,7 @@ n_cpus: 192 # Total number of tasks to request. At least 32 must be visible to t
 partition: batch # Partition to submit the job to
 n_cpus_per_task: 1 # CPUs per task (for MPI or OpenMP)
 mem: 0 # Total job memory [GB]; 0 lets the scheduler apply its default
+sbatch_options: "" # Additional raw options passed directly to sbatch.
 logfile: shield_driver # Basename of the driver log written in the case directory
 # Tasks per node are computed as n_cpus // n_nodes.
 
