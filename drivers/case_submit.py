@@ -191,6 +191,8 @@ def get_config():
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
 
+    sbatch_options = user_cfg.get("sbatch_options", "")
+
     ensemble_run = user_cfg.get("ensemble_run", False)
     n_ensembles = user_cfg.get("n_ensembles", 0)
 
@@ -230,6 +232,7 @@ def get_config():
         "CASE_CPUS_PER_TASK": cpu_per_task,
         "CASE_NODE_CONSTRAINT": constraint,
         "CASE_NTASKS_PER_NODE": ntasks_per_node,
+        "CASE_SBATCH_OPTIONS": sbatch_options,
         "CASE_ENSEMBLES": n_ensembles,
         "CASE_SKIP_ENSEMBLES": skip_ensembles,
         "CASE_RESUBMIT_INDEX": 0,
@@ -245,10 +248,15 @@ def get_config():
     return env
 
 
-def run(script: Path, proc_env: dict, cwd: Path) -> int:
+def run(script: Path, proc_env: dict, cwd: Path) -> str | None:
     try:
         result = subprocess.run(
-            ["bash", str(script)], env=proc_env, cwd=str(cwd), check=False
+            ["bash", str(script)],
+            env=proc_env,
+            cwd=str(cwd),
+            check=False,
+            stdout=subprocess.PIPE,
+            text=True,
         )
 
     except subprocess.SubprocessError as e:
@@ -258,8 +266,6 @@ def run(script: Path, proc_env: dict, cwd: Path) -> int:
     if result.returncode != 0:
         logger.error(f"Job submission failed with exit code {result.returncode}")
         sys.exit(result.returncode)
-
-    return result.returncode
 
 
 def main():
@@ -333,8 +339,8 @@ def main():
 
             proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
             run(script, proc_env, case_pwd)
-            logger.info(f"Submitted ensemble {ensemble_id}/{n_ensembles}")
 
+            logger.info(f"Submitted ensemble {ensemble_id}/{n_ensembles}")
         logger.info("Success! Case Submitted")
 
 
