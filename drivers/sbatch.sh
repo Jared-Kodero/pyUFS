@@ -13,6 +13,7 @@ SHIELD_SIF=${SHIELD_SIF},\
 PREPROCESS_SIF=${PREPROCESS_SIF},\
 FREGRID_SIF=${FREGRID_SIF},\
 TOTAL_WALLTIME_TIME=${TOTAL_WALLTIME_TIME},\
+CASE_SBATCH_OPTIONS=${CASE_SBATCH_OPTIONS},\
 CASE_TIME_LIMIT=${CASE_TIME_LIMIT},\
 CASE_PARTITION=${CASE_PARTITION},\
 CASE_NTASKS_PER_NODE=${CASE_NTASKS_PER_NODE},\
@@ -42,6 +43,7 @@ JOB_ID=$(sbatch --parsable \
 $CASE_NODE_EXCLUSIVE_FLAG \
 $CASE_NODE_CONSTRAINT_FLAG \
 $CASE_MEMORY_FLAG \
+$CASE_SBATCH_OPTIONS \
 --time=$CASE_TIME_LIMIT \
 --job-name=$SLURM_JOB_NAME \
 --nodes=$CASE_NNODES \
@@ -58,6 +60,8 @@ EXIT_CODE=$?
 export EXIT_CODE
 export JOB_ID
 
+
+
 if (( EXIT_CODE != 0 )) || [[ -z "$JOB_ID" ]]; then
     echo "Case.Submit - ERROR - sbatch failed for job $SLURM_JOB_NAME" >&2
     (( EXIT_CODE == 0 )) && EXIT_CODE=1
@@ -67,3 +71,4 @@ if (( EXIT_CODE != 0 )) || [[ -z "$JOB_ID" ]]; then
     fi
     exit "$EXIT_CODE"
 fi
+
