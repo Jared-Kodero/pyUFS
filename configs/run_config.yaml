@@ -18,7 +18,6 @@
 #   8. Time stepping
 #   9. Surface and orography
 #  10. Land surface perturbations
-#  11. Meridional temperature-gradient (SST and sea-ice) perturbations
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -69,26 +68,6 @@ merge_freq: -1 # Merge frequency for regridded output, in restart segments.
 # -1 merges the whole run into one file per stream and grid, on the final restart
 #  0 disables merging and retains one file per restart segment
 #  n merges every n restart segments; any remainder is merged on the final restart
-
-# Model output (history streams in diag_table; grid_spec and atmos_static are
-# never changed). Null keeps the diag_table as written (template: hourly,
-# instantaneous). Applies to the template or a case-local diag_table.
-output_freq: null # Output interval, in output_freq_units (e.g. 1)
-output_freq_units: null # hours | days | months | years
-# Every record is the time mean over its interval. hours and days are written
-# by the model directly (run_nhours must be a multiple of the interval). months
-# and years are calendar means built from daily model means after the final
-# merge (needs run_nhours a multiple of 24 and merge_freq: -1). fhzero is set
-# to atmos_model_nml.fdiag, so precipitation means (pr, prc) are exact.
-use_modern_diag: false # true: use a case-local diag_table.yaml (required) and data_table.yaml
-# (optional) with diag_manager_nml use_modern_diag and data_override_nml use_data_table_yaml.
-# Write them yourself or convert legacy tables with fms_yaml_tools (diag-table-to-yaml,
-# data-table-to-yaml); follow the format of the FMS version SHiELD is built with
-# (FV3-202411: FMS 2024.03). title, base_date, output_freq and output_freq_units are
-# applied as for the legacy table. false keeps the legacy ASCII diag_table.
-pack_output: false # Pack only the final output files as int16 with scale_factor/add_offset (ECMWF style).
-# Quantization error is (max - min) / 131066 of each variable over the file
-# (about 0.002 K for temperature).
 
 # -----------------------------------------------------------------------------
 # 3. EXECUTION CONTROL
@@ -272,92 +251,3 @@ make_gsl_orog: false # Generate GSL orography fields (used by the gravity wave d
 #   apply_on_restarts: 0
 
 sm_perturbations: null
-
-# -----------------------------------------------------------------------------
-# 11. MERIDIONAL TEMPERATURE-GRADIENT PERTURBATIONS (SST AND SEA ICE)
-# -----------------------------------------------------------------------------
-# Change the lower boundary through the monthly SST and sea-ice climatologies
-# read by the surface cycle (namsfc FNTSFC, FNAISC). tgrad_perturbations is a
-# single mapping, not a list. Both files are always rewritten from fix_src/am
-# (only read) to FIXED/ under the original names at cold start, never on
-# restarts, and every write is logged.
-#
-# Schema (flat mapping)
-# ---------------------
-# tgrad_perturbations:
-#   method: <str | list[str]>  # one method or a list
-#
-# Methods and the required key for each
-# -------------------------------------
-#   none           no change (CTRL; still applies the surface settings below)
-#   polar_shift    SST = SST + polar_delta_t_k * W(lat)       requires polar_delta_t_k
-#   uniform_shift  SST = SST + ocean-area mean of the
-#                  polar_shift pattern (same mean warming)    requires polar_delta_t_k
-#   ice_loss       SIC = SIC * (1 - sic_reduction * W(lat))   requires sic_reduction
-#     W = x^2 (3 - 2x), x = clip((|lat| - lat_start) / (lat_full - lat_start), 0, 1)
-#     for each selected pole: 0 equatorward of lat_start, 1 poleward of lat_full.
-#
-# Optional controls
-# -----------------
-#   polar_delta_t_k: float | {north: float, south: float}  # SST change at the pole [K]
-#   sic_reduction:   float | {north: float, south: float}  # fraction of ice removed at the pole
-#   poles:           str    # north | south | both (default north); a scalar
-#                           # amplitude applies to each selected pole, a mapping
-#                           # sets each pole explicitly
-#   lat_start:       float  # default 60 (same distance from each pole)
-#   lat_full:        float  # default 80
-#   ocean_mode:      str    # prescribed (default) | mlo (restored mixed-layer
-#                           # ocean; timescale and latitude limits from ocean_nml)
-#   uniform_warming_k:      float  # extra uniform SST change with polar/uniform_shift (default 0)
-#   opened_water_delta_t_k: float  # SST change where ice_loss opens water (default 0)
-#   monthly_scale:   list[float]   # 12 factors, Jan..Dec, scaling the polar pattern and ice_loss
-#
-# Magnitudes (literature)
-# -----------------------
-#   polar_delta_t_k: 2 and 4 K are the standard sensitivity amplitudes; up to 8 K
-#     is accepted as a strong-forcing experiment (logged); |dT| > 8 K is rejected.
-#     Basis: CMIP6 central-Arctic Aug-Sep SST warming by 2100 spans about 0.7-8 K
-#     under SSP2-4.5, about 3 K in moderately ice-free models; observed Arctic
-#     amplification 1979-2021 is 3.8. Negative values cool the pole (stronger
-#     gradient). Southern Ocean warming is projected to be delayed and weaker, so a
-#     southern warming is an idealized test (logged).
-#   sic_reduction: 0..1. Projected ice loss is largest in late summer; a value
-#     above 0.5 in every month is logged as idealized. Use monthly_scale to
-#     concentrate the loss in summer and autumn.
-#
-# Applied automatically (all methods, including none)
-# ---------------------------------------------------
-#   namsfc: ftsfs = faiss = fsics = fsicl = 0  # SST and ice follow the climatologies
-#   ocean_mode prescribed: do_ocean = use_ext_sst = false, NSST off
-#   ocean_mode mlo:        do_ocean = true, restore_method = 1
-#
-# Constraints
-# -----------
-#   SST is not changed under perennial ice (SIC >= 0.15 all year) and is not
-#   cooled below 271.2 K. Land flags in the ice file (1.57) are left unchanged.
-#   uniform_shift uses seaice_newland.grb (1 = land) for the ocean-area mean.
-#   Use the same ocean_mode, poles, lat_start and lat_full in every arm.
-#
-# Examples
-# --------
-# CTRL:
-# tgrad_perturbations:
-#   method: none
-#
-# Arctic SST warming of 4 K (use uniform_shift for the mean-matched arm):
-# tgrad_perturbations:
-#   method: polar_shift
-#   polar_delta_t_k: 4.0
-#
-# Arctic sea-ice loss:
-# tgrad_perturbations:
-#   method: ice_loss
-#   sic_reduction: 0.5
-#
-# Both, at both poles with different amplitudes:
-# tgrad_perturbations:
-#   method: [polar_shift, ice_loss]
-#   polar_delta_t_k: {north: 4.0, south: 2.0}
-#   sic_reduction: {north: 0.5, south: 0.3}
-
-tgrad_perturbations: null
