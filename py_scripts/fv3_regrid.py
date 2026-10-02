@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from dask import compute as dask_compute
 from derived_vars import calc_derived_vars
 from fv3_runtime import get_stream_handles
 from fv3_state import load_fv3_state
@@ -143,8 +144,58 @@ def merged_name(
     return f"{handle}.{chunk:0{width}d}.{alias}.nc"
 
 
-def merge_files(inputs: list[Path], target: Path) -> None:
+def netcdf_encoding(ds: xr.Dataset, pack: bool) -> dict:
+    """Return a NetCDF encoding for all data variables.
+
+    With pack=True, floating-point variables are stored ECMWF-style as int16
+    with per-variable scale_factor and add_offset spanning the data range,
+    and _FillValue = missing_value = -32767 (valid packed range -32766..32767).
+    The maximum quantization error is scale_factor / 2. Encoding inherited
+    from the inputs is always discarded, so packing parameters are computed
+    from the full dataset rather than reused from a single segment.
+    """
+    encoding = {}
+    for var in ds.data_vars:
+        ds[var].encoding = {}
+        enc = {"zlib": True, "complevel": 4}
+        if pack and np.issubdtype(ds[var].dtype, np.floating):
+            vmin, vmax = (float(v) for v in dask_compute(ds[var].min(), ds[var].max()))
+            if not np.isfinite(vmin):
+                vmin, vmax = 0.0, 0.0
+            scale = (vmax - vmin) / 65533.0 if vmax > vmin else 1.0
+            enc.update(
+                dtype="int16",
+                scale_factor=scale,
+                add_offset=vmin + 32766.0 * scale,
+                _FillValue=-32767,
+                missing_value=-32767,
+            )
+        encoding[var] = enc
+    return encoding
+
+
+def calendar_rule() -> str | None:
+    """Resample rule for output_freq_units months/years, else None.
+
+    For these units the model writes daily means (fixed-length segments cannot
+    align with calendar months), aggregated here after the whole-run merge.
+    """
+    units = {"months": "MS", "years": "YS"}.get(state.get("output_freq_units"))
+    if units is None:
+        return None
+    return f"{int(state.output_freq)}{units}"
+
+
+def pack_output() -> bool:
+    return bool(state.get("pack_output"))
+
+
+def merge_files(inputs: list[Path], target: Path, rule: str | None = None) -> None:
     """Concatenate inputs along time into target.
+
+    With rule (e.g. "1MS"), the merged daily means are averaged into calendar
+    periods; n_records gives the number of daily records in each period.
+    Packing (pack_output) is applied once, to this final file.
 
     The merged file is written to a scratch path and moved into place only
     on success, so target is never left truncated or removed if the
@@ -172,8 +223,15 @@ def merge_files(inputs: list[Path], target: Path) -> None:
 
     try:
         if "time" in ds.dims:
-            ds = ds.sortby("time")
-        encoding = {var: {"zlib": True, "complevel": 4} for var in ds.data_vars}
+            keep = ~ds.indexes["time"].duplicated(keep="last")
+            ds = ds.isel(time=keep).sortby("time")
+        if rule is not None:
+            count = ds["time"].resample(time=rule).count()
+            ds = ds.resample(time=rule).mean(keep_attrs=True)
+            ds["n_records"] = count.rename("n_records")
+            ds["n_records"].attrs = {"long_name": "number of daily means averaged"}
+            ds.attrs["time_reduction"] = f"{rule} mean of daily means"
+        encoding = netcdf_encoding(ds, pack_output())
         ds.to_netcdf(tmp, format="NETCDF4", encoding=encoding)
     finally:
         ds.close()
@@ -253,7 +311,7 @@ def merge_outputs(
                 handle, alias, first, total_restarts, merge_freq
             )
 
-            merge_files(inputs, target)
+            merge_files(inputs, target, calendar_rule())
 
 
 def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Dataset:
@@ -400,7 +458,11 @@ def call_fregrid(
             "description": description,
         }
 
-        ds.to_netcdf(output_file)
+        # Segments become final files only when merging is disabled.
+        if pack_output() and get_merge_freq() == 0:
+            ds.to_netcdf(output_file, encoding=netcdf_encoding(ds, True))
+        else:
+            ds.to_netcdf(output_file)
 
     shutil.rmtree(state.tmp / "fregrid")
 
