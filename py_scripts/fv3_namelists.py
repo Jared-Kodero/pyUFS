@@ -1,8 +1,10 @@
 import os
+import re
 from pathlib import Path
 
 import f90nml
 import numpy as np
+import yaml
 from fv3_runtime import (
     get_stream_handles,
     log,
@@ -13,6 +15,7 @@ from fv3_state import state
 from fv3_timings import get_timings
 from fv3_utils import cp, cres_to_deg, env_setup
 from regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
+from tgrad_perturbations import apply_tgrad_perturbations, tgrad_namelist
 
 
 def restart_config():
@@ -121,7 +124,96 @@ def common_configs(nml: dict):
         nml["fv_core_nml"]["fv_debug"] = True
         nml["fv_core_nml"]["print_freq"] = -1
 
+    if state.use_modern_diag:
+        nml.setdefault("diag_manager_nml", {})["use_modern_diag"] = True
+        nml.setdefault("data_override_nml", {})["use_data_table_yaml"] = True
+
     return nml
+
+
+def sync_fhzero(nml: dict) -> dict:
+    """Set fhzero = fdiag when output_freq is set (applied after overrides).
+
+    Physics diagnostics reach FMS only every fdiag hours, and bucket fields
+    (totprcpb_ave, cnvprcpb_ave) are means since the last fhzero reset. With
+    fhzero = fdiag each sample is the exact mean of a non-overlapping fdiag
+    window, so the FMS time average over any output interval is exact.
+    """
+    if state.output_freq is None:
+        return nml
+
+    fdiag = nml.get("atmos_model_nml", {}).get("fdiag", 0.0)
+    if isinstance(fdiag, list) or float(fdiag) <= 0.0:
+        log.warning("fdiag is not a single positive interval; fhzero left unchanged.")
+        return nml
+    fdiag = float(fdiag)
+
+    n, unit = model_output_interval()
+    interval = n * (24.0 if unit == "days" else 1.0)
+    if interval % fdiag != 0:
+        raise ValueError(
+            f"Output interval ({interval} h) must be a multiple of fdiag ({fdiag} h)."
+        )
+
+    nml["gfs_physics_nml"]["fhzero"] = fdiag
+    return nml
+
+
+OUTPUT_UNITS = ("hours", "days", "months", "years")
+
+
+def model_output_interval() -> tuple[int, str]:
+    """Interval written by FMS: as configured for hours/days, daily means for
+    months/years (aggregated to calendar months/years after the final merge,
+    because fixed-length segments cannot align with calendar months).
+    """
+    if state.output_freq_units in ("months", "years"):
+        return 1, "days"
+    return int(state.output_freq), state.output_freq_units
+
+
+def validate_output_config() -> None:
+    freq = state.output_freq
+    units = state.output_freq_units
+    if freq is None and units is None:
+        return
+    if freq is None or units is None:
+        raise ValueError("output_freq and output_freq_units must be set together.")
+    if units not in OUTPUT_UNITS:
+        raise ValueError(f"output_freq_units must be one of {OUTPUT_UNITS}.")
+    if int(freq) < 1:
+        raise ValueError("output_freq must be a positive integer.")
+
+    # Averaging windows must not straddle a segment boundary.
+    n, unit = model_output_interval()
+    interval = n * (24 if unit == "days" else 1)
+    if state.run_nhours % interval != 0:
+        raise ValueError(
+            f"run_nhours ({state.run_nhours}) must be a multiple of the "
+            f"averaging interval ({interval} h)."
+        )
+    if units in ("months", "years") and state.get("merge_freq", -1) != -1:
+        raise ValueError(f"output_freq_units: {units} requires merge_freq: -1.")
+
+
+def set_hist_output(lines: list[str], hist: list[str]) -> list[str]:
+    """Set interval and time averaging of the history streams in diag_table."""
+    if state.output_freq is None:
+        return lines
+
+    n, unit = model_output_interval()
+    out = []
+    for line in lines:
+        cells = [c.strip() for c in line.split(",")]
+        if cells[0].strip("\"'") in hist and len(cells) >= 6:  # file section
+            cells[1] = str(n)
+            cells[2] = f'"{unit}"'
+            line = ", ".join(cells) + "\n"
+        elif len(cells) >= 8 and cells[3].strip("\"'") in hist:  # field section
+            cells[5] = ".true."  # time mean over each output interval
+            line = " " + ", ".join(cells) + "\n"
+        out.append(line)
+    return out
 
 
 def update_global_nml(
@@ -191,6 +283,7 @@ def update_global_nml(
 
     # check for nml overrides if user provided external nml
     nml = namelist_overrides(user_nml, nml, "global")
+    nml = sync_fhzero(nml)
 
     with open(parent_save_path, "w") as f:
         f90nml.write(nml, f)
@@ -253,6 +346,7 @@ def update_nest_nml(
         nml = update_namsfc(nml)
 
         nml = namelist_overrides(user_nml, nml, f"nest{i + 1:02d}")
+        nml = sync_fhzero(nml)
 
         with open(out_file, "w") as f:
             f90nml.write(nml, f)
@@ -327,32 +421,41 @@ def update_fixed_files():
 
 def update_table_files():
 
-    dt = state.init_datetime
     update_fixed_files()
 
+    field_table_path = state.work_dir / "field_table.yaml"
+    user_field = state.run_dir / "field_table"
+    template_field = state.configs / "field_table.yaml"
+    field_file = user_field if user_field.exists() else template_field
+    cp(field_file, field_table_path)
+
+    validate_output_config()
+
+    if state.use_modern_diag:
+        (state.work_dir / "diag_table").unlink(missing_ok=True)
+        write_diag_table_yaml()
+        write_data_table_yaml()
+    else:
+        for f in state.work_dir.glob("diag_table*.yaml"):
+            f.unlink()
+        for f in state.work_dir.glob("data_table*.yaml"):
+            f.unlink()
+        write_diag_table_legacy()
+
+
+def history_streams(streams: list[str]) -> list[str]:
+    return [s for s in streams if "spec" not in s and "static" not in s]
+
+
+def write_diag_table_legacy():
+    """Stage the legacy ASCII diag_table (case-local diag_table or template)."""
+    dt = state.init_datetime
     restart_no = state.get("restart_no", 0)
 
     diag_table_path = state.work_dir / "diag_table"
-    field_table_path = state.work_dir / "field_table.yaml"
-
     user_diag = state.run_dir / "diag_table"
-    user_field = state.run_dir / "field_table"
-
     template_diag = state.configs / "diag_table"
-    template_field = state.configs / "field_table.yaml"
-
-    if user_diag.exists():
-        diag_file = user_diag
-    else:
-        diag_file = template_diag
-
-    if user_field.exists():
-        field_file = user_field
-    else:
-        field_file = template_field
-
-    cp(diag_file, diag_table_path)
-    cp(field_file, field_table_path)
+    cp(user_diag if user_diag.exists() else template_diag, diag_table_path)
 
     streams = get_stream_handles()
 
@@ -364,15 +467,97 @@ def update_table_files():
     dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
     desc_str = f"{state.description}\n"
 
-    lines = [desc_str, dt_str] + [
-        line.replace(stream, f"HIST/{stream}.{restart_no:02d}")
-        for line in lines
-        for stream in streams
-        if stream in line
-    ]
+    lines = set_hist_output(lines, history_streams(streams))
+
+    # Match quoted handles exactly, so a handle that prefixes another
+    # (fv3_hist vs fv3_hist_prcp) cannot duplicate or corrupt lines.
+    renamed = []
+    for line in lines:
+        for stream in streams:
+            pattern = rf"([\"']){re.escape(stream)}\1"
+            if re.search(pattern, line):
+                renamed.append(
+                    re.sub(pattern, rf"\g<1>HIST/{stream}.{restart_no:02d}\g<1>", line)
+                )
+                break
+
+    lines = [desc_str, dt_str] + renamed
 
     with open(diag_table_path, "w") as f:
         f.writelines(lines)
+
+
+def instance_copies(path: Path) -> list[Path]:
+    """path plus one copy name per nest (diag_table.nest02.yaml, ...).
+
+    FMS looks for the instance file first once the nest filename appendix is
+    set; identical copies keep every domain on the same table.
+    """
+    n_nests = int(state.n_nests or 0)
+    return [path] + [
+        path.with_name(f"{path.stem}.nest{i:02d}{path.suffix}")
+        for i in range(2, n_nests + 2)
+    ]
+
+
+def write_diag_table_yaml():
+    """Stage the case-local diag_table.yaml (modern diag manager).
+
+    Applies the same changes as the legacy path: title, base_date, output
+    interval and time averaging of the history files, and the
+    HIST/<file>.<restart> file names.
+    """
+    dt = state.init_datetime
+    restart_no = state.get("restart_no", 0)
+
+    user_diag = state.run_dir / "diag_table.yaml"
+    if not user_diag.exists():
+        raise FileNotFoundError(
+            f"use_modern_diag: true requires {user_diag}. Write one, or convert a "
+            "legacy table with fms_yaml_tools: diag-table-to-yaml diag_table"
+        )
+    with open(user_diag) as f:
+        table = yaml.safe_load(f)
+
+    table["title"] = str(state.description)
+    table["base_date"] = f"{dt.year} {dt.month} {dt.day} {dt.hour} 0 0"
+
+    names = [d["file_name"] for d in table["diag_files"]]
+    hist = history_streams(names)
+    for diag_file in table["diag_files"]:
+        name = diag_file["file_name"]
+        if state.output_freq is not None and name in hist:
+            n, unit = model_output_interval()
+            diag_file["freq"] = f"{n} {unit}"
+            for var in diag_file.get("varlist", []):
+                var["reduction"] = "average"
+        diag_file["file_name"] = f"HIST/{name}.{restart_no:02d}"
+
+    for path in instance_copies(state.work_dir / "diag_table.yaml"):
+        with open(path, "w") as f:
+            yaml.safe_dump(table, f, default_flow_style=False, sort_keys=False)
+
+
+def write_data_table_yaml():
+    """Stage the case-local data_table.yaml when it defines entries.
+
+    Without one no file is staged; FMS then runs with an empty data table.
+    """
+    for f in state.work_dir.glob("data_table*.yaml"):
+        f.unlink()
+
+    user_data = state.run_dir / "data_table.yaml"
+    if not user_data.exists():
+        return
+    with open(user_data) as f:
+        table = yaml.safe_load(f) or {}
+
+    if not table.get("data_table"):
+        return
+
+    for path in instance_copies(state.work_dir / "data_table.yaml"):
+        with open(path, "w") as f:
+            yaml.safe_dump(table, f, default_flow_style=False, sort_keys=False)
 
 
 def update_namsfc(nml):
@@ -439,5 +624,10 @@ def update_namsfc(nml):
 
     if missing_files:
         report_missing_fixed_files(missing_files, sub_dir="am")
+
+    # Rewrite the FIXED SST/ice climatologies (perturbed or pristine) and set
+    # the surface-cycle options the experiment depends on.
+    apply_tgrad_perturbations()
+    nml = tgrad_namelist(nml)
 
     return nml
