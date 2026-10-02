@@ -109,10 +109,6 @@ class FV3State(dict):
     nest_type: str
     refine_ratio: list[int]
     merge_freq: int
-    output_freq: int | None
-    use_modern_diag: bool
-    output_freq_units: str | None
-    pack_output: bool
 
     parent_tile: list[int]  # or int
 
@@ -146,7 +142,6 @@ class FV3State(dict):
     make_gsl_orog: bool
     do_deep: bool
     sm_perturbations: dict
-    tgrad_perturbations: dict | None
 
     # Fixed files, preprocessing, and executables
     fix: Path
@@ -204,10 +199,6 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
 
     if hash_keys is not None:
         _hash_keys += list(hash_keys)
-
-    # Hashed only when set, so checksums of existing cases remain valid.
-    if data.get("tgrad_perturbations") is not None:
-        _hash_keys.append("tgrad_perturbations")
 
     def _normalize_for_hash(value):
         if isinstance(value, dict):
