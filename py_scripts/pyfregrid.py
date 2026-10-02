@@ -21,9 +21,9 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass
+from contextlib import ExitStack, suppress
+from functools import reduce
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import xarray as xr
@@ -32,189 +32,77 @@ import xesmf as xe
 warnings.filterwarnings("ignore", message=".*F_CONTIGUOUS.*", module="xesmf.backend")
 log = logging.getLogger("REGRIDDER")
 
-_tiles_type: Literal["global", "nest"] = None
-
-
-@dataclass
-class MosaicTile:
-    tile_name: str
-    grid_path: Path
-    nx: int
-    ny: int
-    lon_t: np.ndarray
-    lat_t: np.ndarray
-    lon_c: np.ndarray
-    lat_c: np.ndarray
-    lon1d_t: np.ndarray
-    lat1d_t: np.ndarray
-    lon1d_c: np.ndarray
-    lat1d_c: np.ndarray
-
-
-@dataclass
-class RegridOptions:
-    """Per-run controls threaded through the field-processing stages."""
-
-    method: str
-    fill_missing: bool
-    finer_step: int
-    extrapolate: bool
-    standard_dimension: bool
-    check_conserve: bool
-    KlevelBegin: int | None
-    KlevelEnd: int | None
-    LstepBegin: int | None
-    LstepEnd: int | None
-    dst_z: np.ndarray | None
+XESMF_METHODS = {
+    "conserve_order1": "conservative",
+    "conserve_order2": "conservative",
+    "conserve_order2_monotonic": "conservative",
+    "bilinear": "bilinear",
+}
+GCA = "great_circle_algorithm"
 
 
 # --------------------------------------------------------------------------- #
-# small utilities
+# grids (C: get_input_grid, get_output_grid_from_mosaic, get_output_grid_by_size)
 # --------------------------------------------------------------------------- #
-def clip_latitudes(values: np.ndarray) -> np.ndarray:
-    return np.clip(np.asarray(values), -90.0, 90.0)
+def supergrid_to_grid(x: np.ndarray, y: np.ndarray, **attrs: object) -> xr.Dataset:
+    """xESMF grid from an FMS supergrid: odd indices are centres, even are corners."""
+    y = np.clip(y, -90.0, 90.0)
+    return xr.Dataset(
+        {
+            "lon": (("y", "x"), x[1::2, 1::2]),
+            "lat": (("y", "x"), y[1::2, 1::2]),
+            "lon_b": (("y_b", "x_b"), x[::2, ::2]),
+            "lat_b": (("y_b", "x_b"), y[::2, ::2]),
+        },
+        attrs=attrs,
+    )
 
 
-def to_list(value: object) -> list:
-    if isinstance(value, list):
-        return value
-    return [] if value is None else [value]
-
-
-def is_rectilinear_latlon(tile: MosaicTile, atol: float = 1e-10) -> bool:
-    lon_ok = np.allclose(tile.lon_t, tile.lon_t[0:1, :], rtol=0.0, atol=atol)
-    lat_ok = np.allclose(tile.lat_t, tile.lat_t[:, 0:1], rtol=0.0, atol=atol)
-    return bool(lon_ok and lat_ok)
-
-
-def char_array_to_list(da: xr.DataArray) -> list[str]:
-    arr = da.values
-    if arr.ndim == 1:
-        arr = np.expand_dims(arr, axis=0)
-    items: list[str] = []
-    for row in arr:
-        if row.dtype.kind in {"S", "U"}:
-            text = b"".join(
-                part
-                if isinstance(part, (bytes, bytearray))
-                else str(part).encode("ascii", "ignore")
-                for part in row
-            ).decode("ascii", "ignore")
-        else:
-            text = "".join(chr(int(v)) for v in row)
-        items.append(text.strip().rstrip("\x00"))
-    return items
-
-
-def parse_integer_flag(value: object) -> int:
-    if isinstance(value, (bytes, bytearray)):
-        value = value.decode("ascii", "ignore")
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in ("", "false", "f", "no", "n"):
-            return 0
-        if text in ("true", "t", "yes", "y"):
-            return 1
-        try:
-            return int(float(text))
-        except ValueError:
-            return 0
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-# --------------------------------------------------------------------------- #
-# axis inference
-# --------------------------------------------------------------------------- #
-def get_axis_type(ds: xr.Dataset, dim: str) -> str:
-    if dim in ds and "cartesian_axis" in ds[dim].attrs:
-        return str(ds[dim].attrs["cartesian_axis"]).upper()
-    d = dim.lower()
-    if "time" in d or d in {"t", "time", "times"}:
-        return "T"
-    if d.startswith("z") or "lev" in d or "depth" in d:
-        return "Z"
-    if d.startswith("x") or "lon" in d:
-        return "X"
-    if d.startswith("y") or "lat" in d:
-        return "Y"
-    if d.startswith("n"):
-        return "N"
-    return "?"
-
-
-def get_axis_dimension(ds: xr.Dataset, da: xr.DataArray, axis: str) -> str | None:
-    for dim in da.dims:
-        if get_axis_type(ds, dim) == axis:
-            return dim
-    return None
-
-
-# --------------------------------------------------------------------------- #
-# grid / mosaic loading
-# --------------------------------------------------------------------------- #
-def load_mosaic_tiles(mosaic_path: Path) -> list[MosaicTile]:
-    with xr.open_dataset(mosaic_path, decode_cf=False) as ds:
+def read_mosaic(path: Path) -> tuple[list[xr.Dataset], int]:
+    """One grid per mosaic tile (attrs: name, gca) and the mosaic contact count."""
+    with xr.open_dataset(path) as ds:
         if "gridfiles" not in ds:
-            raise ValueError(f"mosaic file {mosaic_path} does not contain gridfiles")
-        gridfiles = char_array_to_list(ds["gridfiles"])
-        if "gridtiles" in ds:
-            tile_names = char_array_to_list(ds["gridtiles"])
+            raise ValueError(f"mosaic file {path} does not contain gridfiles")
+        files = np.atleast_1d(ds["gridfiles"].astype(str).str.strip()).tolist()
+        names = (
+            np.atleast_1d(ds["gridtiles"].astype(str).str.strip()).tolist()
+            if "gridtiles" in ds
+            else [f"tile{i + 1}" for i in range(len(files))]
+        )
+        if "contacts" in ds:
+            ncontact = ds["contacts"].shape[0] if ds["contacts"].ndim else 0
         else:
-            tile_names = [f"tile{i + 1}" for i in range(len(gridfiles))]
-
-    if len(tile_names) != len(gridfiles):
+            ncontact = ds.sizes.get("ncontact", 0)
+    if len(names) != len(files):
         raise ValueError("mosaic gridtiles and gridfiles lengths do not match")
 
-    tiles: list[MosaicTile] = []
-    for tile_name, grid_rel in zip(tile_names, gridfiles):
-        grid_path = (mosaic_path.parent / grid_rel).resolve()
+    grids = []
+    for name, file in zip(names, files):
+        grid_path = (path.parent / file).resolve()
         with xr.open_dataset(grid_path, decode_cf=False) as gds:
             if "x" not in gds or "y" not in gds:
                 raise ValueError(f"grid file {grid_path} must contain x and y")
-            x = np.asarray(gds["x"].values)
-            y = np.asarray(gds["y"].values)
-            if x.ndim != 2 or y.ndim != 2:
-                raise ValueError(f"grid file {grid_path}: x and y must be 2-D")
-            ny_super, nx_super = x.shape
-            nx = (nx_super - 1) // 2
-            ny = (ny_super - 1) // 2
-            if 2 * nx + 1 != nx_super or 2 * ny + 1 != ny_super:
-                raise ValueError(
-                    f"grid file {grid_path}: supergrid shape must be odd in both dimensions"
-                )
-
-            lon_c = x[0::2, 0::2]
-            lat_c = clip_latitudes(y[0::2, 0::2])
-            lon_t = x[1::2, 1::2]
-            lat_t = clip_latitudes(y[1::2, 1::2])
-            lon1d_t = x[1, 1::2]
-            lat1d_t = clip_latitudes(y[1::2, 1])
-            lon1d_c = x[0, 0::2]
-            lat1d_c = clip_latitudes(y[0::2, 0])
-
-        tiles.append(
-            MosaicTile(
-                tile_name=tile_name,
-                grid_path=grid_path,
-                nx=nx,
-                ny=ny,
-                lon_t=lon_t,
-                lat_t=lat_t,
-                lon_c=lon_c,
-                lat_c=lat_c,
-                lon1d_t=lon1d_t,
-                lat1d_t=lat1d_t,
-                lon1d_c=lon1d_c,
-                lat1d_c=lat1d_c,
+            x, y = gds["x"].values, gds["y"].values
+            flag = (gds["tile"].attrs if "tile" in gds else {}).get(
+                GCA, gds.attrs.get(GCA)
             )
-        )
-    return tiles
+            if flag is None and GCA in gds and gds[GCA].size:
+                flag = gds[GCA].values.flat[0]
+        if x.ndim != 2 or y.ndim != 2:
+            raise ValueError(f"grid file {grid_path}: x and y must be 2-D")
+        if x.shape[0] % 2 == 0 or x.shape[1] % 2 == 0:
+            raise ValueError(
+                f"grid file {grid_path}: supergrid shape must be odd in both dimensions"
+            )
+        text = flag.decode("ascii", "ignore") if isinstance(flag, bytes) else str(flag)
+        text, gca = text.strip().lower(), 0
+        with suppress(ValueError):
+            gca = 1 if text in ("true", "t", "yes", "y") else int(float(text))
+        grids.append(supergrid_to_grid(x, y, name=name, gca=gca))
+    return grids, ncontact
 
 
-def create_regular_latlon_tile(
+def latlon_grid(
     lon_begin: float,
     lon_end: float,
     lat_begin: float,
@@ -222,788 +110,154 @@ def create_regular_latlon_tile(
     nlon: int,
     nlat: int,
     center_y: bool,
-) -> MosaicTile:
-    """Regular lat-lon target grid, matching C get_output_grid_by_size."""
-    if nlon <= 0 or nlat <= 0:
-        raise ValueError(
-            "nlon and nlat must be positive when output_mosaic is not supplied"
-        )
-    lat_begin = float(np.clip(lat_begin, -90.0, 90.0))
-    lat_end = float(np.clip(lat_end, -90.0, 90.0))
+) -> xr.Dataset:
+    """Regular lat-lon grid (C get_output_grid_by_size).
+
+    With center_y, cells tile [lat_begin, lat_end]; otherwise the first and
+    last cell centres sit on lat_begin and lat_end.
+    """
+    lat_begin, lat_end = np.clip([lat_begin, lat_end], -90.0, 90.0)
     if lon_end <= lon_begin or lat_end <= lat_begin:
         raise ValueError("lonEnd must be > lonBegin and latEnd must be > latBegin")
-
+    if not center_y and nlat == 1:
+        raise ValueError("nlat must be > 1 when center_y is not set")
     dlon = (lon_end - lon_begin) / nlon
-    lon1d_t = lon_begin + (np.arange(nlon) + 0.5) * dlon
-    lon1d_c = lon_begin + np.arange(nlon + 1) * dlon
-
-    if center_y:
-        dlat = (lat_end - lat_begin) / nlat
-        lat1d_t = lat_begin + (np.arange(nlat) + 0.5) * dlat
-        lat1d_c = lat_begin + np.arange(nlat + 1) * dlat
-    else:
-        if nlat == 1:
-            raise ValueError("nlat must be > 1 when center_y is not set")
-        dlat = (lat_end - lat_begin) / (nlat - 1)
-        lat1d_t = lat_begin + np.arange(nlat) * dlat
-        lat1d_c = lat_begin + (np.arange(nlat + 1) - 0.5) * dlat
-
-    lat1d_t = clip_latitudes(lat1d_t)
-    lat1d_c = clip_latitudes(lat1d_c)
-    lon_t, lat_t = np.meshgrid(lon1d_t, lat1d_t)
-    lon_c, lat_c = np.meshgrid(lon1d_c, lat1d_c)
-
-    return MosaicTile(
-        tile_name="tile1",
-        grid_path=Path("<generated_latlon_grid>"),
-        nx=nlon,
-        ny=nlat,
-        lon_t=lon_t,
-        lat_t=lat_t,
-        lon_c=lon_c,
-        lat_c=lat_c,
-        lon1d_t=lon1d_t,
-        lat1d_t=lat1d_t,
-        lon1d_c=lon1d_c,
-        lat1d_c=lat1d_c,
-    )
+    dlat = (lat_end - lat_begin) / (nlat if center_y else nlat - 1)
+    shift = 0.5 if center_y else 0.0
+    # Interleave corners (even) and centres (odd) into a supergrid.
+    xs, ys = np.empty(2 * nlon + 1), np.empty(2 * nlat + 1)
+    xs[0::2] = lon_begin + np.arange(nlon + 1) * dlon
+    xs[1::2] = lon_begin + (np.arange(nlon) + 0.5) * dlon
+    ys[0::2] = lat_begin + (np.arange(nlat + 1) + shift - 0.5) * dlat
+    ys[1::2] = lat_begin + (np.arange(nlat) + shift) * dlat
+    return supergrid_to_grid(*np.meshgrid(xs, ys), name="tile1", gca=0)
 
 
-def create_regridder_grid(tile: MosaicTile) -> xr.Dataset:
-    return xr.Dataset(
-        {
-            "lon": (("y", "x"), tile.lon_t),
-            "lat": (("y", "x"), np.clip(tile.lat_t, -90.0, 90.0)),
-            "lon_b": (("y_b", "x_b"), tile.lon_c),
-            "lat_b": (("y_b", "x_b"), np.clip(tile.lat_c, -90.0, 90.0)),
-        }
-    )
-
-
-def get_tile_paths(
-    base_name: str, directory: Path, tile_names: Sequence[str]
-) -> list[Path]:
-    base = str(base_name)
-    base = base.removesuffix(".nc")
-    if len(tile_names) == 1:
-        names = [f"{base}.nc"]
-    else:
-        names = [f"{base}.{tile}.nc" for tile in tile_names]
-    return [(directory / n).resolve() for n in names]
-
-
-def get_mosaic_grid_paths(mosaic_path: Path) -> list[Path]:
-    with xr.open_dataset(mosaic_path, decode_cf=False) as ds:
-        if "gridfiles" not in ds:
-            raise ValueError(f"mosaic file {mosaic_path} does not contain gridfiles")
-        gridfiles = char_array_to_list(ds["gridfiles"])
-    return [(mosaic_path.parent / grid_rel).resolve() for grid_rel in gridfiles]
-
-
-def get_mosaic_contact_count(mosaic_path: Path) -> int:
-    with xr.open_dataset(mosaic_path, decode_cf=False) as ds:
-        if "contacts" in ds:
-            var = ds["contacts"]
-            return 0 if var.ndim == 0 else int(var.shape[0])
-        if "ncontact" in ds.sizes:
-            return int(ds.sizes["ncontact"])
-    return 0
+def data_paths(base: str | Path, directory: Path, names: Sequence[str]) -> list[Path]:
+    """Per-tile file names (C set_mosaic_data_file): base.nc or base.<tile>.nc."""
+    path = Path(directory, base)
+    stem = path.name.removesuffix(".nc")
+    suffixes = [".nc"] if len(names) == 1 else [f".{name}.nc" for name in names]
+    return [path.with_name(stem + suffix).resolve() for suffix in suffixes]
 
 
 # --------------------------------------------------------------------------- #
-# great-circle algorithm consistency checks
+# fields (C: get_input_data, do_scalar_*_interp, do_vector_bilinear_interp)
 # --------------------------------------------------------------------------- #
-def get_grid_great_circle_algorithm(grid_path: Path) -> int:
-    with xr.open_dataset(grid_path, decode_cf=False) as ds:
-        if "tile" in ds and "great_circle_algorithm" in ds["tile"].attrs:
-            return parse_integer_flag(ds["tile"].attrs.get("great_circle_algorithm"))
-        if "great_circle_algorithm" in ds.attrs:
-            return parse_integer_flag(ds.attrs.get("great_circle_algorithm"))
-        if "great_circle_algorithm" in ds:
-            arr = np.asarray(ds["great_circle_algorithm"].values)
-            return 0 if arr.size == 0 else parse_integer_flag(arr.reshape(-1)[0])
-    return 0
+def axis_dim(ds: xr.Dataset, da: xr.DataArray, axis: str) -> str | None:
+    """First dim of `da` on axis X/Y/Z/T, from `cartesian_axis` or the dim name."""
+    for dim in da.dims:
+        name = dim.lower()
+        if dim in ds and "cartesian_axis" in ds[dim].attrs:
+            kind = str(ds[dim].attrs["cartesian_axis"]).upper()
+        elif "time" in name or name == "t":
+            kind = "T"
+        elif name.startswith("z") or "lev" in name or "depth" in name:
+            kind = "Z"
+        elif name.startswith("x") or "lon" in name:
+            kind = "X"
+        elif name.startswith("y") or "lat" in name:
+            kind = "Y"
+        else:
+            kind = "?"
+        if kind == axis:
+            return dim
+    return None
 
 
-def check_great_circle_algorithm(
-    mosaic_path, in_gca=None, interp_method=None, method=None, u_field=None
-) -> int:
-    first = 0
-    if mosaic_path:
-        grid_paths = get_mosaic_grid_paths(mosaic_path)
-        if not grid_paths:
-            return 0
-        flags = [get_grid_great_circle_algorithm(path) for path in grid_paths]
-        first = flags[0]
-        if any(flag != first for flag in flags[1:]):
-            raise ValueError(
-                f"inconsistent great_circle_algorithm values across grid tiles in {mosaic_path}"
-            )
-
-    if in_gca is not None and (in_gca or first):
-        if interp_method != "conserve_order1":
-            raise ValueError(
-                "when great_circle_algorithm is active, interp_method must be conserve_order1"
-            )
-        if method == "bilinear":
-            raise ValueError(
-                "bilinear interpolation is not supported when great_circle_algorithm is active"
-            )
-        if u_field:
-            raise ValueError(
-                "vector interpolation is not supported when great_circle_algorithm is active"
-            )
-    return first
-
-
-# --------------------------------------------------------------------------- #
-# field slicing / transforms
-# --------------------------------------------------------------------------- #
-def select_requested_levels_and_steps(
-    da: xr.DataArray, ds: xr.Dataset, opts: RegridOptions
+def read_field(
+    ds: xr.Dataset, name: str, kind: str, ranges: dict, extrapolate: bool
 ) -> xr.DataArray:
-    zdim = get_axis_dimension(ds, da, "Z")
-    if (
-        opts.KlevelBegin is not None or opts.KlevelEnd is not None
-    ) and zdim is not None:
-        k0 = 0 if opts.KlevelBegin is None else opts.KlevelBegin - 1
-        k1 = da.sizes[zdim] if opts.KlevelEnd is None else opts.KlevelEnd
-        if k0 < 0 or k1 <= k0:
-            raise ValueError("invalid KlevelBegin/KlevelEnd range")
-        da = da.isel({zdim: slice(k0, k1)})
-
-    tdim = get_axis_dimension(ds, da, "T")
-    if (opts.LstepBegin is not None or opts.LstepEnd is not None) and tdim is not None:
-        l0 = 0 if opts.LstepBegin is None else opts.LstepBegin - 1
-        l1 = da.sizes[tdim] if opts.LstepEnd is None else opts.LstepEnd
-        if l0 < 0 or l1 <= l0:
-            raise ValueError("invalid LstepBegin/LstepEnd range")
-        da = da.isel({tdim: slice(l0, l1)})
+    """Field limited to the 1-based inclusive K/L ranges, optionally nearest-filled."""
+    if name not in ds:
+        raise ValueError(
+            f"{kind} field {name} missing in {ds.encoding.get('source', '?')}"
+        )
+    da = ds[name]
+    for axis, (begin, end, label) in ranges.items():
+        dim = axis_dim(ds, da, axis)
+        if dim is None or (begin is None and end is None):
+            continue
+        start = 0 if begin is None else begin - 1
+        stop = da.sizes[dim] if end is None else end
+        if start < 0 or stop <= start:
+            raise ValueError(f"invalid {label} range")
+        da = da.isel({dim: slice(start, stop)})
+    if extrapolate:  # approximates C extrapolation on lat-lon input
+        ydim, xdim = da.dims[-2:]
+        da = da.ffill(xdim).bfill(xdim).ffill(ydim).bfill(ydim)
     return da
 
 
-def extrapolate_missing_values(da: xr.DataArray, ydim: str, xdim: str) -> xr.DataArray:
-    # Approximate fregrid extrapolation by directional nearest-fill on both axes.
-    return da.ffill(xdim).bfill(xdim).ffill(ydim).bfill(ydim)
-
-
-def smooth_for_finer_step(
-    da: xr.DataArray, ydim: str, xdim: str, steps: int
-) -> xr.DataArray:
-    if steps <= 0:
-        return da
-    window = 2**steps
-    return (
-        da.rolling({ydim: window, xdim: window}, center=True, min_periods=1)
-        .mean()
-        .astype(da.dtype)
+def unit_vectors(
+    grid: xr.Dataset, dims: Sequence[str]
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Cartesian (xyz) components of local east and north unit vectors (C unit_vect_latlon)."""
+    lon = np.deg2rad(xr.DataArray(grid["lon"].values, dims=dims))
+    lat = np.deg2rad(xr.DataArray(grid["lat"].values, dims=dims))
+    east = xr.concat([-np.sin(lon), np.cos(lon), xr.zeros_like(lon)], "xyz")
+    north = xr.concat(
+        [-np.cos(lon) * np.sin(lat), -np.sin(lon) * np.sin(lat), np.cos(lat)], "xyz"
     )
+    return east, north
 
 
-def get_basis_vectors_from_lonlat(
-    lon_deg: np.ndarray, lat_deg: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Unit east/north basis vectors in Cartesian coordinates (C unit_vect_latlon)."""
-    lon = np.deg2rad(np.asarray(lon_deg))
-    lat = np.deg2rad(np.asarray(lat_deg))
-    e_lon = np.stack((-np.sin(lon), np.cos(lon), np.zeros_like(lon)), axis=0)
-    e_lat = np.stack(
-        (-np.cos(lon) * np.sin(lat), -np.sin(lon) * np.sin(lat), np.cos(lat)), axis=0
-    )
-    return e_lon, e_lat
-
-
-def load_destination_vgrid_centers(vgrid_file: Path) -> np.ndarray:
-    with xr.open_dataset(vgrid_file, decode_cf=False) as ds:
-        if "zeta" not in ds:
-            raise ValueError(f"{vgrid_file} must contain zeta")
-        zeta = np.asarray(ds["zeta"].values)
-    if zeta.ndim != 1 or (zeta.size - 1) % 2 != 0:
-        raise ValueError("destination vgrid zeta must be 1-D with length 2*nz+1")
-    return zeta[1::2]
-
-
-def interpolate_vertical_levels(
-    da: xr.DataArray, src_ds: xr.Dataset, dst_z: np.ndarray
-) -> xr.DataArray:
-    zdim = get_axis_dimension(src_ds, da, "Z")
-    if zdim is None:
-        return da
-    if zdim in src_ds:
-        src_z = np.asarray(src_ds[zdim].values)
-    else:
-        src_z = np.arange(da.sizes[zdim], dtype=float)
-        da = da.assign_coords({zdim: src_z})
-
-    result = da.interp({zdim: dst_z}, kwargs={"fill_value": "extrapolate"})
-    low = da.isel({zdim: 0}).broadcast_like(result)
-    high = da.isel({zdim: -1}).broadcast_like(result)
-    result = xr.where(result[zdim] < src_z.min(), low, result)
-    result = xr.where(result[zdim] > src_z.max(), high, result)
-    return result
-
-
-def attach_destination_coordinates(
-    da: xr.DataArray, dst_tile: MosaicTile, standard_dimension: bool
-) -> xr.DataArray:
-    ydim_old, xdim_old = da.dims[-2], da.dims[-1]
-    ydim_new = "lat" if standard_dimension else ydim_old
-    xdim_new = "lon" if standard_dimension else xdim_old
-    if (ydim_new, xdim_new) != (ydim_old, xdim_old):
-        da = da.rename({ydim_old: ydim_new, xdim_old: xdim_new})
-    return da.assign_coords({xdim_new: dst_tile.lon1d_t, ydim_new: dst_tile.lat1d_t})
-
-
-def calculate_area_weighted_sum(da: xr.DataArray, tile: MosaicTile) -> xr.DataArray:
-    grid = create_regridder_grid(tile)
-    area = xe.util.cell_area(grid)
-    ydim, xdim = da.dims[-2], da.dims[-1]
-    field = da.rename({ydim: "y", xdim: "x"})
-    return (field * area).sum(dim=("y", "x"), skipna=True)
-
-
-# --------------------------------------------------------------------------- #
-# regridder construction and application
-# --------------------------------------------------------------------------- #
-def get_xesmf_method(
-    interp_method: str,
-    monotonic: bool,
-    finer_step: int,
-    output_mosaic,
-    u_field,
-    grid_type: str,
-    src_tiles: Sequence[MosaicTile],
-    input_mosaic_path: Path,
-    extrapolate: bool,
-) -> str:
-    if interp_method == "bilinear":
-        method = "bilinear"
-    elif interp_method in {
-        "conserve_order1",
-        "conserve_order2",
-        "conserve_order2_monotonic",
-    }:
-        method = "conservative"
-    else:
-        raise ValueError(
-            "interp_method must be one of conserve_order1, conserve_order2, conserve_order2_monotonic, bilinear"
-        )
-
-    if finer_step and method != "bilinear":
-        raise ValueError("finer_step is only valid when interp_method bilinear")
-    if method == "bilinear" and output_mosaic:
-        raise ValueError(
-            "bilinear mode requires nlon/nlat regular lat-lon output and does not support output_mosaic"
-        )
-    if u_field:
-        if method != "bilinear":
-            raise ValueError("vector fields require interp_method bilinear")
-        if grid_type != "AGRID":
-            raise ValueError("vector fields currently support grid_type AGRID only")
-    if (
-        interp_method in {"conserve_order2", "conserve_order2_monotonic"}
-        and len(src_tiles) != 6
-    ):
-        raise ValueError(
-            "conserve_order2 modes require a 6-tile cubed-sphere input mosaic"
-        )
-    if method == "bilinear":
-        if len(src_tiles) != 6:
-            raise ValueError(
-                "bilinear mode requires a 6-tile cubed-sphere input mosaic"
-            )
-        if get_mosaic_contact_count(input_mosaic_path) != 12:
-            raise ValueError(
-                "bilinear mode requires a 12-contact cubed-sphere input mosaic"
-            )
-    if extrapolate:
-        if len(src_tiles) != 1:
-            raise ValueError("extrapolate is limited to single-tile input mosaics")
-        if not is_rectilinear_latlon(src_tiles[0]):
-            raise ValueError(
-                "extrapolate is limited to rectilinear lat-lon input grids"
-            )
-    return method
-
-
-def get_weight_filename(
-    remap_file: str | None, src_idx: int, dst_idx: int, nsrc: int, ndst: int
-) -> str | None:
-    if not remap_file:
-        return None
-    base = remap_file if remap_file.endswith(".nc") else f"{remap_file}.nc"
-    if nsrc == 1 and ndst == 1:
-        return base
-    return f"{base[:-3]}.src{src_idx + 1}.dst{dst_idx + 1}.nc"
-
-
-def create_regridders(
-    src_tiles: Sequence[MosaicTile],
-    dst_tiles: Sequence[MosaicTile],
+def interp(
+    src: Sequence[xr.DataArray],
+    weights: Sequence[xr.DataArray] | None,
+    regridders: list[list[xe.Regridder]],
     method: str,
-    remap_file: str | None,
-) -> dict[tuple[int, int], xe.Regridder]:
-    dst_grids = [create_regridder_grid(dst) for dst in dst_tiles]
-    regridders: dict[tuple[int, int], xe.Regridder] = {}
-    for si, src in enumerate(src_tiles):
-        src_grid = create_regridder_grid(src)
-        for di, dst_grid in enumerate(dst_grids):
-            pair_method = method
-            kwargs = {}
-            wfile = get_weight_filename(
-                remap_file, si, di, len(src_tiles), len(dst_tiles)
-            )
-            if wfile:
-                kwargs["filename"] = wfile
-                kwargs["reuse_weights"] = Path(wfile).exists()
-            if method == "conservative":
-                kwargs["ignore_degenerate"] = True
-                if _tiles_type == "nest":
-                    pair_method = "conservative_normed"
-                    kwargs["unmapped_to_nan"] = True
-            regridders[(si, di)] = xe.Regridder(
-                src_grid, dst_grid, method=pair_method, **kwargs
-            )
-    return regridders
-
-
-def _combine_regridded_pieces(
-    pieces: Sequence[xr.DataArray], method: str
-) -> xr.DataArray:
-    if not pieces:
-        raise ValueError("no regridded pieces to combine")
-    if len(pieces) == 1:
-        return pieces[0]
-    if method == "bilinear":
-        out = pieces[0]
-        for piece in pieces[1:]:
-            out = out.combine_first(piece)
-        return out
-
-    total = xr.zeros_like(pieces[0]).fillna(0)
-    valid = xr.zeros_like(pieces[0]).fillna(0)
-    for piece in pieces:
-        total = total + piece.fillna(0)
-        valid = valid + piece.notnull().astype(total.dtype)
-    return xr.where(valid > 0, total, np.nan)
-
-
-def regrid_scalar_field(
-    src_data: Sequence[xr.DataArray],
-    src_weights: Sequence[xr.DataArray] | None,
-    src_tiles: Sequence[MosaicTile],
-    dst_tiles: Sequence[MosaicTile],
-    regridders: dict[tuple[int, int], xe.Regridder],
-    method: str,
-    apply_fill_missing: bool,
+    fill_missing: bool,
     finer_step: int,
 ) -> list[xr.DataArray]:
-    outputs: list[xr.DataArray] = []
-    for di in range(len(dst_tiles)):
-        pieces: list[xr.DataArray] = []
-        for si in range(len(src_tiles)):
-            da = src_data[si]
-            ydim, xdim = da.dims[-2], da.dims[-1]
+    """Remap per-tile source fields to every destination tile and merge the tiles."""
+    outputs = []
+    for row in regridders:
+        pieces = []
+        for si, (da, regridder) in enumerate(zip(src, row)):
+            ydim, xdim = da.dims[-2:]
             work = da.rename({ydim: "y", xdim: "x"})
-            if src_weights is not None:
-                w = src_weights[si].rename(
-                    {src_weights[si].dims[-2]: "y", src_weights[si].dims[-1]: "x"}
-                )
-                w_b = xr.broadcast(w, work)[0]
-                regrid_num = regridders[(si, di)](work * w_b)
-                regrid_den = regridders[(si, di)](w_b)
-                piece = regrid_num / xr.where(regrid_den > 0, regrid_den, np.nan)
-            else:
-                piece = regridders[(si, di)](work)
+            if weights is None:
+                piece = regridder(work)
+            else:  # weighted mean: R(w f) / R(w)
+                w = weights[si].rename(dict(zip(weights[si].dims[-2:], ("y", "x"))))
+                w = xr.broadcast(w, work)[0]
+                den = regridder(w)
+                piece = regridder(work * w) / den.where(den > 0)
             pieces.append(piece.rename({"y": ydim, "x": xdim}))
 
-        combined = _combine_regridded_pieces(pieces, method)
-        ydim, xdim = combined.dims[-2], combined.dims[-1]
-        if method == "bilinear" and finer_step > 0:
-            combined = smooth_for_finer_step(combined, ydim, xdim, finer_step)
-        if apply_fill_missing:
-            combined = combined.ffill(xdim).bfill(xdim).ffill(ydim).bfill(ydim)
-        outputs.append(combined)
+        if len(pieces) == 1 or method == "bilinear":
+            out = reduce(xr.DataArray.combine_first, pieces)
+        else:  # conservative: each source tile adds a partial sum
+            stack = xr.concat(pieces, "piece")
+            out = stack.fillna(0).sum("piece").where(stack.notnull().any("piece"))
+
+        ydim, xdim = out.dims[-2:]
+        if finer_step > 0:
+            window = {ydim: 2**finer_step, xdim: 2**finer_step}
+            out = (
+                out.rolling(window, center=True, min_periods=1).mean().astype(out.dtype)
+            )
+        if fill_missing:
+            out = out.ffill(xdim).bfill(xdim).ffill(ydim).bfill(ydim)
+        outputs.append(out)
     return outputs
 
 
-def regrid_vector_field_bilinear(
-    u_src: Sequence[xr.DataArray],
-    v_src: Sequence[xr.DataArray],
-    src_tiles: Sequence[MosaicTile],
-    dst_tiles: Sequence[MosaicTile],
-    regridders: dict[tuple[int, int], xe.Regridder],
-    apply_fill_missing: bool,
-    finer_step: int,
-) -> list[tuple[xr.DataArray, xr.DataArray]]:
-    if len(u_src) != len(v_src) or len(u_src) != len(src_tiles):
-        raise ValueError(
-            "u/v source fields and source tiles must have matching lengths"
-        )
-
-    x_src: list[xr.DataArray] = []
-    y_src: list[xr.DataArray] = []
-    z_src: list[xr.DataArray] = []
-    for si, src_tile in enumerate(src_tiles):
-        u_da = u_src[si]
-        v_da = v_src[si]
-        uy, ux = u_da.dims[-2], u_da.dims[-1]
-        vy, vx = v_da.dims[-2], v_da.dims[-1]
-        if (uy, ux) != (vy, vx):
-            v_da = v_da.rename({vy: uy, vx: ux})
-
-        e_lon, e_lat = get_basis_vectors_from_lonlat(src_tile.lon_t, src_tile.lat_t)
-        ex = xr.DataArray(e_lon[0], dims=(uy, ux))
-        ey = xr.DataArray(e_lon[1], dims=(uy, ux))
-        ez = xr.DataArray(e_lon[2], dims=(uy, ux))
-        nx = xr.DataArray(e_lat[0], dims=(uy, ux))
-        ny = xr.DataArray(e_lat[1], dims=(uy, ux))
-        nz = xr.DataArray(e_lat[2], dims=(uy, ux))
-        x_src.append(u_da * ex + v_da * nx)
-        y_src.append(u_da * ey + v_da * ny)
-        z_src.append(u_da * ez + v_da * nz)
-
-    x_out = regrid_scalar_field(
-        x_src,
-        None,
-        src_tiles,
-        dst_tiles,
-        regridders,
-        "bilinear",
-        apply_fill_missing,
-        finer_step,
-    )
-    y_out = regrid_scalar_field(
-        y_src,
-        None,
-        src_tiles,
-        dst_tiles,
-        regridders,
-        "bilinear",
-        apply_fill_missing,
-        finer_step,
-    )
-    z_out = regrid_scalar_field(
-        z_src,
-        None,
-        src_tiles,
-        dst_tiles,
-        regridders,
-        "bilinear",
-        apply_fill_missing,
-        finer_step,
-    )
-
-    uv_out: list[tuple[xr.DataArray, xr.DataArray]] = []
-    for di, dst_tile in enumerate(dst_tiles):
-        x_da, y_da, z_da = x_out[di], y_out[di], z_out[di]
-        ydim, xdim = x_da.dims[-2], x_da.dims[-1]
-        dlon, dlat = get_basis_vectors_from_lonlat(dst_tile.lon_t, dst_tile.lat_t)
-        dex = xr.DataArray(dlon[0], dims=(ydim, xdim))
-        dey = xr.DataArray(dlon[1], dims=(ydim, xdim))
-        dez = xr.DataArray(dlon[2], dims=(ydim, xdim))
-        dnx = xr.DataArray(dlat[0], dims=(ydim, xdim))
-        dny = xr.DataArray(dlat[1], dims=(ydim, xdim))
-        dnz = xr.DataArray(dlat[2], dims=(ydim, xdim))
-        u_out = x_da * dex + y_da * dey + z_da * dez
-        v_out = x_da * dnx + y_da * dny + z_da * dnz
-        uv_out.append((u_out, v_out))
-    return uv_out
+def to_output(
+    da: xr.DataArray, grid: xr.Dataset, standard_dimension: bool, attrs: dict
+) -> xr.DataArray:
+    """Attach 1-D destination lon/lat coordinates and the source attributes."""
+    if standard_dimension:
+        da = da.rename(dict(zip(da.dims[-2:], ("lat", "lon"))))
+    ydim, xdim = da.dims[-2:]
+    da = da.assign_coords({xdim: grid["lon"].values[0], ydim: grid["lat"].values[:, 0]})
+    da.attrs.update(attrs)
+    return da
 
 
 # --------------------------------------------------------------------------- #
-# I/O
-# --------------------------------------------------------------------------- #
-
-
-def to_netcdf(
-    out_tiles: Sequence[xr.Dataset],
-    src_ref: xr.Dataset,
-    out_paths: Sequence[Path],
-) -> None:
-
-    for ds_out, out_path in zip(out_tiles, out_paths):
-        ds_out.attrs.update(src_ref.attrs)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        front = [d for d in ("time",) if d in ds_out.dims]
-        middle = [d for d in ds_out.dims if d not in {"time", "lat", "lon"}]
-        back = [d for d in ("lat", "lon") if d in ds_out.dims]
-        order = front + middle + back
-        if tuple(order) != tuple(ds_out.dims):
-            ds_out = ds_out.transpose(*order)
-        ds_out.to_netcdf(out_path)
-
-
-# --------------------------------------------------------------------------- #
-# validation
-# --------------------------------------------------------------------------- #
-def validate_inputs(
-    shuffle,
-    deflation,
-    grid_type,
-    input_file,
-    scalar_field,
-    u_field,
-    v_field,
-    remap_file,
-    output_file,
-    output_mosaic,
-    nlon,
-    nlat,
-    weight_field,
-    dst_vgrid,
-    extrapolate,
-) -> bool:
-    if shuffle < -1 or shuffle > 1:
-        raise ValueError("shuffle must be 0, 1, or omitted")
-    if deflation < -1 or deflation > 9:
-        raise ValueError("deflation must be between 0 and 9, or omitted")
-    if grid_type not in ("AGRID", "BGRID"):
-        raise ValueError("grid_type must be AGRID or BGRID")
-
-    if len(input_file) == 0:
-        if scalar_field or u_field or v_field:
-            raise ValueError(
-                "when input_file is not specified, scalar_field/u_field/v_field must not be specified"
-            )
-        if not remap_file:
-            raise ValueError(
-                "when input_file is not specified, remap_file must be specified"
-            )
-        save_weight_only = True
-    elif len(input_file) in {1, 2}:
-        save_weight_only = False
-        if u_field and v_field and len(u_field) != len(v_field):
-            raise ValueError(
-                "number of u_field entries must equal number of v_field entries"
-            )
-        if not scalar_field and not u_field:
-            raise ValueError(
-                "at least one scalar_field or paired u_field/v_field is required"
-            )
-        if scalar_field and len(input_file) != 1:
-            raise ValueError(
-                "when scalar_field is specified, number of input files must be 1"
-            )
-        if len(input_file) == 2 and (scalar_field or not u_field):
-            raise ValueError(
-                "two input files are only supported for paired vector regridding (u in file1, v in file2)"
-            )
-    else:
-        raise ValueError("number of input files must be 0, 1, or 2")
-
-    if output_file and len(output_file) != len(input_file):
-        raise ValueError("number of output files must match number of input files")
-    if not output_file and input_file:
-        raise ValueError("output_file is required when input_file is specified")
-
-    if output_mosaic:
-        if nlon or nlat:
-            raise ValueError("do not specify nlon/nlat when output_mosaic is provided")
-    elif nlon <= 0 or nlat <= 0:
-        raise ValueError(
-            "nlon and nlat are required when output_mosaic is not provided"
-        )
-
-    if weight_field and u_field:
-        raise ValueError("weight_field is not supported for vector interpolation")
-    if dst_vgrid and u_field:
-        raise ValueError("dst_vgrid is not supported for vector fields")
-    if extrapolate and u_field:
-        raise ValueError("extrapolate is not supported for vector fields")
-
-    return save_weight_only
-
-
-# --------------------------------------------------------------------------- #
-# target grid resolution and input opening
-# --------------------------------------------------------------------------- #
-def get_destination_tiles(
-    output_mosaic,
-    method: str,
-    center_y: bool,
-    lonBegin: float,
-    lonEnd: float,
-    latBegin: float,
-    latEnd: float,
-    nlon: int,
-    nlat: int,
-) -> tuple[list[MosaicTile], Path | None]:
-    if output_mosaic:
-        path = Path(output_mosaic).resolve()
-        return load_mosaic_tiles(path), path
-    center_y = center_y if method == "bilinear" else True
-    tile = create_regular_latlon_tile(
-        lonBegin, lonEnd, latBegin, latEnd, nlon, nlat, center_y
-    )
-    return [tile], None
-
-
-def load_weight_tiles(
-    weight_field: str,
-    weight_file,
-    input_file,
-    input_dir: Path,
-    src_names: Sequence[str],
-) -> tuple[list[xr.Dataset], list[xr.DataArray]]:
-    weight_base = weight_file if weight_file else input_file[0]
-    paths = get_tile_paths(weight_base, input_dir, src_names)
-    datasets = [xr.open_dataset(p) for p in paths]
-    tiles: list[xr.DataArray] = []
-    for dsw in datasets:
-        if weight_field not in dsw:
-            raise ValueError(
-                f"weight field {weight_field} not found in {dsw.encoding.get('source', '?')}"
-            )
-        tiles.append(dsw[weight_field])
-    return datasets, tiles
-
-
-# --------------------------------------------------------------------------- #
-# field-processing stages
-# --------------------------------------------------------------------------- #
-def regrid_scalar_fields(
-    scalar_field: Sequence[str],
-    ds1_tiles: Sequence[xr.Dataset],
-    src_tiles: Sequence[MosaicTile],
-    dst_tiles: Sequence[MosaicTile],
-    regridders: dict[tuple[int, int], xe.Regridder],
-    weight_tiles: Sequence[xr.DataArray] | None,
-    opts: RegridOptions,
-    out_file1_tiles: Sequence[xr.Dataset],
-) -> list[str]:
-    skipped: list[str] = []
-    for field in scalar_field:
-        src_field_data: list[xr.DataArray] = []
-        for ds in ds1_tiles:
-            if field not in ds:
-                raise ValueError(
-                    f"scalar field {field} missing in {ds.encoding.get('source', '?')}"
-                )
-            da = ds[field]
-            if str(da.attrs.get("interp_method", "")).lower() == "none":
-                skipped.append(field)
-                src_field_data = []
-                break
-            da = select_requested_levels_and_steps(da, ds, opts)
-            if opts.extrapolate:
-                da = extrapolate_missing_values(da, da.dims[-2], da.dims[-1])
-            src_field_data.append(da)
-        if not src_field_data:
-            continue
-
-        field_weights: list[xr.DataArray] | None = None
-        if weight_tiles is not None:
-            field_weights = []
-            for wt in weight_tiles:
-                if wt.dims[-2:] != src_field_data[0].dims[-2:]:
-                    wt = wt.rename(
-                        {
-                            wt.dims[-2]: src_field_data[0].dims[-2],
-                            wt.dims[-1]: src_field_data[0].dims[-1],
-                        }
-                    )
-                field_weights.append(wt)
-
-        out_pieces = regrid_scalar_field(
-            src_field_data,
-            field_weights,
-            src_tiles,
-            dst_tiles,
-            regridders,
-            opts.method,
-            opts.fill_missing,
-            opts.finer_step,
-        )
-        for di, out_da in enumerate(out_pieces):
-            if opts.dst_z is not None:
-                out_da = interpolate_vertical_levels(out_da, ds1_tiles[0], opts.dst_z)
-            out_da = attach_destination_coordinates(
-                out_da, dst_tiles[di], opts.standard_dimension
-            )
-            out_da.attrs.update(ds1_tiles[0][field].attrs)
-            out_file1_tiles[di][field] = out_da
-
-        if opts.check_conserve:
-            src_sum = sum(
-                calculate_area_weighted_sum(src_field_data[i], src_tiles[i])
-                for i in range(len(src_tiles))
-            )
-            dst_sum = sum(
-                calculate_area_weighted_sum(out_pieces[i], dst_tiles[i])
-                for i in range(len(dst_tiles))
-            )
-            float(src_sum.compute())
-            float(dst_sum.compute())
-    return skipped
-
-
-def regrid_vector_fields(
-    u_field: Sequence[str],
-    v_field: Sequence[str],
-    ds1_tiles: Sequence[xr.Dataset],
-    ds2_tiles: Sequence[xr.Dataset],
-    src_tiles: Sequence[MosaicTile],
-    dst_tiles: Sequence[MosaicTile],
-    regridders: dict[tuple[int, int], xe.Regridder],
-    opts: RegridOptions,
-    out_file1_tiles: Sequence[xr.Dataset],
-    out_file2_tiles: Sequence[xr.Dataset],
-) -> None:
-    paired_files = len(ds2_tiles) == len(ds1_tiles)
-    for uf, vf in zip(u_field, v_field):
-        u_src: list[xr.DataArray] = []
-        v_src: list[xr.DataArray] = []
-        for i, ds in enumerate(ds1_tiles):
-            if uf not in ds:
-                raise ValueError(
-                    f"u field {uf} missing in {ds.encoding.get('source', '?')}"
-                )
-            u_da = select_requested_levels_and_steps(ds[uf], ds, opts)
-            if opts.extrapolate:
-                u_da = extrapolate_missing_values(u_da, u_da.dims[-2], u_da.dims[-1])
-            u_src.append(u_da)
-
-            vds = ds2_tiles[i] if paired_files else ds
-            if vf not in vds:
-                raise ValueError(
-                    f"v field {vf} missing in {vds.encoding.get('source', '?')}"
-                )
-            v_da = select_requested_levels_and_steps(vds[vf], vds, opts)
-            if opts.extrapolate:
-                v_da = extrapolate_missing_values(v_da, v_da.dims[-2], v_da.dims[-1])
-            v_src.append(v_da)
-
-        uv_out = regrid_vector_field_bilinear(
-            u_src,
-            v_src,
-            src_tiles,
-            dst_tiles,
-            regridders,
-            opts.fill_missing,
-            opts.finer_step,
-        )
-        for di in range(len(dst_tiles)):
-            u_regridded, v_regridded = uv_out[di]
-            out_u = attach_destination_coordinates(
-                u_regridded, dst_tiles[di], opts.standard_dimension
-            )
-            out_v = attach_destination_coordinates(
-                v_regridded, dst_tiles[di], opts.standard_dimension
-            )
-            out_u.attrs.update(ds1_tiles[0][uf].attrs)
-            out_v.attrs.update(
-                (ds2_tiles[0] if paired_files else ds1_tiles[0])[vf].attrs
-            )
-            out_file1_tiles[di][uf] = out_u
-            if paired_files:
-                out_file2_tiles[di][vf] = out_v
-            else:
-                out_file1_tiles[di][vf] = out_v
-
-
-# --------------------------------------------------------------------------- #
-# top-level driver
+# driver (C: main)
 # --------------------------------------------------------------------------- #
 def fregrid(
     input_mosaic: str,
@@ -1046,145 +300,268 @@ def fregrid(
     deflation: int = -1,
     shuffle: int = -1,
     tiles_type: str | None = None,
-) -> list[str]:
+) -> None:
     """Remap scalar and/or vector fields from input_mosaic onto the target grid.
 
-    Returns the sorted list of scalar fields skipped because their
-    interp_method attribute is "none" (empty when weights only are written).
+    Scalar fields whose interp_method attribute is "none" are skipped and logged.
     """
-    global _tiles_type
-    _tiles_type = tiles_type
-
-    input_file = to_list(input_file)
-    output_file = to_list(output_file)
-    scalar_field = to_list(scalar_field)
-    u_field = to_list(u_field)
-    v_field = to_list(v_field)
-
-    save_weight_only = validate_inputs(
-        shuffle,
-        deflation,
-        grid_type,
-        input_file,
-        scalar_field,
-        u_field,
-        v_field,
-        remap_file,
-        output_file,
-        output_mosaic,
-        nlon,
-        nlat,
-        weight_field,
-        dst_vgrid,
-        extrapolate,
+    input_file, output_file, scalar_field, u_field, v_field = (
+        [] if v is None else v if isinstance(v, list) else [v]
+        for v in (input_file, output_file, scalar_field, u_field, v_field)
     )
+    n = len(input_file)
+    errors = {
+        "shuffle must be 0, 1, or omitted": not -1 <= shuffle <= 1,
+        "deflation must be between 0 and 9, or omitted": not -1 <= deflation <= 9,
+        "grid_type must be AGRID or BGRID": grid_type not in ("AGRID", "BGRID"),
+        "number of input files must be 0, 1, or 2": n > 2,
+        "when input_file is not specified, scalar_field/u_field/v_field must not be specified": (
+            n == 0 and (scalar_field or u_field or v_field)
+        ),
+        "when input_file is not specified, remap_file must be specified": (
+            n == 0 and not remap_file
+        ),
+        "number of u_field entries must equal number of v_field entries": (
+            n and u_field and v_field and len(u_field) != len(v_field)
+        ),
+        "at least one scalar_field or paired u_field/v_field is required": (
+            n and not scalar_field and not u_field
+        ),
+        "when scalar_field is specified, number of input files must be 1": (
+            n == 2 and scalar_field
+        ),
+        "two input files are only supported for paired vector regridding (u in file1, v in file2)": (
+            n == 2 and not u_field
+        ),
+        "number of output files must match number of input files": (
+            output_file and len(output_file) != n
+        ),
+        "output_file is required when input_file is specified": n and not output_file,
+        "do not specify nlon/nlat when output_mosaic is provided": (
+            output_mosaic and (nlon or nlat)
+        ),
+        "nlon and nlat are required when output_mosaic is not provided": (
+            not output_mosaic and (nlon <= 0 or nlat <= 0)
+        ),
+        "weight_field is not supported for vector interpolation": (
+            weight_field and u_field
+        ),
+        "dst_vgrid is not supported for vector fields": dst_vgrid and u_field,
+        "extrapolate is not supported for vector fields": extrapolate and u_field,
+    }
+    if message := next((m for m, failed in errors.items() if failed), None):
+        raise ValueError(message)
 
-    input_mosaic_path = Path(input_mosaic).resolve()
-    src_tiles = load_mosaic_tiles(input_mosaic_path)
+    # ---- input grid and interpolation method ------------------------------ #
+    input_mosaic = Path(input_mosaic).resolve()
+    src_grids, ncontact = read_mosaic(input_mosaic)
+    if interp_method not in XESMF_METHODS:
+        raise ValueError(f"interp_method must be one of {', '.join(XESMF_METHODS)}")
+    method = XESMF_METHODS[interp_method]
+    bilinear, nsrc = method == "bilinear", len(src_grids)
+    lon, lat = src_grids[0]["lon"].values, src_grids[0]["lat"].values
+    errors = {
+        "finer_step is only valid when interp_method bilinear": finer_step
+        and not bilinear,
+        "bilinear mode requires nlon/nlat regular lat-lon output and does not support output_mosaic": (
+            bilinear and output_mosaic
+        ),
+        "vector fields require interp_method bilinear": u_field and not bilinear,
+        "vector fields currently support grid_type AGRID only": (
+            u_field and grid_type != "AGRID"
+        ),
+        "conserve_order2 modes require a 6-tile cubed-sphere input mosaic": (
+            interp_method.startswith("conserve_order2") and nsrc != 6
+        ),
+        "bilinear mode requires a 6-tile cubed-sphere input mosaic": bilinear
+        and nsrc != 6,
+        "bilinear mode requires a 12-contact cubed-sphere input mosaic": (
+            bilinear and ncontact != 12
+        ),
+        "extrapolate is limited to single-tile input mosaics": extrapolate
+        and nsrc != 1,
+        "extrapolate is limited to rectilinear lat-lon input grids": (
+            extrapolate
+            and nsrc == 1
+            and not (
+                np.allclose(lon, lon[:1], rtol=0.0, atol=1e-10)
+                and np.allclose(lat, lat[:, :1], rtol=0.0, atol=1e-10)
+            )
+        ),
+    }
+    if message := next((m for m, failed in errors.items() if failed), None):
+        raise ValueError(message)
 
-    method = get_xesmf_method(
-        interp_method,
-        monotonic,
-        finer_step,
-        output_mosaic,
-        u_field,
-        grid_type,
-        src_tiles,
-        input_mosaic_path,
-        extrapolate,
-    )
-
-    dst_tiles, output_mosaic_path = get_destination_tiles(
-        output_mosaic, method, center_y, lonBegin, lonEnd, latBegin, latEnd, nlon, nlat
-    )
-
-    # Great-circle consistency checks on both input and output grids (C parity).
-    in_gca = check_great_circle_algorithm(
-        input_mosaic_path, None, interp_method, method, u_field
-    )
-    check_great_circle_algorithm(
-        output_mosaic_path, in_gca, interp_method, method, u_field
-    )
-
-    regridders = create_regridders(src_tiles, dst_tiles, method, remap_file)
-    if save_weight_only:
-        return []
-
-    input_dir = Path(input_dir).resolve()
-    output_dir = Path(output_dir).resolve()
-    src_names = [t.tile_name for t in src_tiles]
-    dst_names = [t.tile_name for t in dst_tiles]
-
-    file1_in = get_tile_paths(input_file[0], input_dir, src_names)
-    file1_out = get_tile_paths(output_file[0], output_dir, dst_names)
-    ds1_tiles = [xr.open_dataset(p) for p in file1_in]
-
-    ds2_tiles: list[xr.Dataset] = []
-    file2_out: list[Path] = []
-    if len(input_file) == 2:
-        file2_in = get_tile_paths(input_file[1], input_dir, src_names)
-        file2_out = get_tile_paths(output_file[1], output_dir, dst_names)
-        ds2_tiles = [xr.open_dataset(p) for p in file2_in]
-
-    dsw_tiles: list[xr.Dataset] = []
-    weight_tiles: list[xr.DataArray] | None = None
-    if weight_field:
-        dsw_tiles, weight_tiles = load_weight_tiles(
-            weight_field, weight_file, input_file, input_dir, src_names
+    # ---- output grid and great-circle consistency ------------------------- #
+    if output_mosaic:
+        output_mosaic = Path(output_mosaic).resolve()
+        dst_grids, _ = read_mosaic(output_mosaic)
+    else:
+        dst_grids = [
+            latlon_grid(
+                lonBegin, lonEnd, latBegin, latEnd, nlon, nlat, center_y or not bilinear
+            )
+        ]
+    for path, grids in ((input_mosaic, src_grids), (output_mosaic, dst_grids)):
+        if len({grid.attrs["gca"] for grid in grids}) > 1:
+            raise ValueError(
+                f"inconsistent great_circle_algorithm values across grid tiles in {path}"
+            )
+    gca = src_grids[0].attrs["gca"] or dst_grids[0].attrs["gca"]
+    if gca and interp_method != "conserve_order1":
+        raise ValueError(
+            "when great_circle_algorithm is active, interp_method must be conserve_order1"
         )
 
-    opts = RegridOptions(
-        method=method,
-        fill_missing=fill_missing,
-        finer_step=finer_step,
-        extrapolate=extrapolate,
-        standard_dimension=standard_dimension,
-        check_conserve=check_conserve,
-        KlevelBegin=KlevelBegin,
-        KlevelEnd=KlevelEnd,
-        LstepBegin=LstepBegin,
-        LstepEnd=LstepEnd,
-        dst_z=load_destination_vgrid_centers(Path(dst_vgrid).resolve())
-        if dst_vgrid
-        else None,
-    )
+    # ---- regridders [dst][src], weights cached in remap_file -------------- #
+    options: dict = {"method": method}
+    if method == "conservative":
+        options["ignore_degenerate"] = True
+        if tiles_type == "nest":
+            options |= {"method": "conservative_normed", "unmapped_to_nan": True}
+    one_to_one = nsrc == len(dst_grids) == 1
+    regridders = []
+    for di, dst in enumerate(dst_grids):
+        row = []
+        for si, src in enumerate(src_grids):
+            if remap_file:
+                suffix = ".nc" if one_to_one else f".src{si + 1}.dst{di + 1}.nc"
+                remap = Path(remap_file)
+                remap = remap.with_name(remap.name.removesuffix(".nc") + suffix)
+                options |= {"filename": remap, "reuse_weights": remap.exists()}
+            row.append(xe.Regridder(src, dst, **options))
+        regridders.append(row)
+    if n == 0:  # weights only
+        return
 
-    out_file1_tiles = [xr.Dataset() for _ in dst_tiles]
-    out_file2_tiles = [xr.Dataset() for _ in dst_tiles]
+    # ---- data files ------------------------------------------------------- #
+    input_dir, output_dir = Path(input_dir).resolve(), Path(output_dir).resolve()
+    src_names = [grid.attrs["name"] for grid in src_grids]
+    dst_names = [grid.attrs["name"] for grid in dst_grids]
+    ranges = {
+        "Z": (KlevelBegin, KlevelEnd, "KlevelBegin/KlevelEnd"),
+        "T": (LstepBegin, LstepEnd, "LstepBegin/LstepEnd"),
+    }
+    out1 = [xr.Dataset() for _ in dst_grids]
+    out2 = [xr.Dataset() for _ in dst_grids]
+    skipped = []
 
-    skipped = regrid_scalar_fields(
-        scalar_field,
-        ds1_tiles,
-        src_tiles,
-        dst_tiles,
-        regridders,
-        weight_tiles,
-        opts,
-        out_file1_tiles,
-    )
-    regrid_vector_fields(
-        u_field,
-        v_field,
-        ds1_tiles,
-        ds2_tiles,
-        src_tiles,
-        dst_tiles,
-        regridders,
-        opts,
-        out_file1_tiles,
-        out_file2_tiles,
-    )
+    with ExitStack() as stack:
+        ds1, ds2, dsw = (
+            [
+                stack.enter_context(xr.open_dataset(path))
+                for path in data_paths(base, input_dir, src_names)
+            ]
+            if base
+            else []
+            for base in (
+                input_file[0],
+                n == 2 and input_file[1],
+                weight_field and (weight_file or input_file[0]),
+            )
+        )
+        weights = None
+        if weight_field:
+            for ds in dsw:
+                if weight_field not in ds:
+                    source = ds.encoding.get("source", "?")
+                    raise ValueError(
+                        f"weight field {weight_field} not found in {source}"
+                    )
+            weights = [ds[weight_field] for ds in dsw]
 
-    to_netcdf(out_file1_tiles, ds1_tiles[0], file1_out)
-    if file2_out:
-        to_netcdf(out_file2_tiles, ds2_tiles[0], file2_out)
+        dst_z = None
+        if dst_vgrid:  # cell centres of a 2*nz+1 vertical supergrid
+            with xr.open_dataset(Path(dst_vgrid).resolve(), decode_cf=False) as ds:
+                if "zeta" not in ds:
+                    raise ValueError(f"{dst_vgrid} must contain zeta")
+                zeta = ds["zeta"].values
+            if zeta.ndim != 1 or zeta.size % 2 == 0:
+                raise ValueError(
+                    "destination vgrid zeta must be 1-D with length 2*nz+1"
+                )
+            dst_z = zeta[1::2]
 
-    for ds in list(ds1_tiles) + list(ds2_tiles) + dsw_tiles:
-        ds.close()
+        # ---- scalar fields ------------------------------------------------ #
+        for field in scalar_field:
+            src = []
+            for ds in ds1:
+                attrs = ds[field].attrs if field in ds else {}
+                if str(attrs.get("interp_method", "")).lower() == "none":
+                    break
+                src.append(read_field(ds, field, "scalar", ranges, extrapolate))
+            if len(src) < len(ds1):
+                skipped.append(field)
+                continue
 
-    skipped_files = sorted(set(skipped))
+            out = interp(src, weights, regridders, method, fill_missing, finer_step)
+            for di, (da, grid) in enumerate(zip(out, dst_grids)):
+                zdim = axis_dim(ds1[0], da, "Z") if dst_z is not None else None
+                if zdim is not None:  # linear in z, end values held outside the range
+                    if zdim not in ds1[0]:
+                        da = da.assign_coords(
+                            {zdim: np.arange(da.sizes[zdim], dtype=float)}
+                        )
+                    src_z = (ds1[0] if zdim in ds1[0] else da)[zdim].values
+                    low, high = da.isel({zdim: 0}), da.isel({zdim: -1})
+                    da = da.interp({zdim: dst_z}, kwargs={"fill_value": "extrapolate"})
+                    da = xr.where(da[zdim] < src_z.min(), low.broadcast_like(da), da)
+                    da = xr.where(da[zdim] > src_z.max(), high.broadcast_like(da), da)
+                attrs = ds1[0][field].attrs
+                out1[di][field] = to_output(da, grid, standard_dimension, attrs)
 
-    if skipped_files:
+            if check_conserve:
+                src_sum, dst_sum = (
+                    sum(
+                        (
+                            d.rename(dict(zip(d.dims[-2:], ("y", "x"))))
+                            * xe.util.cell_area(g)
+                        ).sum(("y", "x"))
+                        for d, g in zip(fields, grids)
+                    )
+                    for fields, grids in ((src, src_grids), (out, dst_grids))
+                )
+                log.debug(
+                    "%s area-weighted sum: source %g, destination %g",
+                    field,
+                    float(src_sum),
+                    float(dst_sum),
+                )
+
+        # ---- vector fields: rotate to Cartesian, remap, rotate back ------- #
+        paired = len(ds2) == len(ds1)
+        for uf, vf in zip(u_field, v_field):
+            xyz = []
+            for ds, vds, grid in zip(ds1, ds2 if paired else ds1, src_grids):
+                u = read_field(ds, uf, "u", ranges, extrapolate)
+                v = read_field(vds, vf, "v", ranges, extrapolate)
+                v = v.rename(dict(zip(v.dims[-2:], u.dims[-2:])))
+                east, north = unit_vectors(grid, u.dims[-2:])
+                xyz.append((u * east + v * north).transpose("xyz", ...))
+
+            out = interp(xyz, None, regridders, method, fill_missing, finer_step)
+            for di, (comp, grid) in enumerate(zip(out, dst_grids)):
+                east, north = unit_vectors(grid, comp.dims[-2:])
+                u_out = (comp * east).sum("xyz", skipna=False)
+                v_out = (comp * north).sum("xyz", skipna=False)
+                v_attrs = (ds2 if paired else ds1)[0][vf].attrs
+                out1[di][uf] = to_output(
+                    u_out, grid, standard_dimension, ds1[0][uf].attrs
+                )
+                (out2 if paired else out1)[di][vf] = to_output(
+                    v_out, grid, standard_dimension, v_attrs
+                )
+
+        # ---- write: dims ordered (time, ..., lat, lon) ---------------------- #
+        for outs, ds_in, base in zip((out1, out2), (ds1, ds2), output_file):
+            for ds, path in zip(outs, data_paths(base, output_dir, dst_names)):
+                ds.attrs.update(ds_in[0].attrs)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                order = ("time", ..., "lat", "lon")
+                ds.transpose(*order, missing_dims="ignore").to_netcdf(path)
+
+    if skipped:
         log.warning(
-            f"The following files were skipped: {', '.join(map(str, skipped_files))}"
+            "Skipped fields with interp_method 'none': %s",
+            ", ".join(sorted(set(skipped))),
         )
