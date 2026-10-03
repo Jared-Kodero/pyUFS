@@ -192,7 +192,8 @@ per-job memory flag is derived.
 | Key | Meaning |
 | --- | --- |
 | `init_datetime` | Initialization cycle, UTC, in `YYYYMMDDHHZ` form, for example `2026031200Z`. |
-| `run_nhours` | Integration length of one segment in hours. |
+| `run_length` | Length of one segment, in `run_length_units`. |
+| `run_length_units` | `hours` (default), `days`, `months` or `years`. Months are calendar months from the segment start (`coupler_nml months`; years are passed as 12 months) and need a start day of 28 or earlier. |
 | `forecast_hour` | Lead hour of the source dataset used for initial conditions. 0 selects the analysis. |
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
@@ -644,7 +645,7 @@ t / \tau$ clipped to $[0, 1]$:
 
 $$X' = (1 - \alpha)\,X + \alpha\,X_\mathrm{ref}$$
 
-Here $\Delta t$ is `run_nhours` and $\tau$ is `tau_hours`, default 24 hours. The reference
+Here $\Delta t$ is the length in hours of the previous segment and $\tau$ is `tau_hours`, default 24 hours. The reference
 is the previous perturbed segment, or the climatological mean when `use_climo: true`.
 Holding, `do_hold: true`, carries the perturbed state forward from the previous segment
 without recomputing.
@@ -754,7 +755,7 @@ do not interrupt the run.
 
 ## 15. Restarts and segmented runs
 
-A run is divided into `resubmit + 1` segments, each of length `run_nhours`. The first
+A run is divided into `resubmit + 1` segments, each `run_length` `run_length_units` long. The first
 segment is a cold start produced by the initial driver. Each later segment is a warm start
 produced by the restart driver, which resumes from the previous segment restart files.
 Restart segments load the persisted `state.yaml`; they do not re-read `run_config.yaml`.
@@ -784,7 +785,8 @@ location.
 ```yaml
 description: C96 control run
 init_datetime: "2026031200Z"
-run_nhours: 6
+run_length: 6
+run_length_units: hours
 c_res: C96
 gtype: uniform
 levels: 64
@@ -804,7 +806,8 @@ partition: batch
 ```yaml
 description: Stretched C96 over central North America
 init_datetime: "2026031200Z"
-run_nhours: 24
+run_length: 24
+run_length_units: hours
 c_res: C96
 gtype: stretch
 stretch_factor: 2.5
@@ -824,7 +827,8 @@ partition: batch
 ```yaml
 description: Nested SHiELD case
 init_datetime: "2026031200Z"
-run_nhours: 24
+run_length: 24
+run_length_units: hours
 c_res: C96
 gtype: nest
 levels: 64
@@ -848,7 +852,8 @@ partition: batch
 ```yaml
 description: Regional ESG domain
 init_datetime: "2026031200Z"
-run_nhours: 12
+run_length: 12
+run_length_units: hours
 c_res: C3072
 gtype: regional_esg
 target_lon: -96

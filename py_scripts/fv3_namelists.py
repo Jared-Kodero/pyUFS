@@ -1,14 +1,10 @@
-import os
 from pathlib import Path
 
 import f90nml
 import numpy as np
-from fv3_runtime import (
-    get_stream_handles,
-    log,
-    read_namelist,
-    report_missing_fixed_files,
-)
+from fv3_diag_files import update_table_files
+from fv3_fixed_files import update_fixed_files
+from fv3_runtime import log, read_namelist, report_missing_fixed_files
 from fv3_state import state
 from fv3_timings import get_timings
 from fv3_utils import cp, cres_to_deg, env_setup
@@ -54,7 +50,6 @@ def update_nml_configs():
 
     update_global_nml(
         c_res=state.c_res,
-        fhmax=state.run_nhours,
         n_nests=state.n_nests,
         current_date=current_date,
         levels=state.levels,
@@ -64,7 +59,6 @@ def update_nml_configs():
     )
     update_nest_nml(
         c_res=state.c_res,
-        fhmax=state.run_nhours,
         n_nests=state.n_nests,
         current_date=current_date,
         levels=state.levels,
@@ -121,12 +115,26 @@ def common_configs(nml: dict):
         nml["fv_core_nml"]["fv_debug"] = True
         nml["fv_core_nml"]["print_freq"] = -1
 
+    if state.use_modern_diag:
+        nml.setdefault("diag_manager_nml", {})["use_modern_diag"] = True
+        nml.setdefault("data_override_nml", {})["use_data_table_yaml"] = True
+
     return nml
+
+
+def coupler_run_length() -> tuple[str, int]:
+    """coupler_nml run length. The SHiELD coupler ignores years, so they are
+    passed as months; month runs must start on day 28 or earlier."""
+    n, units = state.run_length, state.run_length_units
+    if units == "years":
+        n, units = 12 * n, "months"
+    if units == "months" and state.init_datetime.day > 28:
+        raise ValueError("run_length_units months/years requires a start day <= 28")
+    return units, n
 
 
 def update_global_nml(
     c_res: int,
-    fhmax: int,
     n_nests: int,
     current_date: str,
     levels: int,
@@ -146,7 +154,8 @@ def update_global_nml(
     nml["fv_core_nml"]["target_lon"] = state.target_lon
     nml["fv_core_nml"]["stretch_fac"] = state.stretch_factor
     nml["coupler_nml"]["current_date"] = current_date
-    nml["coupler_nml"]["hours"] = fhmax
+    units, n = coupler_run_length()
+    nml["coupler_nml"][units] = n
 
     # Use first-guess timings unless overridden by user
     nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
@@ -200,7 +209,6 @@ def update_global_nml(
 
 def update_nest_nml(
     c_res: int,
-    fhmax: int,
     n_nests: int,
     current_date: str,
     levels: int,
@@ -287,94 +295,6 @@ def namelist_overrides(path: Path, nml: dict, name: str):
     return nml
 
 
-def update_fixed_files():
-    dt = state.init_datetime
-    year = dt.year
-    fix_dir = state.fix_src / "am"
-
-    required_files = [
-        "aerosol.dat",
-        f"co2historicaldata_{year}.txt",
-        "co2historicaldata_glob.txt",
-        "co2monthlycyc.txt",
-        "sfc_emissivity_idx.txt",
-        "solarconstant_noaa_an.txt",
-        "volcanic_aerosols_1990-1999.txt",
-        "global_h2oprdlos.f77",
-        "global_o3prdlos.f77",
-    ]
-
-    missing_files = []
-
-    for name in required_files:
-        file = fix_dir / name
-        if file.exists():
-            dest = state.fix / name
-            if not dest.exists():
-                cp(file, dest)
-
-            link = Path(state.input) / name
-            link.unlink(missing_ok=True)
-
-            rel_target = os.path.relpath(dest, start=state.input)
-            link.symlink_to(rel_target)
-        else:
-            missing_files.append(file)
-
-    if missing_files:
-        report_missing_fixed_files(missing_files, sub_dir="am")
-
-
-def update_table_files():
-
-    dt = state.init_datetime
-    update_fixed_files()
-
-    restart_no = state.get("restart_no", 0)
-
-    diag_table_path = state.work_dir / "diag_table"
-    field_table_path = state.work_dir / "field_table.yaml"
-
-    user_diag = state.run_dir / "diag_table"
-    user_field = state.run_dir / "field_table"
-
-    template_diag = state.configs / "diag_table"
-    template_field = state.configs / "field_table.yaml"
-
-    if user_diag.exists():
-        diag_file = user_diag
-    else:
-        diag_file = template_diag
-
-    if user_field.exists():
-        field_file = user_field
-    else:
-        field_file = template_field
-
-    cp(diag_file, diag_table_path)
-    cp(field_file, field_table_path)
-
-    streams = get_stream_handles()
-
-    with open(diag_table_path) as f:
-        lines = f.readlines()
-        lines = [line for line in lines if line and not line.strip().startswith("#")]
-        lines = lines[2:]  # Skip the first two lines (title and base_date)
-
-    dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
-    desc_str = f"{state.description}\n"
-
-    lines = [desc_str, dt_str] + [
-        line.replace(stream, f"HIST/{stream}.{restart_no:02d}")
-        for line in lines
-        for stream in streams
-        if stream in line
-    ]
-
-    with open(diag_table_path, "w") as f:
-        f.writelines(lines)
-
-
 def update_namsfc(nml):
 
     am_dir = Path(state.fix_src) / "am"
@@ -439,5 +359,26 @@ def update_namsfc(nml):
 
     if missing_files:
         report_missing_fixed_files(missing_files, sub_dir="am")
+
+    if state.tgrad_perturbations:
+        # SST and sea-ice climatologies are written to FIXED/MODS by
+        # apply_tgrad_perturbations(), either perturbed or as clean copies.
+        nml["namsfc"]["fntsfc"] = f"FIXED/MODS/{namsfc_files['fntsfc']}"
+        nml["namsfc"]["fnaisc"] = f"FIXED/MODS/{namsfc_files['fnaisc']}"
+
+        # SST, ice mask and ice concentration follow the (perturbed) FIXED
+        # climatologies at every surface cycle; fsicl covers points already
+        # classified as ice (non-open-ocean branch of the sfcsub merge).
+        nml["namsfc"].update({"ftsfs": 0, "faiss": 0, "fsics": 0, "fsicl": 0})
+
+        phys = nml.setdefault("gfs_physics_nml", {})
+        phys["use_ext_sst"] = False
+
+        if state.tgrad_perturbations.get("ocean_mode", "prescribed") == "prescribed":
+            phys["do_ocean"] = False
+            phys["nstf_name"] = [0, 0, 1, 0, 5]
+        else:
+            phys["do_ocean"] = True
+            nml.setdefault("ocean_nml", {})["restore_method"] = 1
 
     return nml

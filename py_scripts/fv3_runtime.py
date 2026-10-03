@@ -82,7 +82,13 @@ def to_list(x: object) -> list:
 
 
 def get_stream_handles() -> list[str]:
-    """Return unique file-section names from a legacy diag_table."""
+    """Return unique file names from diag_table.yaml (modern) or diag_table."""
+    yaml_path = Path(paths["work_dir"]) / "diag_table.yaml"
+    if yaml_path.exists():
+        with open(yaml_path) as f:
+            table = yaml.safe_load(f)
+        return list(dict.fromkeys(d["file_name"] for d in table["diag_files"]))
+
     path = Path(paths["work_dir"]) / "diag_table"
     stream_files: list[str] = []
 
