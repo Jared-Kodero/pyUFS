@@ -12,7 +12,7 @@ from fv3_state import (
 )
 from fv3_utils import env_setup, require_minimum_cpus, runtime_env_vars
 from regional_bc import link_bc_to_input
-from sm_perturbations import apply_perturbations
+from sm_perturbations import apply_sm_perturbations
 
 
 def _load_restart_state() -> None:
@@ -73,7 +73,7 @@ def restart_driver() -> None:
     # relink the full sequence from state.bc_data (no-op for non-regional grids).
     link_bc_to_input()
 
-    apply_perturbations()
+    apply_sm_perturbations()
 
     gen_shield_run_sh()
     save_fv3_state()

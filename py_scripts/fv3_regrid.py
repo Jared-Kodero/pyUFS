@@ -143,6 +143,70 @@ def merged_name(
     return f"{handle}.{chunk:0{width}d}.{alias}.nc"
 
 
+def pack_encoding(ds: xr.Dataset, pack: bool) -> dict[str, dict]:
+    """Build per-variable NetCDF encoding.
+
+    When packing is enabled, floating-point gridded fields with at least
+    three dimensions are packed as integers using scale_factor/add_offset.
+
+    float32 -> int16
+    float64 -> int32
+
+    The lowest two integer codes are excluded from valid packed data:
+        min       : unused
+        min + 1   : _FillValue / missing_value
+        min + 2   : minimum valid packed value
+
+    Non-gridded variables and all-missing/non-finite fields remain unpacked.
+    Existing variable encodings are cleared when packing is requested.
+    """
+    encoding: dict[str, dict] = {}
+
+    for name, da in ds.data_vars.items():
+        encoding[name] = {}
+
+        if not pack:
+            continue
+
+        # Prevent inherited packing metadata from being reused.
+        da.encoding = {}
+
+        if da.ndim < 3 or da.dtype.kind != "f":
+            continue
+
+        target_dtype = np.int32 if da.dtype == np.float64 else np.int16
+        iinfo = np.iinfo(target_dtype)
+
+        fill_value = iinfo.min + 1
+        packed_min = iinfo.min + 2
+        packed_max = iinfo.max
+
+        vmin = float(da.min(skipna=True))
+        vmax = float(da.max(skipna=True))
+
+        # Leave all-missing or otherwise non-finite fields unpacked.
+        if not (np.isfinite(vmin) and np.isfinite(vmax)):
+            continue
+
+        if vmax > vmin:
+            scale = (vmax - vmin) / (packed_max - packed_min)
+            offset = vmin - packed_min * scale
+        else:
+            # Constant field: map the value to packed integer zero.
+            scale = 1.0
+            offset = vmin
+
+        encoding[name] = {
+            "dtype": target_dtype,
+            "scale_factor": scale,
+            "add_offset": offset,
+            "_FillValue": fill_value,
+            "missing_value": fill_value,
+        }
+
+    return encoding
+
+
 def merge_files(inputs: list[Path], target: Path) -> None:
     """Concatenate inputs along time into target.
 
@@ -172,8 +236,12 @@ def merge_files(inputs: list[Path], target: Path) -> None:
 
     try:
         if "time" in ds.dims:
-            ds = ds.sortby("time")
-        encoding = {var: {"zlib": True, "complevel": 4} for var in ds.data_vars}
+            keep = ~ds.indexes["time"].duplicated(keep="last")
+            ds = ds.isel(time=keep).sortby("time")
+        pack = pack_encoding(ds, bool(state.get("pack_output")))
+        encoding = {
+            var: {"zlib": True, "complevel": 4, **pack[var]} for var in ds.data_vars
+        }
         ds.to_netcdf(tmp, format="NETCDF4", encoding=encoding)
     finally:
         ds.close()
@@ -400,7 +468,9 @@ def call_fregrid(
             "description": description,
         }
 
-        ds.to_netcdf(output_file)
+        # Segments are final files only when merging is disabled.
+        pack = state.pack_output and get_merge_freq() == 0
+        ds.to_netcdf(output_file, encoding=pack_encoding(ds, True) if pack else None)
 
     shutil.rmtree(state.tmp / "fregrid")
 
