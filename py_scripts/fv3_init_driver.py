@@ -23,8 +23,10 @@ from fv3_utils import (
     parse_resolution,
     require_minimum_cpus,
     runtime_env_vars,
+    segment_hours,
 )
-from sm_perturbations import apply_perturbations
+from sm_perturbations import apply_sm_perturbations
+from tgrad_perturbations import apply_tgrad_perturbations
 
 
 def _log_initial_state() -> None:
@@ -65,8 +67,9 @@ def _log_initial_state() -> None:
         log.info("Total run segments: %s", state.total_restarts)
 
     log.info(
-        "Forecast length for this segment: %s hours",
-        state.run_nhours,
+        "Forecast length for each segment: %s %s",
+        state.run_length,
+        state.run_length_units,
     )
     log.info("Total forecast length: %s", state.forecast_length)
     log.info("Vertical levels: %s", state.levels)
@@ -122,8 +125,14 @@ def _load_initial_state() -> None:
     state.resubmit_idx = 0
     state.total_restarts = state.resubmit + 1
 
-    segment_count = state.resubmit + 1
-    state.total_run_hours = state.run_nhours * segment_count
+    state.total_run_hours = sum(
+        segment_hours(
+            state.init_datetime,
+            state.run_length,
+            state.run_length_units,
+            state.total_restarts,
+        )
+    )
     state.forecast_length = format_forecast_length(state.total_run_hours)
 
     state.update(configure_directories(state))
@@ -213,8 +222,9 @@ def init_driver() -> None:
     state.checksum = compute_checksum(state)
     os.chdir(state.work_dir)
     calc_cpu_alloc(state.grid)
+    apply_sm_perturbations()
+    apply_tgrad_perturbations()
     update_nml_configs()
-    apply_perturbations()
     gen_shield_run_sh()
 
     save_fv3_state()

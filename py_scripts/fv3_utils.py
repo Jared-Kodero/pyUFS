@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections import namedtuple
 from contextlib import contextmanager
+from itertools import pairwise
 from pathlib import Path
 
 import pandas as pd
@@ -268,6 +269,20 @@ def format_forecast_length(nhours: int) -> str:
         parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
 
     return " ".join(parts)
+
+
+def segment_hours(init: pd.Timestamp, length: int, units: str, count: int) -> list[int]:
+    """Hours in each of `count` segments of `length` `units` starting at `init`.
+
+    Months follow the calendar as in the SHiELD coupler (pandas Gregorian equals
+    the FMS julian calendar for 1901-2099).
+    """
+    if units not in ("hours", "days", "months", "years"):
+        raise ValueError("run_length_units must be hours, days, months or years")
+    if not isinstance(length, int) or isinstance(length, bool) or length < 1:
+        raise ValueError(f"run_length must be a positive integer, got {length!r}")
+    edges = [init + pd.DateOffset(**{units: length * i}) for i in range(count + 1)]
+    return [(b - a) // pd.Timedelta(hours=1) for a, b in pairwise(edges)]
 
 
 def _read_required_env_int(name: str) -> int:

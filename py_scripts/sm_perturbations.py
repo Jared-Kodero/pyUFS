@@ -7,7 +7,7 @@ import xarray as xr
 import xesmf as xe
 from fv3_runtime import log
 from fv3_state import state
-from fv3_utils import cp
+from fv3_utils import cp, segment_hours
 
 # Physical bounds for valid volumetric soil moisture (m3 m-3). Used for both
 # the validity mask and the clip so the two are guaranteed consistent.
@@ -150,7 +150,10 @@ def do_nudge_soil_moisture(
 ):
 
     tau_hours = p.get("tau_hours", 24)
-    dt_hours = state.run_nhours
+    # Length of the segment that ended at this restart
+    dt_hours = segment_hours(
+        state.init_datetime, state.run_length, state.run_length_units, restart_no
+    )[-1]
     use_climo = p.get("use_climo", False)
 
     alpha = dt_hours / tau_hours
@@ -481,7 +484,7 @@ def adjust_soil_moisture(
         log.info(log_entry)
 
 
-def apply_perturbations():
+def apply_sm_perturbations():
     """Apply soil moisture perturbations to the current input state according to the `sm_perturbations` config in the state."""
 
     perturbations = state.sm_perturbations
