@@ -49,7 +49,8 @@ class FV3State(dict):
 
     # Execution control and simulation timeline
     init_datetime: pd.Timestamp
-    run_nhours: int
+    run_length: int
+    run_length_units: str
     total_run_hours: int
 
     forecast_hour: int
@@ -109,6 +110,8 @@ class FV3State(dict):
     nest_type: str
     refine_ratio: list[int]
     merge_freq: int
+    use_modern_diag: bool
+    pack_output: bool
 
     parent_tile: list[int]  # or int
 
@@ -142,6 +145,7 @@ class FV3State(dict):
     make_gsl_orog: bool
     do_deep: bool
     sm_perturbations: dict
+    tgrad_perturbations: dict | None
 
     # Fixed files, preprocessing, and executables
     fix: Path
@@ -199,6 +203,10 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
 
     if hash_keys is not None:
         _hash_keys += list(hash_keys)
+
+    # Hashed only when set, so checksums of existing cases remain valid.
+    if data.get("tgrad_perturbations") is not None:
+        _hash_keys.append("tgrad_perturbations")
 
     def _normalize_for_hash(value):
         if isinstance(value, dict):
