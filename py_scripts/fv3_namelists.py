@@ -292,7 +292,23 @@ def namelist_overrides(path: Path, nml: dict, name: str):
 
         break  # Exit after the first matching suffix is found
 
+    check_fhzero(nml, name)
     return nml
+
+
+def check_fhzero(nml: dict, name: str) -> None:
+    """Warn when the bucket reset (fhzero) differs from the output interval (fdiag).
+
+    Bucket fields (totprcpb_ave, cnvprcpb_ave, lhtfl_ave, ...) are means since
+    the last reset, so with fhzero != fdiag each record covers 1..fhzero/fdiag
+    output intervals instead of one.
+    """
+    fdiag = nml.get("atmos_model_nml", {}).get("fdiag")
+    fhzero = nml.get("gfs_physics_nml", {}).get("fhzero")
+    if fdiag != fhzero:
+        log.warning(
+            f"{name}: fhzero {fhzero} != fdiag {fdiag}; bucket outputs are running means"
+        )
 
 
 def update_namsfc(nml):

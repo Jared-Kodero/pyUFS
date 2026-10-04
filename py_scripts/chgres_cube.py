@@ -142,13 +142,18 @@ def config_candidates(domain: str) -> list[str]:
 def load_block(domain: str) -> dict:
     """Load a domain's flat config block, or an empty block if no file is present.
 
-    Accepted files (YAML preferred over namelist) are read verbatim. When none
-    exist, an empty block is returned so the built-in default applies.
+    Accepted files (YAML preferred over namelist) are read verbatim. Keys may
+    be flat or nested in one `config` group, the layout of fort.41 and of
+    configs/chgres_cube.yaml. When none exist, an empty block is returned so
+    the built-in default applies.
     """
     for name in config_candidates(domain):
         path = state.run_dir / name
         if path.exists():
-            block = {k: v for k, v in read_namelist(path).items() if v is not None}
+            block = read_namelist(path)
+            if set(block) == {"config"} and isinstance(block["config"], dict):
+                block = block["config"]
+            block = {k: v for k, v in block.items() if v is not None}
             unknown = set(block) - CONFIG_FIELDS
             if unknown:
                 raise KeyError(f"{path}: unknown chgres_cube keys {sorted(unknown)}")
@@ -324,7 +329,7 @@ def build_run_specs() -> list[RunSpec]:
 
             if model == "HRRR":
                 varmap_file = varmap_dir / "GSDphys_var_map.txt"
-                geogrid_file_input_grid = state.fix / "am" / "geo_em.d01.nc_HRRRX"
+                geogrid_file_input_grid = state.fix_src / "am" / "geo_em.d01.nc_HRRRX"
             else:
                 varmap_file = varmap_dir / "GFSphys_var_map.txt"
 

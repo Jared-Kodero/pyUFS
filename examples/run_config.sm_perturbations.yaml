@@ -1,0 +1,18 @@
+# Global C96 with the top three soil layers dried by 20% at the initial time.
+# Methods and options: configs/run_config.yaml section 10, py_scripts/sm_perturbations.py.
+description: C96 dry soil
+init_datetime: "2026031200Z"
+run_length: 24
+run_length_units: hours
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+
+sm_perturbations:
+  target_var: smc
+  soil_layers: [0, 1, 2]
+  tiles: [1, 2, 3, 4, 5, 6]
+  method: mean_shift
+  mean_scale: -0.2
+  apply_on_restarts: 0

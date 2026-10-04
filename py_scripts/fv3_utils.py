@@ -219,31 +219,19 @@ def deg_to_cres(ddeg):
     return C
 
 
-def parse_resolution(in_str):
+def parse_resolution(c_res: int | None) -> int | None:
+    """Cubed-sphere face resolution as an integer, for example 96."""
 
-    if in_str is None:
+    if c_res is None:
         return None
 
-    in_str = str(in_str).strip().upper()
-    in_str = "".join(in_str.split())
-
-    if not in_str.startswith("C"):
-        raise ValueError(
-            f"Invalid resolution format: {in_str}. Expected one of (C48, C96, C192, C384, C768, C1152, C3072)"
-        )
-
-    num = in_str.replace("C", "")
-    try:
-        c_res = int(num)
-    except ValueError:
-        raise ValueError(f"Invalid C-resolution format: {in_str}")
+    if isinstance(c_res, bool) or not isinstance(c_res, int):
+        raise TypeError(f"c_res must be an integer, e.g. 96; got {c_res!r}")
 
     valid_cres = (48, 96, 192, 384, 768, 1152, 3072)
 
     if c_res not in valid_cres:
-        raise ValueError(
-            f"Unsupported C-resolution: {c_res}. Supported values are: {valid_cres}"
-        )
+        raise ValueError(f"c_res {c_res} not supported; use one of {valid_cres}")
 
     return c_res
 

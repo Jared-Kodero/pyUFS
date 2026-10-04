@@ -104,7 +104,9 @@ def get_paths(cfg: dict):
     }
 
     for k, v in path_mapping.items():
-        value = cfg.get(v, DEFAULT_CFG[v])
+        value = cfg.get(v)
+        if value is None:  # unset or null in the case file
+            value = DEFAULT_CFG[v]
 
         if v == "container_bindpath" and isinstance(value, list):
             value = ",".join(value)

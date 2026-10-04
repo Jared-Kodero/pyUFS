@@ -1,0 +1,22 @@
+# Two telescoping nests initialized from GFS only (chgres_cube_nest02.yaml and
+# chgres_cube_nest03.yaml). Check that LOGS has one chgres_cube_nest0N_*.log per
+# nest (no HRRR run) and that state.yaml lists nest02/nest03_ic_source as GFS.
+description: test nest gfs
+init_datetime: "2024081400Z"
+run_length: 6
+run_length_units: hours
+c_res: 96
+gtype: nest
+levels: 64
+refine_ratio: [4, 2]
+lon_min: [-125, -95]
+lon_max: [-47, -57]
+lat_min: [25, 32]
+lat_max: [60, 55]
+parent_tile: 6
+halo: 3
+generate_ic_data: true
+n_nodes: 2
+n_cpus: 96
+walltime: 4
+constraint_node: "48core"

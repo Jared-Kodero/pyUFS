@@ -1,0 +1,2 @@
+# Per-nest IC source (copy as chgres_cube_nest02.yaml, _nest03.yaml, ...).
+external_model: GFS

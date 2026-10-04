@@ -1,0 +1,18 @@
+# Regression: global C96, hourly output, two 6 h segments (cold start + restart).
+# Check: both segments finish, OUTPUT/fv3_hist.global.nc holds hours 1-12 with
+# no gap or duplicate at hour 6.
+
+description: test hourly restart
+init_datetime: "2024081400Z"
+run_length: 6
+run_length_units: hours
+resubmit: 1
+merge_freq: -1
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+n_nodes: 1
+n_cpus: 48
+walltime: 2
+constraint_node: "48core"
