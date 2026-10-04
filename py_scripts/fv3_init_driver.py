@@ -26,7 +26,10 @@ from fv3_utils import (
     segment_hours,
 )
 from sm_perturbations import apply_sm_perturbations
-from tgrad_perturbations import apply_tgrad_perturbations
+from tgrad_perturbations import (
+    apply_tgrad_perturbations,
+    validate_tgrad_perturbations,
+)
 
 
 def _log_initial_state() -> None:
@@ -119,6 +122,8 @@ def _load_initial_state() -> None:
     state.init_datetime = parse_datetime(state.init_datetime)
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
+    # Fail before grid and IC generation; files are written after preprocessing.
+    validate_tgrad_perturbations(state.tgrad_perturbations)
     state.continue_run = False
     state.warm_start = False
     state.restart_no = 0

@@ -6,6 +6,45 @@ from pathlib import Path
 from fv3_runtime import log
 from fv3_state import load_fv3_state, state
 
+# Settings that describe the staged grid and initial conditions. The bundle's
+# state.yaml is authoritative for these; every other setting (description,
+# segment length and count, output, forcing, resources) comes from the case.
+BUNDLE_KEYS = frozenset(
+    {
+        "c_res",
+        "gtype",
+        "levels",
+        "init_datetime",
+        "forecast_hour",
+        "target_lon",
+        "target_lat",
+        "stretch_factor",
+        "refine_ratio",
+        "n_nests",
+        "nest_type",
+        "parent_tile",
+        "halo",
+        "lon_min",
+        "lon_max",
+        "lat_min",
+        "lat_max",
+        "idim",
+        "jdim",
+        "delx",
+        "dely",
+        "res_km",
+        "add_lake",
+        "lake_cutoff",
+        "make_gsl_orog",
+        "istart_nest",
+        "iend_nest",
+        "jstart_nest",
+        "jend_nest",
+        "nest_ioffsets",
+        "nest_joffsets",
+    }
+)  # plus every "<domain>_ic_source" key
+
 
 def _resolved_ok(path: Path) -> bool:
     """
@@ -169,9 +208,24 @@ def init_external_ic() -> bool:
         log.info(f"IC data source: {case_home}")
 
     # 3. Load the state descriptor. This drives the required-file manifest.
+    # The bundle supplies the grid and IC keys; the case keeps its own run
+    # settings, so a bundle can be shared by experiment arms.
     if not (case_home / "state.yaml").exists():
         raise FileNotFoundError(f"Missing state.yaml in {case_home}")
+    case = {
+        k: v
+        for k, v in state.items()
+        if k not in BUNDLE_KEYS and not k.endswith("_ic_source")
+    }
+    expected = {k: state.get(k) for k in ("init_datetime", "gtype", "levels")}
     load_fv3_state()
+    state.update(case)
+
+    for key, value in expected.items():
+        if value is not None and value != state.get(key):
+            raise ValueError(
+                f"Case {key}={value!r} differs from the IC bundle ({state.get(key)!r})"
+            )
 
     # 4. Validate the exact files the model needs for this configuration.
     _validate_ic_files(c_res=state.c_res, gtype=state.gtype, n_nests=state.n_nests)

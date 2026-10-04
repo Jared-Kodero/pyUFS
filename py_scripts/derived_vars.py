@@ -20,9 +20,9 @@ def _check_dtype(da: xr.DataArray, dtype: str):
 
 def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
     required_vars = ("q", "u", "v", "ps")
-    if not all(var in ds.data_vars for var in required_vars):
+    if not all(var in ds.data_vars for var in required_vars) or "plev" not in ds.dims:
         log.warning(
-            f"Missing variables {required_vars} for moisture transport calculation. Skipping!"
+            f"Missing variables {required_vars} or plev for moisture transport calculation. Skipping!"
         )
         return ds
 
@@ -119,7 +119,8 @@ def calc_bulk_richardson(ds: xr.Dataset) -> xr.Dataset:
 
     ds["brn"] = ds["cape"] / (0.5 * ds["shear06"] ** 2)
     ds["brn"] = ds["brn"].clip(0, 100)
-    ds["brn"] = _check_dtype(ds["brn"], ds["t"].dtype)
+    dtype = np.result_type(ds["cape"].dtype, ds["shear06"].dtype, np.float32)
+    ds["brn"] = _check_dtype(ds["brn"], dtype)
     ds["brn"].attrs["units"] = "dimensionless"
     ds["brn"].attrs["long_name"] = "Bulk Richardson number"
 

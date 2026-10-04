@@ -1,0 +1,21 @@
+# Global C96 with a 4 K Arctic SST increment (0 K at 60N, 4 K poleward of 80N).
+# Methods and options: configs/run_config.yaml section 11,
+# py_scripts/tgrad_perturbations.py. Use method: none for the control.
+description: C96 Arctic SST +4 K
+init_datetime: "2020010100Z"
+run_length: 1
+run_length_units: months
+resubmit: 11 # 12 monthly segments
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+
+tgrad_perturbations:
+  method: polar_shift # none | polar_shift | uniform_shift | ice_loss, or a list
+  ocean_mode: prescribed
+  poles: north
+  lat_start: 60.0
+  lat_full: 80.0
+  polar_delta_t_k: 4.0
+  monthly_scale: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]

@@ -3,11 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-import eccodes
 import numpy as np
+import xarray as xr
 from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import cp
+from grib_io import open_grib, save_grib
 from scipy.spatial import cKDTree
 
 SST_FILE = "RTGSST.1982.2012.monthly.clim.grb"
@@ -32,77 +33,55 @@ Transform = Callable[[np.ndarray, np.ndarray, int], np.ndarray]
 _WRITTEN: set[str] = set()  # configurations already written in this process
 
 
-def per_pole(value: float | dict, poles: str, name: str) -> dict[str, float]:
-    """Amplitude per pole: a scalar applies to every pole selected by `poles`;
-    a mapping {north: x, south: y} sets each pole explicitly.
+def polar_weight(lat: np.ndarray, p: dict, amps: dict[str, float]) -> np.ndarray:
+    """Sum over poles of amplitude times a smoothstep ramp in latitude.
+
+    Parameters
+    ----------
+    lat : numpy.ndarray
+        Latitude [degrees north].
+    p : dict
+        Validated parameters with ``lat_start`` and ``lat_full`` [degrees].
+    amps : dict of str to float
+        Amplitude per pole.
+
+    Returns
+    -------
+    numpy.ndarray
+        :math:`\\sum_{pole} a_{pole} W(\\phi)`, with :math:`\\phi` = `lat`
+        for the north and -`lat` for the south.
+
+    Notes
+    -----
+    .. math:: W = x^2 (3 - 2x), \\quad
+              x = \\mathrm{clip}\\left(\\frac{\\phi - \\phi_s}{\\phi_f - \\phi_s}, 0, 1\\right)
     """
-    if isinstance(value, dict):
-        bad = [k for k in value if k not in ("north", "south")]
-        if bad:
-            raise ValueError(f"`{name}` keys must be north and/or south. Got {bad}")
-        return {k: float(v) for k, v in value.items()}
-    return {pole: float(value) for pole in POLES[poles]}
-
-
-def monthly_scale(p: dict) -> list[float]:
-    scale = p.get("monthly_scale") or [1.0] * 12
-    if len(scale) != 12:
-        raise ValueError("monthly_scale must have 12 values (Jan..Dec).")
-    return [float(a) for a in scale]
-
-
-def smoothstep_weight(phi: np.ndarray, p: dict) -> np.ndarray:
-    """W = x^2 (3 - 2x), x = clip((phi - lat_start) / (lat_full - lat_start), 0, 1)."""
     span = p["lat_full"] - p["lat_start"]
-    x = np.clip((phi - p["lat_start"]) / span, 0.0, 1.0)
-    return x * x * (3.0 - 2.0 * x)
-
-
-def polar_pattern(lat: np.ndarray, p: dict, amps: dict[str, float]) -> np.ndarray:
-    """Sum over poles of amplitude * W, with phi = lat (north) or -lat (south)."""
     out = np.zeros_like(lat, dtype=float)
     for pole, amp in amps.items():
-        out += amp * smoothstep_weight(lat if pole == "north" else -lat, p)
+        phi = lat if pole == "north" else -lat
+        x = np.clip((phi - p["lat_start"]) / span, 0.0, 1.0)
+        out += amp * (x * x * (3.0 - 2.0 * x))
     return out
-
-
-def message_month(gid: int) -> int:
-    return (eccodes.codes_get(gid, "dataDate") // 100) % 100
-
-
-def read_grib(path: Path) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    """Return {month: (values, latitudes, longitudes)}; bitmapped points are NaN."""
-    fields = {}
-    with open(path, "rb") as f:
-        while (gid := eccodes.codes_grib_new_from_file(f)) is not None:
-            vals = eccodes.codes_get_values(gid)
-            if eccodes.codes_get(gid, "bitmapPresent"):
-                vals = np.where(
-                    vals == eccodes.codes_get(gid, "missingValue"), np.nan, vals
-                )
-            fields[message_month(gid)] = (
-                vals,
-                eccodes.codes_get_array(gid, "latitudes"),
-                eccodes.codes_get_array(gid, "longitudes"),
-            )
-            eccodes.codes_release(gid)
-    return fields
-
-
-def read_grid(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    """Latitudes and longitudes of the first message (all messages share a grid)."""
-    with open(path, "rb") as f:
-        gid = eccodes.codes_grib_new_from_file(f)
-        lat = eccodes.codes_get_array(gid, "latitudes")
-        lon = eccodes.codes_get_array(gid, "longitudes")
-        eccodes.codes_release(gid)
-    return lat, lon
 
 
 def nearest_index(
     src_lat: np.ndarray, src_lon: np.ndarray, lat: np.ndarray, lon: np.ndarray
 ) -> np.ndarray:
-    """Index of the nearest source point (on the sphere) for each target point."""
+    """Nearest source point on the sphere for each target point.
+
+    Parameters
+    ----------
+    src_lat, src_lon : numpy.ndarray
+        Source grid coordinates [degrees].
+    lat, lon : numpy.ndarray
+        Target grid coordinates [degrees].
+
+    Returns
+    -------
+    numpy.ndarray
+        Index into the source points for every target point.
+    """
 
     def xyz(la: np.ndarray, lo: np.ndarray) -> np.ndarray:
         phi, lam = np.deg2rad(la), np.deg2rad(lo)
@@ -115,136 +94,149 @@ def nearest_index(
 
 
 def perturb_grib(src: Path, dst: Path, transform: Transform) -> tuple[float, float]:
-    """Rewrite each GRIB message with transformed values, keeping all headers.
+    """Rewrite every monthly field with transformed values, keeping all headers.
 
-    Returns the minimum and maximum change over all messages.
+    Parameters
+    ----------
+    src : Path
+        Source GRIB climatology with one variable on one level.
+    dst : Path
+        Output GRIB file.
+    transform : callable
+        ``transform(values, lat, month) -> values`` on flattened fields.
+
+    Returns
+    -------
+    d_min, d_max : float
+        Smallest and largest change over all months; 0 when nothing changes.
+
+    Notes
+    -----
+    Missing (NaN) points stay missing. Headers and packing come from `src`
+    through :func:`grib_io.save_grib`.
     """
+    tree = open_grib(src)
+    node = tree.leaves[0]
+    name = next(iter(node.data_vars))
+    field = node[name]
+    lat = xr.broadcast(field.latitude, field.longitude)[0].values.ravel()
+    data = np.empty(field.shape, dtype=field.dtype)
     d_min, d_max = 0.0, 0.0
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with open(src, "rb") as fin, open(dst, "wb") as fout:
-        while (gid := eccodes.codes_grib_new_from_file(fin)) is not None:
-            vals = eccodes.codes_get_values(gid)
-            lat = eccodes.codes_get_array(gid, "latitudes")
-            new = transform(vals, lat, message_month(gid))
-            if eccodes.codes_get(gid, "bitmapPresent"):
-                miss = vals == eccodes.codes_get(gid, "missingValue")
-                new = np.where(miss, vals, new)
-            d_min = min(d_min, float(np.min(new - vals)))
-            d_max = max(d_max, float(np.max(new - vals)))
-            out = eccodes.codes_clone(gid)
-            eccodes.codes_set_values(out, new)
-            eccodes.codes_write(out, fout)
-            eccodes.codes_release(out)
-            eccodes.codes_release(gid)
+    for i, month in enumerate(field.time.dt.month.values):
+        old = field[i, 0].values.ravel().astype(float)
+        new = np.where(np.isnan(old), np.nan, transform(old, lat, int(month)))
+        change = new - old
+        if np.isfinite(change).any():
+            d_min = min(d_min, float(np.nanmin(change)))
+            d_max = max(d_max, float(np.nanmax(change)))
+        data[i, 0] = new.reshape(field.shape[2:])
+    node[name] = field.copy(data=data)
+    save_grib(tree, dst)
     return d_min, d_max
 
 
-def ice_masks_on_sst_grid(
-    ice_src: Path, ice_fn: Transform | None, idx: np.ndarray
-) -> tuple[np.ndarray, dict[int, np.ndarray]]:
-    """Perennial-ice mask and per-month opened-water masks on the SST grid.
-
-    frozen: final SIC >= 0.15 in every month (land flags count as frozen).
-    opened[m]: ice in the original field (0.15 <= SIC <= 1) but open water in
-    the final field. Computed on the ice grid, mapped with the index idx.
-    """
-    frozen, opened = None, {}
-    for month, (vals, lat, _) in read_grib(ice_src).items():
-        sic0 = np.nan_to_num(vals, nan=0.0)
-        sic1 = sic0 if ice_fn is None else ice_fn(sic0, lat, month)
-        ice1 = sic1 >= ICE_EDGE
-        frozen = ice1 if frozen is None else frozen & ice1
-        opened[month] = ((sic0 >= ICE_EDGE) & (sic0 <= 1.0) & ~ice1)[idx]
-    return frozen[idx], opened
-
-
-def ocean_on_sst_grid(land_src: Path, lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
-    """Ocean mask on the SST grid from seaice_newland.grb (1 = land).
-
-    Raises if the cos(lat)-weighted ocean fraction is implausible.
-    """
-    vals, mlat, mlon = next(iter(read_grib(land_src).values()))
-    land = np.nan_to_num(vals, nan=1.0) >= 0.5
-    ocean = ~land[nearest_index(mlat, mlon, lat, lon)]
-    cosw = np.cos(np.deg2rad(lat))
-    frac = float(np.sum(cosw * ocean) / np.sum(cosw))
-    log.info(f"tgrad sst: ocean fraction from {land_src} = {frac:.3f}")
-    if not OCEAN_FRACTION[0] <= frac <= OCEAN_FRACTION[1]:
-        raise ValueError(f"Ocean fraction {frac:.3f} from {land_src} is implausible.")
-    return ocean
-
-
-def polar_shift(
-    lat: np.ndarray, month: int, p: dict, active: np.ndarray | None, scale: list
-) -> np.ndarray:
-    """dT = A_m * sum_pole polar_delta_t_k * W(phi)   [K]."""
-    return scale[month - 1] * polar_pattern(lat, p, p["dt_poles"])
-
-
-def uniform_shift(
-    lat: np.ndarray, month: int, p: dict, active: np.ndarray | None, scale: list
-) -> np.ndarray:
-    """polar_shift replaced by its monthly mean over the SST-active ocean
-    (cos(lat) area weights; land and perennial ice excluded)."""
-    pattern = polar_pattern(lat, p, p["dt_poles"])
-    cosw = np.cos(np.deg2rad(lat)) * active
-    mean = np.full_like(pattern, np.sum(pattern * cosw) / np.sum(cosw))
-    return scale[month - 1] * mean
-
-
-def ice_loss(
-    vals: np.ndarray, lat: np.ndarray, month: int, p: dict, scale: list
-) -> np.ndarray:
-    """SIC' = SIC * (1 - min(1, A_m * sum_pole sic_reduction * W(phi)))."""
-    loss = np.clip(scale[month - 1] * polar_pattern(lat, p, p["sic_poles"]), 0.0, 1.0)
-    # Values outside [0, 1] are land flags (1.57 in the CFSR file); keep them.
-    fraction = (vals >= 0.0) & (vals <= 1.0)
-    return np.where(fraction, np.clip(vals * (1.0 - loss), 0.0, 1.0), vals)
-
-
 def adjust_sea_ice(p: dict, methods: list, am_dir: Path) -> Transform | None:
-    """Write FIXED sea ice; return the SIC transform when ice_loss is applied."""
+    """Write the FIXED sea-ice climatology.
+
+    Parameters
+    ----------
+    p : dict
+        Validated perturbation parameters.
+    methods : list of str
+        Selected methods.
+    am_dir : Path
+        Pristine ``fix_src/am`` directory.
+
+    Returns
+    -------
+    callable or None
+        The sea-ice transform when ``ice_loss`` is applied, else None.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the source climatology is missing.
+
+    Notes
+    -----
+    .. math:: SIC' = SIC \\left(1 - \\min\\left(1, A_m \\sum_{pole} r_{pole} W(\\phi)\\right)\\right)
+
+    Values outside [0, 1] are land flags (1.57 in the CFSR file) and are kept.
+    """
     src = am_dir / ICE_FILE
     dst = Path(state.fix) / "MODS" / ICE_FILE
 
-    if not src.exists():  # already reported by update_namsfc
-        return None
+    if not src.exists():
+        raise FileNotFoundError(f"Sea ice climatology not found: {src}")
 
     dst.unlink(missing_ok=True)  # never write through a symlink into fix_src
 
     if "ice_loss" not in methods:
         dst.parent.mkdir(parents=True, exist_ok=True)
         cp(src, dst)
-        log.info(f"tgrad sea_ice: unperturbed copy {src} -> {dst}")
+        log.info(f"Copied unperturbed sea ice to: {dst}")
         return None
 
-    scale = monthly_scale(p)
+    scale = p["monthly_scale"]
 
     def ice_fn(vals: np.ndarray, lat: np.ndarray, month: int) -> np.ndarray:
-        return ice_loss(vals, lat, month, p, scale)
+        weight = scale[month - 1] * polar_weight(lat, p, p["sic_poles"])
+        loss = np.clip(weight, 0.0, 1.0)
+        fraction = (vals >= 0.0) & (vals <= 1.0)
+        return np.where(fraction, np.clip(vals * (1.0 - loss), 0.0, 1.0), vals)
 
     d_min, d_max = perturb_grib(src, dst, ice_fn)
     log.info(
-        f"tgrad sea_ice: perturbed {src} -> {dst}; "
-        f"change range [{d_min:.3f}, {d_max:.3f}]"
+        f"Applied ice_loss with sic_reduction={p['sic_reduction']}: "
+        + f"dSIC [{d_min:.3f}, {d_max:.3f}]"
     )
     return ice_fn
 
 
 def adjust_sst(p: dict, methods: list, am_dir: Path, ice_fn: Transform | None) -> None:
-    """Write FIXED SST: dT = uniform_warming_k + shift method, plus
-    opened_water_delta_t_k where ice_loss opens water. dT is zero at
-    perennial-ice points; cooling never takes SST below T_FREEZE."""
+    """Write the FIXED SST climatology.
+
+    Parameters
+    ----------
+    p : dict
+        Validated perturbation parameters.
+    methods : list of str
+        Selected methods.
+    am_dir : Path
+        Pristine ``fix_src/am`` directory.
+    ice_fn : callable or None
+        Sea-ice transform from :func:`adjust_sea_ice`.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the source climatology is missing.
+    ValueError
+        If the land mask gives an implausible ocean fraction.
+
+    Notes
+    -----
+    dT = ``uniform_warming_k`` + the shift method, plus
+    ``opened_water_delta_t_k`` where ``ice_loss`` opens water. dT is zero
+    where the final SIC >= ``ICE_EDGE`` in every month (perennial ice and
+    land flags), and cooling never takes SST below ``T_FREEZE``.
+
+    polar_shift:
+
+    .. math:: \\Delta T = A_m \\sum_{pole} \\Delta T_{pole} W(\\phi)
+
+    uniform_shift replaces that pattern by its cos(lat)-weighted mean over
+    ocean points that are not perennial ice.
+    """
     src = am_dir / SST_FILE
     dst = Path(state.fix) / "MODS" / SST_FILE
 
-    if not src.exists():  # already reported by update_namsfc
-        return
+    if not src.exists():
+        raise FileNotFoundError(f"SST climatology not found: {src}")
 
     dst.unlink(missing_ok=True)  # never write through a symlink into fix_src
 
-    shift_methods = {"polar_shift": polar_shift, "uniform_shift": uniform_shift}
-    shifts = [m for m in methods if m in shift_methods]
+    shifts = [m for m in methods if m in ("polar_shift", "uniform_shift")]
     opened_dt = 0.0
     if "ice_loss" in methods:
         opened_dt = float(p.get("opened_water_delta_t_k", 0.0))
@@ -252,53 +244,106 @@ def adjust_sst(p: dict, methods: list, am_dir: Path, ice_fn: Transform | None) -
     if not shifts and opened_dt == 0.0:
         dst.parent.mkdir(parents=True, exist_ok=True)
         cp(src, dst)
-        log.info(f"tgrad sst: unperturbed copy {src} -> {dst}")
+        log.info(f"Copied unperturbed SST to: {dst}")
         return
 
-    lat, lon = read_grid(src)
+    sst = open_grib(src).leaves[0]
+    sst = sst[next(iter(sst.data_vars))]
+    lat, lon = (c.values.ravel() for c in xr.broadcast(sst.latitude, sst.longitude))
+
     ice_src = am_dir / ICE_FILE
+    opened = {}
     if ice_src.exists():
-        idx = nearest_index(*read_grid(ice_src), lat, lon)
-        frozen, opened = ice_masks_on_sst_grid(ice_src, ice_fn, idx)
+        ice = open_grib(ice_src).leaves[0]
+        ice = ice[next(iter(ice.data_vars))]
+        ice_lat, ice_lon = (
+            c.values.ravel() for c in xr.broadcast(ice.latitude, ice.longitude)
+        )
+        idx = nearest_index(ice_lat, ice_lon, lat, lon)
+        frozen = None
+        for i, month in enumerate(ice.time.dt.month.values):
+            sic0 = np.nan_to_num(ice[i, 0].values.ravel().astype(float), nan=0.0)
+            sic1 = sic0 if ice_fn is None else ice_fn(sic0, ice_lat, int(month))
+            ice1 = sic1 >= ICE_EDGE
+            frozen = ice1 if frozen is None else frozen & ice1
+            opened[int(month)] = ((sic0 >= ICE_EDGE) & (sic0 <= 1.0) & ~ice1)[idx]
+        frozen = frozen[idx]
         del idx
     else:
-        log.warning(f"tgrad sst: {ice_src} missing; no ice masks")
-        frozen, opened = np.zeros(lat.shape, dtype=bool), {}
+        log.warning(f"Sea ice climatology not found: {ice_src}; no perennial-ice mask")
+        frozen = np.zeros(lat.shape, dtype=bool)
 
-    active = None
-    if "uniform_shift" in shifts:
-        active = ocean_on_sst_grid(am_dir / LAND_FILE, lat, lon) & ~frozen
-
-    scale = monthly_scale(p)
+    scale = p["monthly_scale"]
     uniform = float(p.get("uniform_warming_k", 0.0)) if shifts else 0.0
+    pattern = polar_weight(lat, p, p["dt_poles"])
+
+    if "uniform_shift" in shifts:
+        land = open_grib(am_dir / LAND_FILE).leaves[0]
+        land = land[next(iter(land.data_vars))]
+        land_lat, land_lon = (
+            c.values.ravel() for c in xr.broadcast(land.latitude, land.longitude)
+        )
+        is_land = np.nan_to_num(land[0, 0].values.ravel().astype(float), nan=1.0) >= 0.5
+        ocean = ~is_land[nearest_index(land_lat, land_lon, lat, lon)]
+        cosw = np.cos(np.deg2rad(lat))
+        frac = float(np.sum(cosw * ocean) / np.sum(cosw))
+        log.info(f"Ocean fraction: {frac:.3f}")
+        if not OCEAN_FRACTION[0] <= frac <= OCEAN_FRACTION[1]:
+            raise ValueError(
+                f"Ocean fraction {frac:.3f} outside {OCEAN_FRACTION}; "
+                + f"check {am_dir / LAND_FILE}"
+            )
+        cosw = cosw * (ocean & ~frozen)
+        pattern = np.full_like(pattern, np.sum(pattern * cosw) / np.sum(cosw))
 
     def sst_fn(vals: np.ndarray, lat: np.ndarray, month: int) -> np.ndarray:
         d_t = np.zeros_like(vals)
         if shifts:
-            d_t = uniform + shift_methods[shifts[0]](lat, month, p, active, scale)
+            d_t = uniform + scale[month - 1] * pattern
         d_t = np.where(frozen, 0.0, d_t) + opened_dt * opened.get(month, False)
         return np.maximum(vals + d_t, np.minimum(vals, T_FREEZE))
 
     d_min, d_max = perturb_grib(src, dst, sst_fn)
+    applied = shifts + (["opened_water"] if opened_dt else [])
     log.info(
-        f"tgrad sst: perturbed {src} -> {dst}; change range "
-        f"[{d_min:.3f}, {d_max:.3f}] K; {int(frozen.sum())} perennial-ice or "
-        "land-flagged points unchanged"
+        f"Applied {', '.join(applied)} to SST: dT [{d_min:.2f}, {d_max:.2f}] K, "
+        + f"{int(frozen.sum())} ice/land points held"
     )
 
 
-def apply_tgrad_perturbations() -> bool:
-    """Write the FIXED SST and sea-ice climatologies from pristine fix_src/am
-    according to the `tgrad_perturbations` config in the state.
+def validate_tgrad_perturbations(perturbations: object) -> tuple[dict, list] | None:
+    """Validate ``tgrad_perturbations`` before any file is written.
 
-    Both files are rewritten under their original names, perturbed or not, so a
-    case switched back to a control arm cannot keep a stale perturbed copy.
-    fix_src is only read. Returns True when the files were written.
+    Parameters
+    ----------
+    perturbations : object
+        The ``tgrad_perturbations`` block from the state; empty or None
+        disables the perturbation.
+
+    Returns
+    -------
+    tuple of (dict, list) or None
+        Parameters with defaults, ``monthly_scale`` as twelve factors and
+        per-pole amplitudes ``dt_poles`` and ``sic_poles``, and the selected
+        methods; None when no block is configured.
+
+    Raises
+    ------
+    KeyError
+        If ``method`` or a key required by a method is missing.
+    TypeError
+        If the block is not a mapping.
+    ValueError
+        If a key, method or value is invalid.
+
+    Notes
+    -----
+    A scalar amplitude applies to every pole selected by ``poles``; a mapping
+    ``{north: x, south: y}`` sets each pole explicitly. The ``DELTA_T_MAX``
+    limit applies to the base ``polar_delta_t_k``, before ``monthly_scale``.
     """
-
-    perturbations = state.tgrad_perturbations
     if not perturbations:
-        return False
+        return None
 
     if not isinstance(perturbations, dict):
         raise TypeError("`tgrad_perturbations` config must be a mapping")
@@ -306,12 +351,8 @@ def apply_tgrad_perturbations() -> bool:
     p = dict(perturbations)  # state copy stays as configured (checksum)
 
     allowed = ("none", "polar_shift", "uniform_shift", "ice_loss")
-    required = ("method",)
-    missing = [k for k in required if k not in p]
-    if missing:
-        raise KeyError(f"Missing tgrad_perturbations keys: {missing}")
-
-    soft_keys = (
+    keys = (
+        "method",
         "polar_delta_t_k",
         "sic_reduction",
         "poles",
@@ -323,85 +364,140 @@ def apply_tgrad_perturbations() -> bool:
         "opened_water_delta_t_k",
     )
 
-    for k in p:
-        if k not in required and k not in soft_keys:
-            raise ValueError(f"Unknown key in tgrad_perturbations: {k}")
+    if "method" not in p:
+        raise KeyError("Missing perturbation key: method")
 
-    methods = p.get("method")
+    unknown = [k for k in p if k not in keys]
+    if unknown:
+        raise ValueError(f"Unknown keys in perturbation config: {unknown}")
 
+    methods = p["method"]
     if isinstance(methods, str):
-        check_methods = [methods]
-    else:
-        check_methods = list(methods)
+        methods = [methods]
+    if not isinstance(methods, (list, tuple)) or not methods:
+        raise ValueError("`method` must be a name or a non-empty list; use `none`")
+    methods = list(methods)
 
-    for m in check_methods:
+    for m in methods:
         if m not in allowed:
             raise ValueError(f"`method` must be one of {allowed}. Got `{m}`")
 
-    # Conditional parameter checks
+    needs = {
+        "polar_shift": "polar_delta_t_k",
+        "uniform_shift": "polar_delta_t_k",
+        "ice_loss": "sic_reduction",
+    }
+    for m in methods:
+        if m in needs and needs[m] not in p:
+            raise KeyError(f"If method includes '{m}', you must provide '{needs[m]}'")
 
-    if "polar_shift" in check_methods and "polar_delta_t_k" not in p:
-        raise KeyError(
-            "If method includes 'polar_shift', you must provide key 'polar_delta_t_k'"
-        )
+    if "none" in methods and len(methods) > 1:
+        raise ValueError("`none` cannot be combined with other methods")
 
-    if "uniform_shift" in check_methods and "polar_delta_t_k" not in p:
-        raise KeyError(
-            "If method includes 'uniform_shift', you must provide key 'polar_delta_t_k'"
-        )
-
-    if "ice_loss" in check_methods and "sic_reduction" not in p:
-        raise KeyError(
-            "If method includes 'ice_loss', you must provide key 'sic_reduction'"
-        )
-
-    if "none" in check_methods and len(check_methods) > 1:
-        raise ValueError("Method 'none' cannot be combined with other methods")
-
-    if "polar_shift" in check_methods and "uniform_shift" in check_methods:
-        raise ValueError("Use only one of 'polar_shift' and 'uniform_shift'")
+    if "polar_shift" in methods and "uniform_shift" in methods:
+        raise ValueError("only one of `polar_shift` and `uniform_shift` can be used")
 
     p.setdefault("poles", "north")
-    p.setdefault("lat_start", 60.0)
-    p.setdefault("lat_full", 80.0)
+    p["lat_start"] = float(p.get("lat_start", 60.0))
+    p["lat_full"] = float(p.get("lat_full", 80.0))
     p.setdefault("ocean_mode", "prescribed")
 
     if p["poles"] not in POLES:
-        raise ValueError(f"`poles` must be one of {tuple(POLES)}")
+        raise ValueError(f"`poles` must be one of {tuple(POLES)}. Got `{p['poles']}`")
 
-    if p["lat_full"] <= p["lat_start"]:
-        raise ValueError("`lat_full` must exceed `lat_start`")
+    if not 0.0 <= p["lat_start"] < p["lat_full"] <= 90.0:
+        raise ValueError("`lat_start` and `lat_full` need 0 <= start < full <= 90")
 
     if p["ocean_mode"] not in ("prescribed", "mlo"):
-        raise ValueError("`ocean_mode` must be one of ('prescribed', 'mlo')")
+        raise ValueError(
+            f"`ocean_mode` must be prescribed or mlo. Got `{p['ocean_mode']}`"
+        )
 
-    monthly_scale(p)
-    p["dt_poles"] = per_pole(
-        p.get("polar_delta_t_k", 0.0), p["poles"], "polar_delta_t_k"
-    )
-    p["sic_poles"] = per_pole(p.get("sic_reduction", 0.0), p["poles"], "sic_reduction")
+    for k in ("uniform_warming_k", "opened_water_delta_t_k"):
+        if k in p:
+            p[k] = float(p[k])
+
+    scale = p.get("monthly_scale")
+    if scale is None:
+        scale = [1.0] * 12
+    if not isinstance(scale, (list, tuple)) or len(scale) != 12:
+        raise ValueError("`monthly_scale` needs 12 values (Jan..Dec)")
+    p["monthly_scale"] = [float(a) for a in scale]
+
+    for key, out in (("polar_delta_t_k", "dt_poles"), ("sic_reduction", "sic_poles")):
+        value = p.get(key, 0.0)
+        if isinstance(value, dict):
+            bad = [k for k in value if k not in ("north", "south")]
+            if bad:
+                raise ValueError(f"`{key}` keys must be north or south. Got {bad}")
+            p[out] = {k: float(v) for k, v in value.items()}
+        else:
+            p[out] = {pole: float(value) for pole in POLES[p["poles"]]}
 
     for pole, dt in p["dt_poles"].items():
         if abs(dt) > DELTA_T_MAX:
             raise ValueError(
-                f"polar_delta_t_k ({pole}) = {dt} K exceeds the CMIP6 range of "
-                f"central-Arctic SST warming (|dT| <= {DELTA_T_MAX} K)."
+                f"`polar_delta_t_k` must be within +/-{DELTA_T_MAX} K. "
+                + f"Got {dt} K ({pole})"
             )
 
     for pole, r in p["sic_poles"].items():
         if not 0.0 <= r <= 1.0:
-            raise ValueError(f"sic_reduction ({pole}) = {r} must be within 0..1.")
+            raise ValueError(f"`sic_reduction` must be within 0..1. Got {r} ({pole})")
+
+    return p, methods
+
+
+def apply_tgrad_perturbations() -> bool:
+    """Write the FIXED SST and sea-ice climatologies from pristine ``fix_src/am``.
+
+    Uses the ``tgrad_perturbations`` config in the state. Both files are
+    rewritten under their original names, perturbed or not, so a case switched
+    back to a control arm cannot keep a stale perturbed copy. ``fix_src`` is
+    only read.
+
+    Returns
+    -------
+    bool
+        True when the files are written (or were already written in this
+        process for the same config), False when no perturbation is configured.
+    """
+
+    validated = validate_tgrad_perturbations(state.tgrad_perturbations)
+    if validated is None:
+        return False
+
+    p, methods = validated
 
     # update_namsfc runs once per domain (global and nests); write once.
     key = f"{state.fix}|{p!r}"
     if key in _WRITTEN:
         return True
 
-    log.info(f"tgrad_perturbations detected; applying {check_methods}")
-
     am_dir = Path(state.fix_src) / "am"
-    ice_fn = adjust_sea_ice(p, check_methods, am_dir)
-    adjust_sst(p, check_methods, am_dir, ice_fn)
+    scale = p["monthly_scale"]
+
+    log.info(f"tgrad_perturbations detected; applying {', '.join(methods)}")
+    log.info(f"Using climatologies from: {am_dir}")
+    if any(a != 1.0 for a in scale):
+        log.info(f"Using monthly_scale={scale}")
+
+    if {"polar_shift", "uniform_shift"} & set(methods):
+        for pole, dt in p["dt_poles"].items():
+            if abs(dt) > DELTA_T_STANDARD:
+                log.info(f"Strong forcing: polar_delta_t_k={dt} K ({pole})")
+            if pole == "south" and dt > 0.0:
+                log.info(f"Idealized: southern warming of {dt} K")
+            peak = max(abs(a) for a in scale) * abs(dt)
+            if peak > DELTA_T_MAX:
+                log.warning(f"Scaled anomaly {peak} K exceeds {DELTA_T_MAX} K ({pole})")
+    if "ice_loss" in methods:
+        for pole, r in p["sic_poles"].items():
+            if min(min(max(a * r, 0.0), 1.0) for a in scale) > 0.5:
+                log.info(f"Idealized: ice loss above 50% in every month ({pole})")
+
+    ice_fn = adjust_sea_ice(p, methods, am_dir)
+    adjust_sst(p, methods, am_dir, ice_fn)
 
     _WRITTEN.add(key)
 
