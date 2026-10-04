@@ -1,5 +1,7 @@
 # Ignore test_data
-tests/
+tests/data/
+.pytest_cache/
+.ruff_cache/
 *.ipynb
 *.nc
 __pycache__

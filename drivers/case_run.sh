@@ -48,8 +48,15 @@ mkdir -p "$CASE_DIR"
 mkdir -p "$TMP_DIR"
 
 
-if [ ! -d "$CONTAINERS_DIR" ] || [ -z "$(ls -A "$CONTAINERS_DIR")" ]; then
-    source "$UFS_UTILS_DIR/configs/install_images.sh" > "$WORK_DIR"/image_build.log 2>&1
+# BUILD MISSING IMAGES (run as a child process so its module/env changes do not leak)
+if [ ! -f "$SHIELD_SIF" ] || [ ! -f "$PREPROCESS_SIF" ] || [ ! -f "$FREGRID_SIF" ]; then
+    bash "$UFS_UTILS_DIR/configs/install_images.sh" > "$WORK_DIR"/image_build.log 2>&1
+    for SIF in "$SHIELD_SIF" "$PREPROCESS_SIF" "$FREGRID_SIF"; do
+        if [ ! -f "$SIF" ]; then
+            echo "Case.Run - ERROR - image $SIF not found after build; images are written to $CONTAINERS_DIR" >&2
+            exit 1
+        fi
+    done
 fi
 
 
@@ -112,8 +119,10 @@ fi
 
 
 
-(( $(<"$EXIT_CODE_FILE") == 0 )) && $SHIELD
-(( $(<"$EXIT_CODE_FILE") == 0 )) && $FREGRID
+# Stage exit codes are carried by EXIT_CODE_FILE, so a failed stage still
+# reaches the log copy below instead of aborting under set -e.
+if (( $(<"$EXIT_CODE_FILE") == 0 )); then $SHIELD || true; fi
+if (( $(<"$EXIT_CODE_FILE") == 0 )); then $FREGRID || true; fi
 
 
 

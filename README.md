@@ -28,6 +28,8 @@ regrids the output, and synchronizes results back to the case directory.
 18. Example cases
 19. Compiling a custom SHiELD executable
 20. Quick start and submission notes
+21. SST and sea-ice perturbations (`tgrad_perturbations`)
+22. Monthly runs
 
 ## 1. Reference documentation
 
@@ -52,8 +54,10 @@ may instead run from a native executable:
 - `shield_image` runs the SHiELD executable when a native binary is not supplied.
 - `fregrid_image` runs the regridding stage `py_scripts/fv3_regrid.py`.
 
-If the container directory is empty, `case_run.sh` builds the images through
-`configs/install_images.sh` before the first stage. Host modules loaded for the job are set
+If any image is missing, `case_run.sh` builds the images through
+`configs/install_images.sh` before the first stage (log in `image_build.log`). Source tags
+are set with `SHIELD_TAG`, `PREPROCESS_TAG`, and `FREGRID_TAG` (default `latest`); the
+sources, SHA-256 sums, and conda package lists are written to `$CONTAINERS_DIR/manifest`. Host modules loaded for the job are set
 by the `modules` key, with a default of `hpcx-mpi`, `netcdf-mpi`, `libyaml`, and `netcdf`.
 The Python dependencies used inside the preprocessing container are listed in
 `configs/env.yaml` and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`,
@@ -78,12 +82,17 @@ ufs_py/
 │   ├── chgres_cube.yaml     # Initial-condition conversion template
 │   ├── diag_table           # Default diagnostic output table
 │   ├── diag_field.csv       # Diagnostic field reference
+│   ├── diag_table.monthly   # Default table for month or year segments
 │   ├── install_images.sh    # Container build helper
+│   ├── update_fix.py        # Fix tree download and check (sync_noaa_fix.sh wrapper)
 │   └── *.vars.csv           # GFS, HRRR, and ERA5 variable maps
 ├── drivers/                 # Submission and runtime job scripts
 │   ├── case_submit.py       # Config validation and job submission
 │   ├── sbatch.sh            # sbatch submission template
 │   └── case_run.sh          # Runtime driver executed on the compute node
+├── docs/state_audit.md      # FV3State key sources and required fields
+├── examples/               # Example run_config.yaml files and overrides (Section 18)
+├── tests/                   # pytest checks and HPC test cases (tests/README.md)
 ├── fregrid                  # Regridding stage entrypoint
 ├── preprocess               # Preprocess stage entrypoint
 ├── py_scripts/              # Workflow implementation
@@ -198,9 +207,7 @@ per-job memory flag is derived.
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 
-`c_res` must use the labeled form, for example `C96`; bare integers such as `96` are
-rejected by `parse_resolution()`. The current default template still shows a bare integer, so
-set a `C`-prefixed value in the case-local file.
+`c_res` is an integer: 48, 96, 192, 384, 768, 1152 or 3072.
 
 ### 6.5 Initial conditions and preprocessing
 
@@ -294,6 +301,15 @@ reference source:
 
 https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
 
+`configs/update_fix.py` (or `configs/sync_noaa_fix.sh`, which loads `awscli`) syncs the
+latest version of each NOAA fix directory, restores the CO2 symlinks, downloads the
+UFS_UTILS varmap tables, and lists missing required files:
+
+```bash
+python configs/update_fix.py --dest /path/to/fix          # sync and check
+python configs/update_fix.py --dest /path/to/fix --check-only
+```
+
 The soil moisture climatology used by the perturbation module is
 `fix/era5/sm_monthly_1950_2025.nc`.
 
@@ -351,9 +367,10 @@ built-in behavior described above.
 | Regional | `chgres_cube.yaml` |
 | Nest `NN` | `chgres_cube_nest{NN}.yaml` |
 
-`chgres_cube.py` also lists `fort.41` and `fort_nest{NN}.41` as candidates, but the current
-loader validates top-level keys directly; a conventional namelist with a `&config` section
-is therefore not equivalent to the flat YAML override. `NN` is the zero-padded nest index
+`chgres_cube.py` also lists `fort.41` and `fort_nest{NN}.41` as candidates. Keys may be
+flat or nested in one `config` group, so a conventional namelist with a `&config` section
+and a YAML file copied from `configs/chgres_cube.yaml` are both accepted. `NN` is the
+zero-padded nest index
 used throughout the workflow: the first nest
 is `nest02`, the second is `nest03`, and so on. For example:
 
@@ -544,6 +561,11 @@ The workflow expects a staged case directory containing non-empty `FIXED`, `GRID
 Use the repository code as the handoff point when building a custom conversion pipeline
 rather than mutating the default files directly.
 
+The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
+`py_scripts/fv3_external_ic.py`); all other settings, including segment settings and
+`tgrad_perturbations`, come from the case `run_config.yaml`. The case `init_datetime`,
+`gtype` and `levels` must match the bundle.
+
 ## 9. Modifying the grid
 
 For `uniform`, `stretch`, and `nest` cases, grid generation is driven from
@@ -713,8 +735,9 @@ per-domain process counts.
 
 Output frequency and the reported variable set are controlled by a `diag_table`. Place a
 case-local `diag_table` in the case directory to override the default in
-`configs/diag_table`. The default defines three streams: `grid_spec` and `atmos_static`
-written once, and `fv3_hist` written hourly. The variable reference list is in
+`configs/diag_table` (`configs/diag_table.monthly` for month and year segments). The
+default defines three streams: `grid_spec` and `atmos_static` written once, and `fv3_hist`
+written hourly (monthly means in the monthly table). The variable reference list is in
 [configs/diag_field.csv](configs/diag_field.csv). After the model runs, `fregrid` remaps
 native cubed-sphere history to a latitude-longitude grid for global and nested output. Regridded files are named by domain, `global` for the
 global grid and `nest02`, `nest03`, and so on for nests, where nest tile 7 maps to `nest02`.
@@ -725,6 +748,8 @@ The `merge_freq` key controls how per-segment regridded files are combined.
 - `-1` merges the whole run into one file per stream and grid on the final segment.
 - `0` disables merging and retains one file per segment.
 - `n` merges every `n` segments and flushes any remainder on the final segment.
+
+Merging concatenates records along time; it does not average (Section 22).
 
 ### 14.1 Grid visualization
 
@@ -759,9 +784,11 @@ A run is divided into `resubmit + 1` segments, each `run_length` `run_length_uni
 segment is a cold start produced by the initial driver. Each later segment is a warm start
 produced by the restart driver, which resumes from the previous segment restart files.
 Restart segments load the persisted `state.yaml`; they do not re-read `run_config.yaml`.
-The checksum stored in `state.yaml` covers the grid geometry, vertical levels, and
-initialization time used by `compute_checksum()`. Segments are resubmitted automatically
-until the maximum index is reached.
+The checksum stored in `state.yaml` covers the grid geometry, vertical levels,
+initialization time and, when set, `tgrad_perturbations`. Forcing files in `FIXED/MODS`
+and the cold-start namelists are reused by later segments; the case `diag_table` is
+restaged every segment. Segments are resubmitted automatically until the maximum index
+is reached.
 
 ## 16. Ensembles
 
@@ -769,6 +796,11 @@ Set `ensemble_run: true` and `n_ensembles` to submit an ensemble. Each member is
 as an independent job with its own working directory `memNN` and its own log. Use
 `skip_ensembles` to omit specific members. Ensemble members can be combined with soil
 moisture perturbations to build spread.
+
+Member 1 is unperturbed; other members get temperature noise seeded from the case
+checksum (`py_scripts/fv3_ensemble_driver.py`), which includes `tgrad_perturbations`
+when set. Perturbations are generated only when ICs are generated; to pair members
+across experiments, stage the same member bundle through `external_ic_dir`.
 
 ## 17. Archiving
 
@@ -780,101 +812,19 @@ location.
 
 ## 18. Example cases
 
-### Global uniform case
+Example case files are in [examples/](examples). Copy a `run_config.<case>.yaml` into the
+case directory as `run_config.yaml`; unset keys come from the defaults.
 
-```yaml
-description: C96 control run
-init_datetime: "2026031200Z"
-run_length: 6
-run_length_units: hours
-c_res: C96
-gtype: uniform
-levels: 64
-generate_ic_data: true
-preprocess_only: false
-archive_data: true
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
-walltime: 12
-n_nodes: 2
-n_cpus: 96
-n_cpus_per_task: 1
-partition: batch
-```
-
-### Stretched global case
-
-```yaml
-description: Stretched C96 over central North America
-init_datetime: "2026031200Z"
-run_length: 24
-run_length_units: hours
-c_res: C96
-gtype: stretch
-stretch_factor: 2.5
-target_lon: -96
-target_lat: 39
-levels: 64
-generate_ic_data: true
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
-walltime: 12
-n_nodes: 2
-n_cpus: 96
-partition: batch
-```
-
-### Nested case
-
-```yaml
-description: Nested SHiELD case
-init_datetime: "2026031200Z"
-run_length: 24
-run_length_units: hours
-c_res: C96
-gtype: nest
-levels: 64
-refine_ratio: [4, 2]
-lon_min: [-125, -95]
-lon_max: [-47, -57]
-lat_min: [25, 32]
-lat_max: [60, 55]
-parent_tile: 6
-halo: 3
-generate_ic_data: true
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
-walltime: 12
-n_nodes: 2
-n_cpus: 96
-partition: batch
-```
-
-### Regional ESG case
-
-```yaml
-description: Regional ESG domain
-init_datetime: "2026031200Z"
-run_length: 12
-run_length_units: hours
-c_res: C3072
-gtype: regional_esg
-target_lon: -96
-target_lat: 39
-lon_min: -102
-lon_max: -90
-lat_min: 33
-lat_max: 45
-idim: 200
-jdim: 200
-delx: 0.0585
-dely: 0.0585
-halo: 3
-levels: 64
-generate_ic_data: true
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
-walltime: 12
-n_nodes: 4
-n_cpus: 192
-partition: batch
-```
+| File | Case |
+| --- | --- |
+| `run_config.uniform.yaml` | Global uniform C96, hourly output |
+| `run_config.stretch.yaml` | Stretched global grid |
+| `run_config.nest.yaml` | Two telescoping nests; `chgres_cube_nest02.yaml` forces GFS ICs |
+| `run_config.regional.yaml` | Regional ESG domain |
+| `run_config.external_ic.yaml` | Start from a staged grid and IC bundle |
+| `run_config.sm_perturbations.yaml` | Soil moisture perturbation (Section 11) |
+| `run_config.tgrad.yaml` | SST and sea-ice perturbation (Section 21) |
+| `run_config.monthly.yaml` | Ten years of monthly segments, yearly files (Section 22) |
 
 ## 19. Compiling a custom SHiELD executable
 
@@ -888,9 +838,13 @@ a native `shield_exe`. Because the non-null repository default is restored when 
 ```bash
 git clone https://github.com/NOAA-GFDL/SHiELD_build.git
 cd SHiELD_build
+git checkout FV3-202411-public   # the profile this workflow is tested with (19.1)
 git submodule update --init mkmf
 ./CHECKOUT_code
 ```
+
+Without the checkout, `CHECKOUT_code` on the current `SHiELD_build` main selects
+`FV3-202604-public` and FMS `2026.01` (Section 19.1).
 
 On newer glibc systems, patch `SHiELD_SRC/FMS/affinity/affinity.c` so the local `gettid`
 helper does not conflict with the glibc definition. Remove the duplicate `static` qualifier
@@ -917,6 +871,31 @@ Set the executable path in `run_config.yaml`:
 shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
 ```
 
+### 19.1 Build profiles
+
+| Component | Workflow default (tested) | `SHiELD_build` main (527c2d13e4c9) |
+| --- | --- | --- |
+| Core, physics, drivers | `FV3-202411-public` | `FV3-202604-public` |
+| FMS / FMSCoupler | `2024.03` / `2024.03.01` (tag `FV3-202411-public`) | `2026.01` / `2026.01` |
+| `ice_param`, `*_null` | unpinned | unpinned |
+| Executable | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` | not validated |
+
+Untagged `SHiELD_build` checkouts from 2025-04 to 2026-01 paired `FV3-202411-public` with
+FMS 2025.01. Record the commits in `SHiELD_SRC`, the executable checksum, the modules
+(`modules` key) and the container digests for each production profile, and validate a
+newer profile separately before use.
+
+### 19.2 UFS_UTILS and containers
+
+`UFS_UTILS` provides the compiled preprocessing utilities (`chgres_cube`, `make_hgrid`,
+`orog`, `global_cycle`, ...). `ufs_py` is this workflow; its `ufs_utils` key names the
+workflow checkout. Preprocessing runs the utilities from `/UFS_UTILS/exec` inside
+`preprocess_image` (built from untagged `docker://gfdlfv3/preprocessing` by
+`configs/install_images.sh`). Building `UFS_UTILS` on the host does not change these
+binaries; rebuild the image or bind the host `exec` directory to `/UFS_UTILS/exec`.
+`build_all.sh` supports listed machines only; other sites configure dependencies and CMake
+themselves.
+
 ## 20. Quick start and submission notes
 
 1. Create a case directory.
@@ -935,3 +914,23 @@ Recommended case-local launcher:
 Deactivate any active conda environment and use a clean shell before submitting, so the
 workflow starts from a predictable environment. Place the launcher in the case directory and
 run it there so the workflow reads the local `run_config.yaml` and any case-local files.
+
+## 21. SST and sea-ice perturbations (`tgrad_perturbations`)
+
+`py_scripts/tgrad_perturbations.py` writes perturbed copies of the monthly SST and sea-ice
+climatologies to `FIXED/MODS` once, at the cold start, and points `namsfc` at them. Restart
+segments keep these files; `preprocess_only` exits before they are written. Any block,
+including `method: none`, also prescribes SST and sea ice from the climatologies. The block
+is validated when the case starts. See `examples/run_config.tgrad.yaml`, the comments in
+`configs/run_config.yaml` (its section 11) and the module for methods and limits.
+
+## 22. Monthly runs
+
+Use one-month segments starting at 00 UTC on day 1 (`examples/run_config.monthly.yaml`):
+`resubmit: 119` gives 120 segments (ten years) and `merge_freq: 12` writes one file per
+year; merging only concatenates segments. When the case has no `diag_table`, month and
+year segments use `configs/diag_table.monthly`, which averages the hourly samples
+(`.true.`) over each month. `fhzero` and `fdiag` are both 1 h by default, so each sample
+of a bucket field such as `totprcpb_ave` covers one hour; keep them equal in any override.
+The diag tables write time in seconds for every output frequency; the regridded files
+keep the time handling of `post_process` unchanged. Fields without horizontal axes, such as `average_T1`, `average_T2` and `average_DT`, are copied to the regridded files.

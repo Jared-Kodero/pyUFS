@@ -1,12 +1,12 @@
 #!/bin/sh
-set -e
-
 export TMPDIR="$TMP_DIR"
 
-cd $WORK_DIR
-/fregrid $UFS_UTILS_DIR/py_scripts/fv3_regrid.py
-exit_code=$?
-echo $exit_code > $WORK_DIR/exit_code
-wait
-exit $exit_code
+cd "$WORK_DIR" || exit 1
 
+set +e
+/fregrid "$UFS_UTILS_DIR/py_scripts/fv3_regrid.py"
+exit_code=$?
+set -e
+
+echo "$exit_code" > "$WORK_DIR/exit_code"
+exit "$exit_code"

@@ -16,7 +16,7 @@ from derived_vars import calc_derived_vars
 from fv3_runtime import get_stream_handles
 from fv3_state import load_fv3_state
 from fv3_utils import cres_to_deg, env_setup, exit_code
-from pyfregrid import fregrid
+from pyfregrid import axis_dim, fregrid, horizontal_dims
 
 warnings.filterwarnings("ignore")
 state = load_fv3_state()
@@ -324,16 +324,29 @@ def merge_outputs(
             merge_files(inputs, target)
 
 
+def nonspatial_vars(ds: xr.Dataset) -> xr.Dataset:
+    """Data variables without horizontal axes, such as the FMS averaging
+    metadata average_T1, average_T2 and average_DT, copied as written."""
+    names = [
+        name
+        for name, da in ds.data_vars.items()
+        if axis_dim(ds, da, "X") is None and axis_dim(ds, da, "Y") is None
+    ]
+    return ds[names].load()
+
+
 def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Dataset:
 
-    ds = ds.sortby("plev", ascending=False)
+    if "plev" in ds.dims:  # surface-only streams carry no pressure axis
+        ds = ds.sortby("plev", ascending=False)
 
     for var in ds.data_vars:
         ds[var].attrs.update(data_attrs.get(var, {}))
 
         if var in ["pr", "prc", "cnvprcpb_ave", "totprcpb_ave"]:
-            ds[var] = ds[var] * 3600.0  # convert from m/s to mm/hr
-            ds[var] = ds[var].clip(min=0, keep_attrs=True)
+            # kg m-2 s-1 is mm s-1 of liquid water equivalent; x 3600 gives mm/hr
+            attrs = ds[var].attrs
+            ds[var] = (ds[var] * 3600.0).clip(min=0).assign_attrs(attrs)
             ds[var].attrs["units"] = "mm/hr"
 
     ds = calc_derived_vars(ds)
@@ -352,11 +365,12 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
         "standard_name": "longitude",
         "units": "degrees_east",
     }
-    ds["plev"].attrs = {
-        "axis": "Z",
-        "standard_name": "pressure_level",
-        "units": "hPa",
-    }
+    if "plev" in ds.coords:
+        ds["plev"].attrs = {
+            "axis": "Z",
+            "standard_name": "pressure_level",
+            "units": "hPa",
+        }
 
     ds = ds.transpose(..., "lat", "lon")
 
@@ -415,8 +429,16 @@ def call_fregrid(
         input_file = stream_path.stem  # removes .nc
         hist_ds_file = state.hist / f"{input_file}.nc"
 
-    with xr.open_dataset(hist_ds_file) as ds:
-        data_vars = list(ds.data_vars)
+    # Only fields on the horizontal grid are regridded. Nonspatial averaging
+    # metadata (average_T1/T2/DT) are copied around the regridder unchanged.
+    with xr.open_dataset(hist_ds_file, decode_times=False) as ds:
+        data_vars = [
+            name for name, da in ds.data_vars.items() if horizontal_dims(ds, da)
+        ]
+        meta = nonspatial_vars(ds)
+
+    if not data_vars:
+        raise ValueError(f"{hist_ds_file} contains no horizontal fields to regrid")
 
     fregrid_out = state.tmp / "fregrid" / "out"
     fregrid_out.mkdir(parents=True, exist_ok=True)
@@ -453,6 +475,12 @@ def call_fregrid(
         combine="by_coords",
         compat="override",
     ) as ds:
+        if meta.data_vars:
+            if "time" in meta.dims:  # same records; share the decoded axis
+                meta = meta.drop_vars("time", errors="ignore")
+                meta = meta.assign_coords(time=ds["time"])
+            ds = ds.merge(meta, compat="override", join="exact")
+
         data_attrs = {var: {**ds[var].attrs} for var in ds.data_vars}
         dim_attrs = {dim: {**ds[dim].attrs} for dim in ds.dims}
 

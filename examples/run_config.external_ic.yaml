@@ -1,0 +1,12 @@
+# Start from a staged grid and IC bundle (e.g. made with preprocess_only: true).
+# The bundle supplies grid and IC settings; init_datetime, gtype and levels
+# must match it. All other settings come from this file.
+description: C96 from staged ICs
+init_datetime: "2026031200Z"
+run_length: 24
+run_length_units: hours
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: false
+external_ic_dir: /path/to/prestaged_case

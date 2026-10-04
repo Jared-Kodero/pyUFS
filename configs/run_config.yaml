@@ -71,13 +71,15 @@ merge_freq: -1 # Merge frequency for regridded output, in restart segments.
 #  n merges every n restart segments; any remainder is merged on the final restart
 
 # Model output is set by the diag table, used as written: a case-local diag_table
-# (default configs/diag_table), or diag_table.yaml when use_modern_diag is true.
+# (default configs/diag_table; configs/diag_table.monthly for months/years), or
+# diag_table.yaml when use_modern_diag is true.
 # Only the title, base date and HIST/ file names are set by the driver. FMS counts
 # output intervals from the start of each segment and drops an unfinished one at its
 # end, so each segment should hold whole intervals (for monthly means, use
 # run_length_units: months from 00Z on the 1st). Time means need .true. in the
 # time-sampling column (reduction: average in YAML); for averaged precipitation set
-# gfs_physics_nml fhzero = atmos_model_nml fdiag so each sample is a full fdiag mean.
+# gfs_physics_nml fhzero = atmos_model_nml fdiag (both 1 h by default) so each sample
+# is a full fdiag mean.
 use_modern_diag: false # true: use a case-local diag_table.yaml (required) and data_table.yaml
 # (optional) with diag_manager_nml use_modern_diag and data_override_nml use_data_table_yaml.
 # Write them yourself or convert legacy tables with fms_yaml_tools (diag-table-to-yaml,
@@ -132,7 +134,7 @@ preprocess_orog_only: false # Generate orography only, then exit (stages to IC/o
 #   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
 #   C768  ~ 13 km      C3072 ~ 3 km
 
-c_res: 96 # Cubed-sphere face resolution. One of C48, C96, C192, C384, C768, C1152, C3072 (integer or C-prefixed).
+c_res: 96 # Cubed-sphere face resolution, an integer: 48, 96, 192, 384, 768, 1152 or 3072.
 gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
 target_lon: -96 # Grid center longitude [degrees]; used for stretch and regional. For nest, set to the first nest box center.
 target_lat: 35.0 # Grid center latitude [degrees]; used for stretch and regional. For nest, set to the first nest box center.
@@ -278,8 +280,16 @@ sm_perturbations: null
 # Change the lower boundary through the monthly SST and sea-ice climatologies
 # read by the surface cycle (namsfc FNTSFC, FNAISC). tgrad_perturbations is a
 # single mapping, not a list. Both files are always rewritten from fix_src/am
-# (only read) to FIXED/ under the original names at cold start, never on
-# restarts, and every write is logged.
+# (only read) to FIXED/MODS/ under the original names at cold start, after
+# preprocessing; every write is logged. preprocess_only exits before this step,
+# so no forcing file is written in a preprocess-only run. Restart segments
+# reload state.yaml, do not reread this block, and keep the FIXED/MODS files;
+# the block is part of the restart checksum when set.
+#
+# The block is validated when the case starts, before grid and IC generation:
+# every numeric value must be finite, method must not be empty (use none for a
+# control), 0 <= lat_start < lat_full <= 90, and monthly_scale, when given,
+# must hold exactly 12 finite values.
 #
 # Schema (flat mapping)
 # ---------------------
@@ -307,22 +317,33 @@ sm_perturbations: null
 #   lat_full:        float  # default 80
 #   ocean_mode:      str    # prescribed (default) | mlo (restored mixed-layer
 #                           # ocean; timescale and latitude limits from ocean_nml)
-#   uniform_warming_k:      float  # extra uniform SST change with polar/uniform_shift (default 0)
-#   opened_water_delta_t_k: float  # SST change where ice_loss opens water (default 0)
-#   monthly_scale:   list[float]   # 12 factors, Jan..Dec, scaling the polar pattern and ice_loss
+#   uniform_warming_k:      float  # extra uniform SST change, applied only with
+#                                  # polar_shift or uniform_shift (default 0)
+#   opened_water_delta_t_k: float  # SST change where ice_loss opens water, applied
+#                                  # only with ice_loss (default 0)
+#   monthly_scale:   list[float]   # 12 factors, Jan..Dec, scaling the polar or
+#                                  # uniform shift pattern and ice_loss. They do not
+#                                  # scale uniform_warming_k or opened_water_delta_t_k.
 #
 # Magnitudes (literature)
 # -----------------------
-#   polar_delta_t_k: 2 and 4 K are the standard sensitivity amplitudes; up to 8 K
-#     is accepted as a strong-forcing experiment (logged); |dT| > 8 K is rejected.
+#   polar_delta_t_k: 2 and 4 K are the standard sensitivity amplitudes; above 4 K
+#     and up to 8 K is accepted as a strong-forcing experiment (logged); |dT| > 8 K
+#     is rejected. The 8 K check applies to the base polar_delta_t_k, before
+#     monthly_scale: 4 K with factors of 10 passes and gives a nominal 40 K
+#     pattern, which is logged as a warning. Whether the limit should apply to
+#     the effective monthly anomaly is an experiment-policy decision.
 #     Basis: CMIP6 central-Arctic Aug-Sep SST warming by 2100 spans about 0.7-8 K
 #     under SSP2-4.5, about 3 K in moderately ice-free models; observed Arctic
 #     amplification 1979-2021 is 3.8. Negative values cool the pole (stronger
 #     gradient). Southern Ocean warming is projected to be delayed and weaker, so a
 #     southern warming is an idealized test (logged).
-#   sic_reduction: 0..1. Projected ice loss is largest in late summer; a value
-#     above 0.5 in every month is logged as idealized. Use monthly_scale to
-#     concentrate the loss in summer and autumn.
+#   sic_reduction: 0..1, a relative reduction (0.5 halves SIC where W = 1; it does
+#     not subtract 50 percentage points). Projected ice loss is largest in late
+#     summer; an effective reduction above 0.5 in every month is logged as
+#     idealized. Use monthly_scale to concentrate the loss in summer and autumn.
+#   These amplitudes set the boundary forcing, not the atmospheric response;
+#   diagnose the resulting temperature-gradient change separately.
 #
 # Applied automatically (all methods, including none)
 # ---------------------------------------------------
@@ -333,9 +354,16 @@ sm_perturbations: null
 # Constraints
 # -----------
 #   SST is not changed under perennial ice (SIC >= 0.15 all year) and is not
-#   cooled below 271.2 K. Land flags in the ice file (1.57) are left unchanged.
-#   uniform_shift uses seaice_newland.grb (1 = land) for the ocean-area mean.
+#   cooled below 271.2 K. With ice_loss, the perennial-ice mask is evaluated on
+#   the reduced SIC. Land flags in the ice file (1.57) are left unchanged.
+#   uniform_shift uses seaice_newland.grb (1 = land) for the ocean-area mean,
+#   with land and perennial ice excluded; its applied mean is close to, not
+#   guaranteed equal to, that of polar_shift after masking.
 #   Use the same ocean_mode, poles, lat_start and lat_full in every arm.
+#   User namelist overrides are applied after these settings; check the
+#   generated input*.nml for conflicts and FIXED/MODS paths in namsfc.
+#   The radiative background (CO2, solar, aerosol, ozone) is not set here; see
+#   gfs_physics_nml ico2, ictm, isol and iaer (set through an input.yaml override).
 #
 # Examples
 # --------

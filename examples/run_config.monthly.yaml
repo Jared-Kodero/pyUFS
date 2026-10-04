@@ -1,0 +1,13 @@
+# Ten years of one-month segments with monthly-mean output. Without a case
+# diag_table, month segments use configs/diag_table.monthly. Segments must
+# start at 00 UTC on day 1 (day <= 28 is required for month segments).
+description: C96 monthly
+init_datetime: "2020010100Z"
+run_length: 1
+run_length_units: months
+resubmit: 119 # 119 resubmissions = 120 one-month segments = 10 years
+merge_freq: 12 # merge 12 monthly segments per file = one file per year (concatenates, no averaging)
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: true
