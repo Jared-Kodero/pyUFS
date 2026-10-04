@@ -1,0 +1,21 @@
+# Experiment pair with sm_ctrl: top three soil layers dried by 20% at the initial
+# time. IC/perts holds the original and perturbed sfc_data for comparison.
+description: test sm dry
+init_datetime: "2024081400Z"
+run_length: 24
+run_length_units: hours
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+n_nodes: 1
+n_cpus: 48
+walltime: 4
+constraint_node: "48core"
+sm_perturbations:
+  target_var: smc
+  soil_layers: [0, 1, 2]
+  tiles: [1, 2, 3, 4, 5, 6]
+  method: mean_shift
+  mean_scale: -0.2
+  apply_on_restarts: 0

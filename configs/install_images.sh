@@ -1,111 +1,113 @@
 #!/bin/bash
-set -e
+# Build the fregrid, preprocess and shield Apptainer images used by the workflow.
+#
+#   CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash install_images.sh
+#
+# Images are written to $CONTAINERS_DIR/{fregrid,preprocess,shield}.sif, which
+# must match fregrid_image, preprocess_image and shield_image in run_config.yaml.
+# Image tags default to "latest"; pin them with FREGRID_TAG, PREPROCESS_TAG and
+# SHIELD_TAG. A manifest of sources, checksums and conda packages is written to
+# $CONTAINERS_DIR/manifest/. The preprocess image provides the UFS_UTILS
+# executables at /UFS_UTILS/exec.
+set -euo pipefail
 
-# --- 1. Setup Directories & Environment ---
-# Ensures env.yaml is found in the same directory as this script
+: "${CONTAINERS_DIR:?CONTAINERS_DIR must be set}"
+TMP_DIR="${TMP_DIR:-${TMPDIR:-/tmp}}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT="${CONTAINERS_DIR}"
-APPTMP_DIR="$TMP_DIR/apptainer" 
+ENV_FILE="$SCRIPT_DIR/env.yaml"
+MANIFEST_DIR="$CONTAINERS_DIR/manifest"
 
+declare -A SOURCES=(
+    [fregrid]="docker://gfdlfv3/fre-nctools:${FREGRID_TAG:-latest}"
+    [preprocess]="docker://gfdlfv3/preprocessing:${PREPROCESS_TAG:-latest}"
+    [shield]="docker://gfdlfv3/shield:${SHIELD_TAG:-latest}"
+)
+CONDA_IMAGES=(fregrid preprocess)
 
-
-mkdir -p "$OUTPUT"
-mkdir -p "$APPTMP_DIR"
-# Pre-run check
-if [ ! -f "$SCRIPT_DIR/env.yaml" ]; then
-    echo "ERROR: env.yaml not found in $SCRIPT_DIR"
+log() { echo "$(date '+%Y-%m-%d %H:%M') - INSTALL_IMAGES - $*"; }
+fail() {
+    log "ERROR - $*" >&2
     exit 1
+}
+
+# --- 1. Checks and scratch space ---
+command -v apptainer >/dev/null || fail "apptainer not found"
+command -v wget >/dev/null || fail "wget not found"
+[ -f "$ENV_FILE" ] || fail "env.yaml not found in $SCRIPT_DIR"
+
+mkdir -p "$CONTAINERS_DIR" "$MANIFEST_DIR" "$TMP_DIR"
+WORK="$(mktemp -d "$TMP_DIR/apptainer.XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+mkdir -p "$WORK/sandboxes" "$WORK/cache"
+
+if command -v module >/dev/null 2>&1; then
+    module purge || true
 fi
-
-mkdir -p "$OUTPUT"
-rm -rf "$APPTMP_DIR"
-mkdir -p "$APPTMP_DIR/sandboxes"
-
-# Apptainer environment setup
-export APPTAINER_BINDPATH="$APPTMP_DIR:/workdir"
-module purge
 unset LD_LIBRARY_PATH
+export APPTAINER_CACHEDIR="$WORK/cache"
+export APPTAINER_BINDPATH="$WORK:/workdir"
 
-# --- 2. Clean Cache & Pre-download Assets ---
-apptainer cache clean -f
-
-MINICONDA_SH="$APPTMP_DIR/miniconda.sh"
+MINICONDA_SH="$WORK/miniconda.sh"
+log "INFO - downloading the Miniconda installer"
 wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "$MINICONDA_SH"
 chmod +x "$MINICONDA_SH"
 
-# --- 3. Pull Base Images ---
-apptainer pull "$APPTMP_DIR/fregrid.sif"    docker://gfdlfv3/fre-nctools > /dev/null 2>&1
-apptainer pull "$APPTMP_DIR/preprocess.sif" docker://gfdlfv3/preprocessing > /dev/null 2>&1
-apptainer pull "$APPTMP_DIR/shield.sif"     docker://gfdlfv3/shield > /dev/null 2>&1
+# --- 2. Pull and unpack (fregrid first: its OpenMPI share files are reused) ---
+for NAME in fregrid preprocess shield; do
+    log "INFO - pulling ${SOURCES[$NAME]}"
+    apptainer pull "$WORK/$NAME.sif" "${SOURCES[$NAME]}"
+    apptainer build --sandbox "$WORK/sandboxes/$NAME" "$WORK/$NAME.sif"
 
-# --- 4. Build Sandboxes ---
-# FREGRID is built first so other images can copy its MPI files
-for VAR in FREGRID PREPROCESS SHIELD; do
-    VAR_LC=$(echo "$VAR" | tr '[:upper:]' '[:lower:]')
-    SANDBOX="$APPTMP_DIR/sandboxes/$VAR"
-    SOURCE_SIF="$APPTMP_DIR/${VAR_LC}.sif"
-
-
-    apptainer build --sandbox "$SANDBOX" "$SOURCE_SIF"
-
-    # Inject installer and env.yaml
-    cp "$MINICONDA_SH" "$SANDBOX/miniconda.sh"
-    cp "$SCRIPT_DIR/env.yaml" "$SANDBOX/env.yaml"
-
-    # Sync OpenMPI share files to others from FREGRID
-    if [ "$VAR" != "FREGRID" ]; then
-        mkdir -p "$SANDBOX/opt/openmpi"
-        cp -rf "$APPTMP_DIR/sandboxes/FREGRID/opt/openmpi/share" "$SANDBOX/opt/openmpi/"
+    if [ "$NAME" != "fregrid" ]; then
+        mkdir -p "$WORK/sandboxes/$NAME/opt/openmpi"
+        cp -rf "$WORK/sandboxes/fregrid/opt/openmpi/share" "$WORK/sandboxes/$NAME/opt/openmpi/"
     fi
 done
 
-# --- 5. Install Conda Environments ---
-for VAR in FREGRID PREPROCESS; do
-    VAR_LC=$(echo "$VAR" | tr '[:upper:]' '[:lower:]')
-    SANDBOX="$APPTMP_DIR/sandboxes/$VAR"
+# --- 3. Conda environments for the Python stages ---
+for NAME in "${CONDA_IMAGES[@]}"; do
+    SANDBOX="$WORK/sandboxes/$NAME"
+    cp "$MINICONDA_SH" "$SANDBOX/miniconda.sh"
+    cp "$ENV_FILE" "$SANDBOX/env.yaml"
 
-    echo "[CONDA] Installing $VAR_LC environment..."
-    apptainer exec --writable --no-home "$SANDBOX" bash -c "
+    log "INFO - installing the $NAME conda environment"
+    apptainer exec --writable --no-home "$SANDBOX" bash -euo pipefail -c "
         mkdir -p /workdir/tmp
         export TMPDIR=/workdir/tmp
-        
-        # Install Miniconda
         ./miniconda.sh -b -p /opt/conda
-        
-        # Accept Terms of Service (The Terms)
-        /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main
-        /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-
-        # Create environment from yml
-        # /opt/conda/bin/conda env create -n $VAR_LC -f /env.yaml -y --quiet
-        # /opt/conda/bin/conda clean -a -y
-
+        /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main || true
+        /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r || true
         /opt/conda/bin/conda install --name base --channel conda-forge mamba --yes --quiet
-        /opt/conda/bin/mamba env create --name "$VAR_LC" --file /env.yaml --yes --quiet
+        /opt/conda/bin/mamba env create --name $NAME --file /env.yaml --yes --quiet
         /opt/conda/bin/mamba clean --all --yes
-        
-        # Create root symlinks
-        ln -sf /opt/conda/envs/$VAR_LC/bin/python /$VAR_LC
-        ln -sf /opt/conda/envs/$VAR_LC/bin/wget /wget
-        ln -sf /opt/conda/envs/$VAR_LC/bin/wgrib2 /wgrib2
-        
-        # Internal cleanup
+        ln -sf /opt/conda/envs/$NAME/bin/python /$NAME
+        ln -sf /opt/conda/envs/$NAME/bin/wget /wget
+        ln -sf /opt/conda/envs/$NAME/bin/wgrib2 /wgrib2
+        /opt/conda/bin/conda list --name $NAME --explicit > /workdir/$NAME.conda.txt
         rm -rf /workdir/tmp /miniconda.sh /env.yaml
     "
+    [ -x "$SANDBOX/opt/conda/envs/$NAME/bin/python" ] || fail "$NAME python environment missing"
 done
 
-# --- 6. Final SIF Creation ---
-for VAR in FREGRID PREPROCESS SHIELD; do
-    VAR_LC=$(echo "$VAR" | tr '[:upper:]' '[:lower:]')
-    SANDBOX="$APPTMP_DIR/sandboxes/$VAR"
-    FINAL_SIF="$OUTPUT/${VAR_LC}.sif"
+[ -x "$WORK/sandboxes/preprocess/UFS_UTILS/exec/chgres_cube" ] ||
+    fail "preprocess image has no /UFS_UTILS/exec/chgres_cube"
 
-    # Remove installers from SHIELD (which didn't run the conda loop)
-    rm -f "$SANDBOX/miniconda.sh" "$SANDBOX/env.yaml"
+# --- 4. Final images, replaced only after a successful build ---
+{
+    echo "built: $(date -u '+%Y-%m-%dT%H:%MZ')"
+    for NAME in fregrid preprocess shield; do
+        echo "$NAME.source: ${SOURCES[$NAME]}"
+    done
+} >"$WORK/images.txt"
 
-    rm -f "$FINAL_SIF"
-    apptainer build "$FINAL_SIF" "$SANDBOX"
+for NAME in fregrid preprocess shield; do
+    apptainer build "$WORK/$NAME.final.sif" "$WORK/sandboxes/$NAME"
+    mv -f "$WORK/$NAME.final.sif" "$CONTAINERS_DIR/$NAME.sif"
+    echo "$NAME.sha256: $(sha256sum "$CONTAINERS_DIR/$NAME.sif" | cut -d' ' -f1)" >>"$WORK/images.txt"
+    log "INFO - wrote $CONTAINERS_DIR/$NAME.sif"
 done
 
-# --- 7. Final Cleanup ---
-rm -rf "$APPTMP_DIR"
+cp "$WORK/images.txt" "$MANIFEST_DIR/images.txt"
+cp "$WORK"/*.conda.txt "$MANIFEST_DIR/"
+log "INFO - manifest written to $MANIFEST_DIR"

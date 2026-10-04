@@ -118,7 +118,7 @@ gfs_physics_nml:
   fhcyc: 24.0
   fhlwr: 1800.0
   fhswr: 1800.0
-  fhzero: 3.0
+  fhzero: 1.0 # bucket reset [h]; keep equal to atmos_model_nml fdiag
   hybedmf: true
   ialb: 1
   ico2: 2

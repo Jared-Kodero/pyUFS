@@ -1,0 +1,16 @@
+# Global uniform C96, hourly output, one 6 h segment.
+# Copy to the case directory as run_config.yaml; unset keys come from
+# configs/run_config.yaml.
+description: C96 control run
+init_datetime: "2026031200Z"
+run_length: 6
+run_length_units: hours
+c_res: 96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+walltime: 12
+n_nodes: 2
+n_cpus: 96
+partition: batch

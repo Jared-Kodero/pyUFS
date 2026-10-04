@@ -165,6 +165,18 @@ def axis_dim(ds: xr.Dataset, da: xr.DataArray, axis: str) -> str | None:
     return None
 
 
+def horizontal_dims(ds: xr.Dataset, da: xr.DataArray) -> tuple[str, str] | None:
+    """Trailing (Y, X) dims of `da`, or None when it is not a horizontal field.
+
+    Nonspatial variables such as the FMS averaging metadata average_T1(time),
+    average_DT(time) and time_bnds(time, nv) return None.
+    """
+    ydim, xdim = axis_dim(ds, da, "Y"), axis_dim(ds, da, "X")
+    if ydim is None or xdim is None or da.dims[-2:] != (ydim, xdim):
+        return None
+    return ydim, xdim
+
+
 def read_field(
     ds: xr.Dataset, name: str, kind: str, ranges: dict, extrapolate: bool
 ) -> xr.DataArray:
@@ -174,6 +186,10 @@ def read_field(
             f"{kind} field {name} missing in {ds.encoding.get('source', '?')}"
         )
     da = ds[name]
+    if horizontal_dims(ds, da) is None:
+        raise ValueError(
+            f"{kind} field {name}{da.dims} has no trailing (Y, X) horizontal axes"
+        )
     for axis, (begin, end, label) in ranges.items():
         dim = axis_dim(ds, da, axis)
         if dim is None or (begin is None and end is None):

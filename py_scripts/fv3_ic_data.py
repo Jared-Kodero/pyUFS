@@ -14,26 +14,37 @@ from fv3_utils import run_cmd
 from pyproj import Proj
 
 
-def wget(url: str, output_path: Path) -> bool:
+def wget(url: str, output_path: Path, attempts: int = 5) -> bool:
     """
     Attempt to download a single URL. Returns True on success, False on failure.
     Does not raise; caller is responsible for fallback logic.
+
+    Transient network errors are retried by wget itself; whole attempts are
+    repeated with a capped backoff, so a source that does not hold the file
+    (for example NOAA S3 before 2021 for GFS) falls through to the next source
+    within minutes rather than hours.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["/wget", "-q", "--no-check-certificate", url, "-O", str(output_path)]
+    cmd = [
+        "/wget",
+        "-q",
+        "--no-check-certificate",
+        "--tries=3",
+        "--waitretry=10",
+        "--timeout=60",
+        url,
+        "-O",
+        str(output_path),
+    ]
 
-    result = 1
-    for _ in range(100):
+    for attempt in range(attempts):
         result, _ = run_cmd(cmd, warn_on_error=False)
 
-        if result == 0:
-            if output_path.exists() and output_path.stat().st_size > 0:
-                return True
+        if result == 0 and output_path.exists() and output_path.stat().st_size > 0:
+            return True
 
-        if output_path.exists():
-            output_path.unlink()
-
-        time.sleep(np.random.uniform(0, 120))
+        output_path.unlink(missing_ok=True)
+        time.sleep(min(60.0, 10.0 * 2**attempt))
 
     return False
 

@@ -49,6 +49,7 @@ class FV3State(dict):
 
     # Execution control and simulation timeline
     init_datetime: pd.Timestamp
+    model_start_date: list[int]  # coupler_nml current_date, set by update_nml_configs
     run_length: int
     run_length_units: str
     total_run_hours: int
@@ -134,10 +135,14 @@ class FV3State(dict):
     ic_data: Path
     bc_data: Path
 
-    global_ic_source: dict[str, str]
-    nest02_ic_source: dict[str, str]
-    nest03_ic_source: dict[str, str]
-    nest04_ic_source: dict[str, str]
+    # Model supplying each field group {"atm", "sfc", "nst"}; None when that
+    # group was not converted. Keys are f"{domain}_ic_source", assigned by
+    # chgres_cube.run_chgres only when ICs are generated.
+    global_ic_source: dict[str, str | None]
+    regional_ic_source: dict[str, str | None]
+    nest02_ic_source: dict[str, str | None]
+    nest03_ic_source: dict[str, str | None]
+    nest04_ic_source: dict[str, str | None]
 
     # Surface and terrain preprocessing
     add_lake: bool
@@ -158,6 +163,12 @@ class FV3State(dict):
     shield_image: Path
     fregrid_image: Path
     preprocess_image: Path
+
+    # Host directories read by fv3_paths.parse_dirs (strings after expansion)
+    jobtmp: str
+    case_root: str
+    archive_root: str
+    containers_root: str
 
     # Runtime environment and diagnostics
     container_bindpath: list[str]

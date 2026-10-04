@@ -1,7 +1,7 @@
 import re
 
 import yaml
-from fv3_runtime import get_stream_handles
+from fv3_runtime import get_stream_handles, log
 from fv3_state import state
 from fv3_utils import cp
 
@@ -39,10 +39,13 @@ def update_legacy_diag(restart_no: int):
     dt = state.init_datetime
 
     user_diag = state.run_dir / "diag_table"
-    template_diag = state.configs / "diag_table"
+    # Month and year segments default to monthly means instead of hourly output.
+    monthly = state.run_length_units in ("months", "years")
+    template_diag = state.configs / ("diag_table.monthly" if monthly else "diag_table")
     diag_table_path = state.work_dir / "diag_table"
 
     diag_file = user_diag if user_diag.exists() else template_diag
+    log.info(f"diag_table: {diag_file}")
     cp(diag_file, diag_table_path)
 
     streams = get_stream_handles()
@@ -50,12 +53,21 @@ def update_legacy_diag(restart_no: int):
     with open(diag_table_path) as f:
         lines = f.readlines()
         lines = [line for line in lines if line and not line.strip().startswith("#")]
-        lines = lines[2:]  # Skip the first two lines (title and base_date)
 
-    dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
-    desc_str = f"{state.description}\n"
+        skipped_header = 0
+        if lines[0].strip().lower() == "DESCRIPTION".strip().lower():
+            lines = lines[1:]  # Skip the header line
+            skipped_header += 1
+        if lines[0].strip().lower() == "DATETIME".strip().lower():
+            lines = lines[1:]  # Skip the second header line
+            skipped_header += 1
 
-    out = [desc_str, dt_str]
+    out = []
+    if skipped_header == 2:
+        dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
+        desc_str = f"{state.description}\n"
+        out = [desc_str, dt_str]
+
     for line in lines:
         names = [c.strip().strip("\"'") for c in line.split(",")]
         is_file = names[0] in streams
