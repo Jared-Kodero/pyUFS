@@ -250,7 +250,7 @@ def get_config():
     return env
 
 
-def run(script: Path, proc_env: dict, cwd: Path) -> str | None:
+def run(script: Path, proc_env: dict, cwd: Path) -> str:
     try:
         result = subprocess.run(
             ["bash", str(script)],
@@ -309,7 +309,7 @@ def main():
         }
         proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
         run(script, proc_env, case_pwd)
-        logger.info("Success! Case Submitted")
+        logger.info(f"Case {env['CASE_NAME']} submitted")
 
     else:
         for i in jobs:
@@ -343,7 +343,7 @@ def main():
             run(script, proc_env, case_pwd)
 
             logger.info(f"Submitted ensemble {ensemble_id}/{n_ensembles}")
-        logger.info("Success! Case Submitted")
+        logger.info(f"Case {env['CASE_NAME']} submitted")
 
 
 if __name__ == "__main__":

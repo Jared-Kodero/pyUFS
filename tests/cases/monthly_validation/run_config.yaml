@@ -1,6 +1,6 @@
 description: test monthly validation
 init_datetime: "2024010100Z"
-run_length: 1
+run_length: 2
 run_length_units: months
 resubmit: 2
 merge_freq: -1
@@ -11,4 +11,3 @@ generate_ic_data: true
 n_nodes: 1
 n_cpus: 48
 walltime: 12
-constraint_node: "48core"
