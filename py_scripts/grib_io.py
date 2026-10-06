@@ -102,9 +102,13 @@ def open_grib(path: str | Path) -> xr.DataTree:
     Variables are named by ``shortName`` with dimensions
     ``(time, <typeOfLevel>, latitude, longitude)``, or
     ``(time, <typeOfLevel>, values)`` for non-rectangular grids.
+    Layers use an integer coordinate with ``topLevel`` and ``bottomLevel``
+    auxiliary coordinates; their identity is the pair of boundaries.
     Arrays are Dask-backed with one chunk per message; a message is decoded
     only when its chunk is computed. Slots with no message are set to NaN and are
     never written by ``save_grib``.
+    GRIB2 multi-field messages are rejected: their fields cannot safely be
+    reopened by independent byte offsets.
 
     Parameters
     ----------
@@ -121,6 +125,20 @@ def open_grib(path: str | Path) -> xr.DataTree:
     with Path(path).open("rb") as file:
         while gid := eccodes.codes_grib_new_from_file(file, headers_only=True):
             try:
+                offset = int(eccodes.codes_get(gid, "offset"))
+                if spans and offset == spans[-1][0]:
+                    raise ValueError("GRIB2 multi-field messages are not supported")
+                if eccodes.codes_get(gid, "edition") == 2:
+                    message, position, count = eccodes.codes_get_message(gid), 16, 0
+                    while position < len(message) - 4:
+                        count += message[position + 4] == 4
+                        if count > 1:
+                            raise ValueError(
+                                "GRIB2 multi-field messages are not supported"
+                            )
+                        position += int.from_bytes(
+                            message[position : position + 4], "big"
+                        )
                 grid = eccodes.codes_get(gid, "md5GridSection")
                 if grid not in grids:
                     lat = eccodes.codes_get_array(gid, "latitudes")
@@ -155,7 +173,18 @@ def open_grib(path: str | Path) -> xr.DataTree:
                 time = np.datetime64(
                     f"{date[:4]}-{date[4:6]}-{date[6:]}T{clock[:2]}:{clock[2:]}", "ns"
                 )
-                level = eccodes.codes_get(gid, "level", float)
+                layer = "layer" in level_type.lower() or (
+                    eccodes.codes_is_defined(gid, "typeOfSecondFixedSurface")
+                    and eccodes.codes_get(gid, "typeOfSecondFixedSurface", int) != 255
+                )
+                level = (
+                    (
+                        eccodes.codes_get(gid, "topLevel", float),
+                        eccodes.codes_get(gid, "bottomLevel", float),
+                    )
+                    if layer
+                    else eccodes.codes_get(gid, "level", float)
+                )
                 copy = 0
                 while True:
                     node = level_type if copy == 0 else f"{level_type}_{copy}"
@@ -221,7 +250,17 @@ def open_grib(path: str | Path) -> xr.DataTree:
         coords, shape, index = grids[entry["grid"]]
         keys = [key for slots in entry["variables"].values() for key in slots]
         times = np.unique([key[0] for key in keys])
-        levels = np.unique([key[1] for key in keys])
+        layer = isinstance(keys[0][1], tuple)
+        levels = sorted({key[1] for key in keys})
+        vertical = (
+            {
+                entry["level_type"]: np.arange(len(levels)),
+                "topLevel": (entry["level_type"], [level[0] for level in levels]),
+                "bottomLevel": (entry["level_type"], [level[1] for level in levels]),
+            }
+            if layer
+            else {entry["level_type"]: levels}
+        )
         dims = (
             "time",
             entry["level_type"],
@@ -253,7 +292,7 @@ def open_grib(path: str | Path) -> xr.DataTree:
             )
             variables[name] = (dims, data, entry["attrs"][name])
         datasets[node] = xr.Dataset(
-            variables, coords={"time": times, entry["level_type"]: levels, **coords}
+            variables, coords={"time": times, **vertical, **coords}
         )
     tree = xr.DataTree.from_dict(datasets)
     tree.attrs["source"] = str(Path(path).resolve())
@@ -270,6 +309,7 @@ def save_grib(
     the tree are written; removed ones are dropped. Fields are matched to
     template messages through ``tree.attrs["messages"]``, preserving the
     template's order. The template defaults to ``tree.attrs["source"]``.
+    Layers are matched by both ``topLevel`` and ``bottomLevel`` coordinates.
     Unchanged fields are copied bit for bit, while edited fields are
     re-encoded with the template packing, where NaN values become missing.
     The spatial grid must be complete. Variables added to an existing node
@@ -324,7 +364,7 @@ def save_grib(
         ):
             raise ValueError(
                 f"{node}/{name}: attrs need units and either paramId or "
-                f"{', '.join(parameter)}; use get_grib_codes to find them"
+                + f"{', '.join(parameter)}; use {__name__}.get_grib_codes to find them"
             )
     donors, used, positions = {}, {}, {}
 
@@ -374,9 +414,17 @@ def save_grib(
                         continue
                     node, name, time, level = messages[index]
                     level_type = eccodes.codes_get(gid, "typeOfLevel")
+                    template_level = (
+                        (
+                            eccodes.codes_get(gid, "topLevel", float),
+                            eccodes.codes_get(gid, "bottomLevel", float),
+                        )
+                        if isinstance(level, tuple)
+                        else eccodes.codes_get(gid, "level", float)
+                    )
                     if (
                         eccodes.codes_get(gid, "shortName") != name
-                        or eccodes.codes_get(gid, "level", float) != level
+                        or template_level != level
                     ):
                         raise ValueError(
                             f"Template message {index} does not match {node}/{name}"
@@ -396,7 +444,39 @@ def save_grib(
                     dataset = tree[node].to_dataset()
                     field = dataset[name]
                     for dim, key in (("time", time), (level_type, level)):
-                        if dim in field.dims and key in dataset.indexes[dim]:
+                        if isinstance(key, tuple):
+                            if any(
+                                k not in field.coords
+                                for k in ("topLevel", "bottomLevel")
+                            ):
+                                raise ValueError(
+                                    f"{node}/{name}: layer bounds are missing"
+                                )
+                            top, bottom = field["topLevel"], field["bottomLevel"]
+                            if dim in field.dims:
+                                if top.dims != (dim,) or bottom.dims != (dim,):
+                                    raise ValueError(
+                                        f"{node}/{name}: bounds must follow {dim}"
+                                    )
+                                matches = np.flatnonzero(
+                                    (top.values == key[0]) & (bottom.values == key[1])
+                                )
+                                if matches.size > 1:
+                                    raise ValueError(
+                                        f"{node}/{name}: duplicate layer bounds {key}"
+                                    )
+                                field = (
+                                    field.isel({dim: int(matches[0])})
+                                    if matches.size
+                                    else None
+                                )
+                            elif (
+                                top.ndim
+                                or bottom.ndim
+                                or (top.item(), bottom.item()) != key
+                            ):
+                                field = None
+                        elif dim in field.dims and key in dataset.indexes[dim]:
                             field = field.sel({dim: key})
                         elif (
                             dim in field.coords
@@ -468,7 +548,45 @@ def save_grib(
                         try:
                             for key, value in codes:
                                 eccodes.codes_set(gid, key, value)
-                            if eccodes.codes_get(gid, "level", float) != level:
+                            layer = "layer" in level_type.lower() or (
+                                eccodes.codes_is_defined(
+                                    gid, "typeOfSecondFixedSurface"
+                                )
+                                and eccodes.codes_get(
+                                    gid, "typeOfSecondFixedSurface", int
+                                )
+                                != 255
+                            )
+                            if layer:
+                                if any(
+                                    k not in field.coords
+                                    for k in ("topLevel", "bottomLevel")
+                                ):
+                                    raise ValueError(
+                                        f"{label}: layer bounds are missing"
+                                    )
+                                bounds = (
+                                    field["topLevel"].item(),
+                                    field["bottomLevel"].item(),
+                                )
+                                if not np.isfinite(bounds).all():
+                                    raise ValueError(
+                                        f"{label}: layer bounds must be finite"
+                                    )
+                                for key, bound in zip(
+                                    ("topLevel", "bottomLevel"), bounds, strict=True
+                                ):
+                                    if eccodes.codes_get(gid, key, float) != bound:
+                                        eccodes.codes_set(gid, key, float(bound))
+                                encoded = [
+                                    eccodes.codes_get(gid, key, float)
+                                    for key in ("topLevel", "bottomLevel")
+                                ]
+                                if not np.allclose(encoded, bounds, rtol=1e-12, atol=0):
+                                    raise ValueError(
+                                        f"{label}: cannot encode layer bounds {bounds}"
+                                    )
+                            elif eccodes.codes_get(gid, "level", float) != level:
                                 if level != int(level):
                                     raise ValueError(
                                         f"{label}: cannot encode non-integer level {level}"
