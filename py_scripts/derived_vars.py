@@ -26,24 +26,30 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
         )
         return ds
 
+    # Ensure pressure is sorted descending (top to bottom)
     ds = ds.sortby("plev", ascending=False)
 
-    # Get delta pressure and pressure at layer midpoints
+    # Convert plev from hPa to Pa (assuming ps is also in Pa)
+    plev_Pa = ds["plev"] * 100.0
 
-    ds["plev"] = ds["plev"] * 100.0
-    dp = abs(ds["plev"].diff("plev"))
-    q = ds["q"].isel(plev=slice(1, None))
-    u = ds["u"].isel(plev=slice(1, None))
-    v = ds["v"].isel(plev=slice(1, None))
-    p = ds["plev"].isel(plev=slice(1, None))
+    # Extract top and bottom boundaries for layers using shift
+    p_top = plev_Pa.isel(plev=slice(1, None))
+    p_bottom = plev_Pa.shift(plev=1).isel(plev=slice(1, None))
 
-    # Set layers below surface pressure to zero
-    # dp = dp.broadcast_like(q)
-    p3d = p.broadcast_like(q)
-    dp = dp.where(p3d <= ds.ps, 0.0)
+    q_top = ds["q"].isel(plev=slice(1, None))
+    u_top = ds["u"].isel(plev=slice(1, None))
+    v_top = ds["v"].isel(plev=slice(1, None))
 
-    qu = q * u
-    qv = q * v
+    q_bottom = ds["q"].shift(plev=1).isel(plev=slice(1, None))
+    u_bottom = ds["u"].shift(plev=1).isel(plev=slice(1, None))
+    v_bottom = ds["v"].shift(plev=1).isel(plev=slice(1, None))
+
+    # Accurate pressure thickness handling surface clipping (partial layers)
+    dp = (xr.where(p_bottom <= ds["ps"], p_bottom, ds["ps"]) - p_top).clip(min=0)
+
+    # Layer-mean moisture flux (trapezoidal integration)
+    qu = 0.5 * (q_bottom * u_bottom + q_top * u_top)
+    qv = 0.5 * (q_bottom * v_bottom + q_top * v_top)
 
     ivtu = (qu * dp).sum(dim="plev") / g
     ivtv = (qv * dp).sum(dim="plev") / g
@@ -53,7 +59,6 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
 
     # Magnitude of integrated vapor transport
     ivt = (ivtu**2 + ivtv**2) ** 0.5
-
     ivt = _check_dtype(ivt, ds["q"].dtype)
 
     ivtu.name = "ivtu"
@@ -72,28 +77,21 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
     ds["ivtv"] = ivtv
     ds["ivt"] = ivt
 
+    # Moisture Flux Convergence (VIMFC) calculation
     lat_rad = np.deg2rad(ds["lat"])
     lon_rad = np.deg2rad(ds["lon"])
-    coslat = np.cos(lat_rad)
-    coslat = coslat.clip(min=1e-6)
+    coslat = np.cos(lat_rad).clip(min=1e-6)
 
-    # 1. Create Radian-based versions of your IVT components
-    # This ensures both variables share the exact same coordinate system
     ivtu_rad = ivtu.assign_coords(lat=lat_rad, lon=lon_rad)
     ivtv_rad = ivtv.assign_coords(lat=lat_rad, lon=lon_rad)
 
-    # 2. Calculate derivatives using the radian-indexed arrays
     d_ivtu_dlon = ivtu_rad.differentiate("lon")
-
-    # Ensure coslat also uses the radian coordinate for alignment
     coslat_rad = coslat.assign_coords(lat=lat_rad)
     v_coslat = ivtv_rad * coslat_rad
     d_vcoslat_dlat = v_coslat.differentiate("lat")
 
-    # 3. Combine - now the coordinates match perfectly!
     vimfc = -(d_ivtu_dlon + d_vcoslat_dlat) / (R_earth_m * coslat_rad)
 
-    # 4. Restore original degrees for the final output
     vimfc = vimfc.assign_coords(lat=ds["lat"], lon=ds["lon"])
     vimfc = _check_dtype(vimfc, ds["q"].dtype)
 
@@ -103,8 +101,6 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
     vimfc.attrs["long_name"] = "Vertically Integrated Moisture Flux Convergence"
 
     ds["vimfc"] = vimfc
-
-    ds["plev"] = ds["plev"] / 100.0
 
     return ds
 
