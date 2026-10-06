@@ -1,0 +1,51 @@
+2026-10-05 05:27 - PREPROCESS - INFO - Configuration file: /oscar/data/deeps/shared/gfdl_shield/ufs_py/tests/cases/sm_dry/run_config.yaml
+2026-10-05 05:27 - PREPROCESS - INFO - Case directory: /oscar/scratch/jkodero/models/gfdl_shield/runs/cases/sm_dry
+2026-10-05 05:27 - PREPROCESS - INFO - Current directory: /oscar/data/deeps/shared/gfdl_shield/ufs_py/tests/cases/sm_dry
+2026-10-05 05:27 - PREPROCESS - INFO - Working directory: /jobtmp/jkodero/gfdl_shield/cases/sm_dry
+2026-10-05 05:27 - PREPROCESS - INFO - Archive directory: /users/jkodero/data/jkodero/data/models/gfdl_shield/archive/cases/sm_dry
+2026-10-05 05:27 - PREPROCESS - INFO - Fixed/static directory: /oscar/data/deeps/shared/gfdl_shield/fix
+2026-10-05 05:27 - PREPROCESS - INFO - Logs directory: /oscar/scratch/jkodero/models/gfdl_shield/runs/cases/sm_dry/LOGS
+2026-10-05 05:27 - PREPROCESS - INFO - Model executable: /oscar/data/deeps/shared/gfdl_shield/bins/shield/FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x
+2026-10-05 05:27 - PREPROCESS - INFO - Description: 2024081400Z_SM_DRY
+2026-10-05 05:27 - PREPROCESS - INFO - Initial run mode selected
+2026-10-05 05:27 - PREPROCESS - INFO - Full Grid/IC regeneration will be performed.
+2026-10-05 05:27 - PREPROCESS - INFO - Model initialization time: 2024-08-14 00:00:00 UTC
+2026-10-05 05:27 - PREPROCESS - INFO - Forecast length for each segment: 24 hours
+2026-10-05 05:27 - PREPROCESS - INFO - Total forecast length: 1 day
+2026-10-05 05:27 - PREPROCESS - INFO - Vertical levels: 64
+2026-10-05 05:27 - PREPROCESS - INFO - Grid type: uniform
+2026-10-05 05:27 - PREPROCESS - INFO - Global cubed-sphere resolution: C96
+2026-10-05 05:27 - PREPROCESS - INFO - Global tile 1 resolution: 104.36 km
+2026-10-05 05:27 - PREPROCESS - INFO - Global tile 2 resolution: 104.36 km
+2026-10-05 05:27 - PREPROCESS - INFO - Global tile 3 resolution: 104.36 km
+2026-10-05 05:27 - PREPROCESS - INFO - Global tile 4 resolution: 104.36 km
+2026-10-05 05:27 - PREPROCESS - INFO - Global tile 5 resolution: 104.36 km
+2026-10-05 05:27 - PREPROCESS - INFO - Global tile 6 resolution: 104.36 km
+2026-10-05 05:27 - PREPROCESS - INFO - Target longitude: -96
+2026-10-05 05:27 - PREPROCESS - INFO - Target latitude: 35.0
+2026-10-05 05:27 - PREPROCESS - INFO - Starting FV3 Grid and IC generation driver
+2026-10-05 05:27 - PREPROCESS - INFO - Generating Grid and Orography files
+2026-10-05 05:27 - PREPROCESS - INFO - Generating uniform grid: C96
+2026-10-05 05:27 - PREPROCESS - INFO - Generating grid mosaics
+2026-10-05 05:28 - PREPROCESS - INFO - Filtering topography for global tiles
+2026-10-05 05:28 - PREPROCESS - INFO - Generating surface climatology
+2026-10-05 05:29 - PREPROCESS - INFO - Successfully retrieved GFS IC data from NOAA AWS S3
+2026-10-05 05:29 - PREPROCESS - INFO - Running chgres_cube to generate initial conditions
+2026-10-05 05:29 - PREPROCESS - INFO - Staging requred files and data
+2026-10-05 05:30 - PREPROCESS - INFO - Finished generating grid and IC files
+2026-10-05 05:30 - PREPROCESS - INFO - sm_perturbations detected for restart 0; applying perturbations
+2026-10-05 05:30 - PREPROCESS - INFO - Applied mean_shift to smc with mean_scale=-0.2
+2026-10-05 05:30 - PREPROCESS - INFO - Finished applying soil moisture perturbations
+2026-10-05 05:30 - PREPROCESS - INFO - Generating namelist files
+2026-10-05 05:30 - PREPROCESS - INFO - diag_table: /oscar/data/deeps/shared/gfdl_shield/ufs_py/configs/diag_table
+2026-10-05 05:30 - PREPROCESS - INFO - Total PEs needed for run: 48
+2026-10-05 05:30 - PREPROCESS - INFO - Starting initial run
+2026-10-05 05:34 - GFDL SHIELD - INFO - Finished in: 0.07 hours
+2026-10-05 05:35 - ERROR.HANDLER - WARNING - An error has been detected in file: fv3_regrid.py,  line no: 441
+2026-10-05 05:35 - ERROR.HANDLER - ERROR - ValueError: /jobtmp/jkodero/gfdl_shield/cases/sm_dry/HIST/fv3_hist.00.tile6.nc contains no horizontal fields to regrid
+
+Traceback
+<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_regrid.py, line 638 in <module>>
+<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_regrid.py, line 606 in regrid>
+<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_regrid.py, line 530 in regrid_global_tiles>
+<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_regrid.py, line 441 in call_fregrid>

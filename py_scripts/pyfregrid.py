@@ -58,14 +58,33 @@ def supergrid_to_grid(x: np.ndarray, y: np.ndarray, **attrs: object) -> xr.Datas
     )
 
 
+def char_array_to_list(da: xr.DataArray) -> list[str]:
+    arr = da.values
+    if arr.ndim == 1:
+        arr = np.expand_dims(arr, axis=0)
+    items: list[str] = []
+    for row in arr:
+        if row.dtype.kind in {"S", "U"}:
+            text = b"".join(
+                part
+                if isinstance(part, (bytes, bytearray))
+                else str(part).encode("ascii", "ignore")
+                for part in row
+            ).decode("ascii", "ignore")
+        else:
+            text = "".join(chr(int(v)) for v in row)
+        items.append(text.strip().rstrip("\x00"))
+    return items
+
+
 def read_mosaic(path: Path) -> tuple[list[xr.Dataset], int]:
     """One grid per mosaic tile (attrs: name, gca) and the mosaic contact count."""
-    with xr.open_dataset(path) as ds:
+    with xr.open_dataset(path, decode_cf=False) as ds:
         if "gridfiles" not in ds:
             raise ValueError(f"mosaic file {path} does not contain gridfiles")
-        files = np.atleast_1d(ds["gridfiles"].astype(str).str.strip()).tolist()
+        files = char_array_to_list(ds["gridfiles"])
         names = (
-            np.atleast_1d(ds["gridtiles"].astype(str).str.strip()).tolist()
+            char_array_to_list(ds["gridtiles"])
             if "gridtiles" in ds
             else [f"tile{i + 1}" for i in range(len(files))]
         )
@@ -165,18 +184,6 @@ def axis_dim(ds: xr.Dataset, da: xr.DataArray, axis: str) -> str | None:
     return None
 
 
-def horizontal_dims(ds: xr.Dataset, da: xr.DataArray) -> tuple[str, str] | None:
-    """Trailing (Y, X) dims of `da`, or None when it is not a horizontal field.
-
-    Nonspatial variables such as the FMS averaging metadata average_T1(time),
-    average_DT(time) and time_bnds(time, nv) return None.
-    """
-    ydim, xdim = axis_dim(ds, da, "Y"), axis_dim(ds, da, "X")
-    if ydim is None or xdim is None or da.dims[-2:] != (ydim, xdim):
-        return None
-    return ydim, xdim
-
-
 def read_field(
     ds: xr.Dataset, name: str, kind: str, ranges: dict, extrapolate: bool
 ) -> xr.DataArray:
@@ -186,10 +193,6 @@ def read_field(
             f"{kind} field {name} missing in {ds.encoding.get('source', '?')}"
         )
     da = ds[name]
-    if horizontal_dims(ds, da) is None:
-        raise ValueError(
-            f"{kind} field {name}{da.dims} has no trailing (Y, X) horizontal axes"
-        )
     for axis, (begin, end, label) in ranges.items():
         dim = axis_dim(ds, da, axis)
         if dim is None or (begin is None and end is None):
@@ -294,10 +297,10 @@ def fregrid(
     center_y: bool = False,
     check_conserve: bool = False,
     monotonic: bool = False,
-    lonBegin: float = -180.0,
-    lonEnd: float = 180.0,
-    latBegin: float = -90.0,
-    latEnd: float = 90.0,
+    lonBegin: float = 0,
+    lonEnd: float = 360,
+    latBegin: float = -90,
+    latEnd: float = 90,
     nlon: int = 0,
     nlat: int = 0,
     KlevelBegin: int | None = None,

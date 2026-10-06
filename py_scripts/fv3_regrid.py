@@ -16,7 +16,7 @@ from derived_vars import calc_derived_vars
 from fv3_runtime import get_stream_handles
 from fv3_state import load_fv3_state
 from fv3_utils import cres_to_deg, env_setup, exit_code
-from pyfregrid import axis_dim, fregrid, horizontal_dims
+from pyfregrid import fregrid
 
 warnings.filterwarnings("ignore")
 state = load_fv3_state()
@@ -196,6 +196,9 @@ def pack_encoding(ds: xr.Dataset, pack: bool) -> dict[str, dict]:
             scale = 1.0
             offset = vmin
 
+        for attr in ("valid_range", "valid_min", "valid_max"):
+            da.attrs.pop(attr, None)
+
         encoding[name] = {
             "dtype": target_dtype,
             "scale_factor": scale,
@@ -213,8 +216,7 @@ def merge_files(inputs: list[Path], target: Path) -> None:
     The merged file is written to a scratch path and moved into place only
     on success, so target is never left truncated or removed if the
     concatenation fails. An existing target is treated as an additional
-    input, and duplicated time records are resolved in favour of the newer
-    segment.
+    input. All time records are retained and sorted chronologically.
     """
     sources = [target] + inputs if target.exists() else list(inputs)
 
@@ -236,8 +238,7 @@ def merge_files(inputs: list[Path], target: Path) -> None:
 
     try:
         if "time" in ds.dims:
-            keep = ~ds.indexes["time"].duplicated(keep="last")
-            ds = ds.isel(time=keep).sortby("time")
+            ds = ds.sortby("time")
         pack = pack_encoding(ds, bool(state.get("pack_output")))
         encoding = {
             var: {"zlib": True, "complevel": 4, **pack[var]} for var in ds.data_vars
@@ -324,17 +325,6 @@ def merge_outputs(
             merge_files(inputs, target)
 
 
-def nonspatial_vars(ds: xr.Dataset) -> xr.Dataset:
-    """Data variables without horizontal axes, such as the FMS averaging
-    metadata average_T1, average_T2 and average_DT, copied as written."""
-    names = [
-        name
-        for name, da in ds.data_vars.items()
-        if axis_dim(ds, da, "X") is None and axis_dim(ds, da, "Y") is None
-    ]
-    return ds[names].load()
-
-
 def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Dataset:
 
     if "plev" in ds.dims:  # surface-only streams carry no pressure axis
@@ -344,10 +334,7 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
         ds[var].attrs.update(data_attrs.get(var, {}))
 
         if var in ["pr", "prc", "cnvprcpb_ave", "totprcpb_ave"]:
-            # kg m-2 s-1 is mm s-1 of liquid water equivalent; x 3600 gives mm/hr
-            attrs = ds[var].attrs
-            ds[var] = (ds[var] * 3600.0).clip(min=0).assign_attrs(attrs)
-            ds[var].attrs["units"] = "mm/hr"
+            ds[var] = ds[var].clip(min=0, keep_attrs=True)
 
     ds = calc_derived_vars(ds)
     ds = ds[sorted(ds.data_vars)]
@@ -429,16 +416,8 @@ def call_fregrid(
         input_file = stream_path.stem  # removes .nc
         hist_ds_file = state.hist / f"{input_file}.nc"
 
-    # Only fields on the horizontal grid are regridded. Nonspatial averaging
-    # metadata (average_T1/T2/DT) are copied around the regridder unchanged.
-    with xr.open_dataset(hist_ds_file, decode_times=False) as ds:
-        data_vars = [
-            name for name, da in ds.data_vars.items() if horizontal_dims(ds, da)
-        ]
-        meta = nonspatial_vars(ds)
-
-    if not data_vars:
-        raise ValueError(f"{hist_ds_file} contains no horizontal fields to regrid")
+    with xr.open_dataset(hist_ds_file) as ds:
+        data_vars = list(ds.data_vars)
 
     fregrid_out = state.tmp / "fregrid" / "out"
     fregrid_out.mkdir(parents=True, exist_ok=True)
@@ -475,12 +454,6 @@ def call_fregrid(
         combine="by_coords",
         compat="override",
     ) as ds:
-        if meta.data_vars:
-            if "time" in meta.dims:  # same records; share the decoded axis
-                meta = meta.drop_vars("time", errors="ignore")
-                meta = meta.assign_coords(time=ds["time"])
-            ds = ds.merge(meta, compat="override", join="exact")
-
         data_attrs = {var: {**ds[var].attrs} for var in ds.data_vars}
         dim_attrs = {dim: {**ds[dim].attrs} for dim in ds.dims}
 

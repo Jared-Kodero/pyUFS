@@ -1,27 +1,9 @@
-cd cases/hourly_restart
+#!/bin/bash
 
-../case_submit.sh
-
-cd cases/monthly_validation
-
-../case_submit.sh
-
-cd cases/nest_gfs
-
-../case_submit.sh
-
-cd cases/sm_ctrl
-
-../case_submit.sh
-
-cd cases/sm_dry
-
-../case_submit.sh
-
-cd cases/tgrad_ctrl
-
-../case_submit.sh
-
-cd cases/tgrad_sst4
-
-../case_submit.sh
+(cd cases/hourly_restart && ../../../case_submit.sh)
+(cd cases/monthly_validation && ../../../case_submit.sh)
+(cd cases/nest_gfs && ../../../case_submit.sh)
+(cd cases/sm_ctrl && ../../../case_submit.sh)
+(cd cases/sm_dry && ../../../case_submit.sh)
+(cd cases/tgrad_ctrl && ../../../case_submit.sh)
+(cd cases/tgrad_sst4 && ../../../case_submit.sh)
