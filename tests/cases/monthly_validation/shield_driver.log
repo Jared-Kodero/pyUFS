@@ -1,9 +1,0 @@
-2026-10-05 18:13 - ERROR.HANDLER - WARNING - An error has been detected in file: fv3_utils.py,  line no: 317
-2026-10-05 18:13 - ERROR.HANDLER - ERROR - RuntimeError: Insufficient CPUs for this run. Detected 18 available, but at least 32 per node is required.
-
-Traceback
-<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/driver.py, line 21 in <module>>
-<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/driver.py, line 16 in main>
-<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_init_driver.py, line 177 in init_driver>
-<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_init_driver.py, line 101 in _load_initial_state>
-<FrameSummary file /oscar/data/deeps/shared/gfdl_shield/ufs_py/py_scripts/fv3_utils.py, line 317 in require_minimum_cpus>
