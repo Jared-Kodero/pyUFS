@@ -1,5 +1,5 @@
 # Ignore test_data
-tests/data/
+tests
 .pytest_cache/
 .ruff_cache/
 *.ipynb
