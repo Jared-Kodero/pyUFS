@@ -1,7 +1,7 @@
 import re
 
 import yaml
-from fv3_runtime import get_stream_handles, log
+from fv3_runtime import get_stream_handles
 from fv3_state import state
 from fv3_utils import cp
 
@@ -45,7 +45,6 @@ def update_legacy_diag(restart_no: int):
     diag_table_path = state.work_dir / "diag_table"
 
     diag_file = user_diag if user_diag.exists() else template_diag
-    log.info(f"diag_table: {diag_file}")
     cp(diag_file, diag_table_path)
 
     streams = get_stream_handles()
