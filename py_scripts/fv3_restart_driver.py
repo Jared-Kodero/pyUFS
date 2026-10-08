@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fv3_fixed_files import update_fixed_files
 from fv3_namelists import restart_config, update_table_files
 from fv3_paths import configure_directories
 from fv3_runscripts import gen_shield_run_sh
@@ -67,6 +68,7 @@ def restart_driver() -> None:
         file.unlink()
 
     restart_config()
+    update_fixed_files()
     update_table_files()
 
     # Promoting RESTART to INPUT drops the previous segment's boundary links, so
