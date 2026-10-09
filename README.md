@@ -83,11 +83,13 @@ container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
 dependencies used inside the preprocessing container are listed in `configs/env.yaml`
 and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
 `cartopy`, and `wgrib2`. The scheduler is SLURM. `drivers/sbatch.sh` submits
-`drivers/case_run.sh` and forwards the resolved environment. Whenever the configured
-`jobtmp` directory exists on the compute node, the case runs there and the results are
-synchronized back after preprocessing and after a successful segment; on failure the
+`drivers/case_run.sh` and forwards the resolved environment. The driver creates the
+configured `jobtmp` subdirectory on the allocated node when its parent directory
+exists, before selecting the work directory. When `jobtmp` exists, the case runs
+there and the results are synchronized back after preprocessing and after a
+successful segment; on failure the
 logs are copied back. Only an absent `jobtmp` falls back to the case directory; node
-count does not change this preference. The fallback does not create `jobtmp` afterward.
+count does not change this preference.
 The driver logs the selected paths and the reason. When work and case directories
 coincide, no copy or deletion is performed for staging. The fallback runs inside the
 case tree. The run directory (`case_root/<parent>/<case>`) must not contain the submission
@@ -185,7 +187,7 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
 | Key | Meaning |
 | --- | --- |
 | `case_root` | Root of the persistent case tree. |
-| `jobtmp` | Preferred work root whenever it exists on the compute node. Only an absent directory falls back to `case_root`; node count does not change this preference. |
+| `jobtmp` | Preferred work root, created on the allocated node when its parent exists. Absent scratch falls back to `case_root`; node count does not change this preference. |
 | `fix_src` | Source tree for static datasets (the `fix` directory). |
 | `ufs_utils` | Configured workflow path. The launcher ultimately derives the active repository from `drivers/case_submit.py`. |
 | `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for the model, regridding and preprocessing (Section 2). |
