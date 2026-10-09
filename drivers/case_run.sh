@@ -13,32 +13,20 @@ module purge
 
 cd "$CASE_PWD"
 
+export WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 
-mkdir -p "$CASE_DIR"
-export WORK_DIR="$CASE_DIR"
-SYNC=0
-TMP_DIR="$CASE_ROOT_DIR/tmp"
-WORK_DIR_REASON="jobtmp does not exist on this compute node"
 
-# The scheduler provides the user scratch directory; create our subdirectory
-# there before selecting it, as the working workflow did before submission.
-if [[ ! -d "$JOBTMP_DIR" && -d "$(dirname "$JOBTMP_DIR")" ]]; then
+if  [ ! -d "$JOBTMP_DIR" ]; then 
+    SYNC=0
+    WORK_DIR="$CASE_DIR"
+    TMP_DIR="$CASE_ROOT_DIR/tmp"
     mkdir -p "$JOBTMP_DIR"
-fi
-
-if [[ -d "$JOBTMP_DIR" ]]; then
-    SCRATCH_WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
-    if [[ "$SCRATCH_WORK_DIR" -ef "$CASE_DIR" ]]; then
-        WORK_DIR_REASON="jobtmp and case_root identify the same case directory"
-    else
-        SYNC=1
-        WORK_DIR="$SCRATCH_WORK_DIR"
-        TMP_DIR="$JOBTMP_DIR/tmp"
-        WORK_DIR_REASON="configured jobtmp exists"
-        rm -rf "$WORK_DIR"
-    fi
+else
+    SYNC=1
+    TMP_DIR="$JOBTMP_DIR/tmp"
+    rm -rf "$WORK_DIR"
 fi
 
 
@@ -95,9 +83,6 @@ else
      exec >"$CASE_LOG_FILE" 2>&1
 fi
 
-printf '%s - Case.Run - INFO - Node: %s; JOBTMP_DIR=%s; WORK_DIR=%s; CASE_DIR=%s; SYNC=%s; %s\n' \
-    "$(date '+%Y-%m-%d %H:%M')" "$(hostname)" "$JOBTMP_DIR" "$WORK_DIR" "$CASE_DIR" "$SYNC" "$WORK_DIR_REASON"
-
 
 export TMPDIR="$TMP_DIR"
 export APPTAINER_CACHEDIR=$TMP_DIR
@@ -109,13 +94,14 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
+SYNC_DIRS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
+
+
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
 
 if (( $(<"$EXIT_CODE_FILE") == 0)); then
-    if (( SYNC == 1 )); then
-        rsync -a --delete "$WORK_DIR/" "$CASE_DIR/"
-    fi
+    $SYNC_DIRS
     if (( $CASE_PREPROCESS_ONLY == 1 )); then
         rm -f "$CASE_DATA_SYMLINK"
         ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
@@ -143,12 +129,11 @@ if (( $(<"$EXIT_CODE_FILE") == 0 )); then $FREGRID || true; fi
 EXIT_CODE=$(<"$EXIT_CODE_FILE")
 
 if  (( EXIT_CODE == 0 && SYNC == 1 )); then
-    rsync -a --delete "$WORK_DIR/" "$CASE_DIR/"
+    $SYNC_DIRS
 fi
 
-if (( EXIT_CODE != 0 )) && [[ ! "$WORK_DIR" -ef "$CASE_DIR" ]]; then
-    mkdir -p "$CASE_DIR"/LOGS
-    cp -rf "$WORK_DIR"/LOGS/. "$CASE_DIR"/LOGS/
+if (( EXIT_CODE != 0 )); then
+    cp -rf "$WORK_DIR"/LOGS "$CASE_DIR"/LOGS
 fi
 
 
