@@ -4,7 +4,7 @@ export TMPDIR="$TMP_DIR"
 cd "$WORK_DIR" || exit 1
 
 set +e
-/preprocess "$UFS_UTILS_DIR/py_scripts/driver.py"
+/preprocess "$UFS_UTILS_DIR/scripts/driver.py"
 exit_code=$?
 set -e
 

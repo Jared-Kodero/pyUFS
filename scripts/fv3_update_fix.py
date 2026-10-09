@@ -201,7 +201,7 @@ def remote_names(rel: str) -> list[str]:
 
 
 def _open(url: str):
-    request = urllib.request.Request(url, headers={"User-Agent": "ufs_py"})
+    request = urllib.request.Request(url, headers={"User-Agent": "pyUFS"})
     return urllib.request.urlopen(request, timeout=TIMEOUT_S)
 
 
