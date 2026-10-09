@@ -22,8 +22,12 @@ SYNC=0
 TMP_DIR="$CASE_ROOT_DIR/tmp"
 WORK_DIR_REASON="jobtmp does not exist on this compute node"
 
-# Preserve the original preference: use jobtmp whenever it exists. Do not
-# create it after selecting the fallback, changing the next run's decision.
+# The scheduler provides the user scratch directory; create our subdirectory
+# there before selecting it, as the working workflow did before submission.
+if [[ ! -d "$JOBTMP_DIR" && -d "$(dirname "$JOBTMP_DIR")" ]]; then
+    mkdir -p "$JOBTMP_DIR"
+fi
+
 if [[ -d "$JOBTMP_DIR" ]]; then
     SCRATCH_WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
     if [[ "$SCRATCH_WORK_DIR" -ef "$CASE_DIR" ]]; then
