@@ -159,7 +159,7 @@ def update_global_nml(
 
     # Use first-guess timings unless overridden by user
     nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
-    nml["coupler_nml"]["dt_ocean"] = timings["dt_ocean"]
+    nml["coupler_nml"]["dt_cpld"] = timings["dt_ocean"]
 
     # FIX: Pull explicitly from the global keys
     nml["fv_core_nml"]["n_split"] = timings["n_split"][0]

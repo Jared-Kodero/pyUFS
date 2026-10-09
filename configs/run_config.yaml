@@ -27,7 +27,7 @@
 # Environment variables such as $USER and $HOME are expanded.
 
 case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
-jobtmp: /jobtmp/$USER/gfdl_shield # Node-local scratch. When it exists on the compute node, the job runs here and syncs back to case_root; otherwise it runs in place under case_root.
+jobtmp: /jobtmp/$USER/gfdl_shield # Preferred work root whenever it exists on the compute node. Only an absent directory falls back to case_root; node count does not change this preference.
 fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Static datasets (the fix directory). Missing files are fetched from the NOAA fix bucket into it, so it must be writable (README section 7).
 ufs_utils: /oscar/data/deeps/shared/gfdl_shield/pyUFS
 shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model image (README section 2)
@@ -212,7 +212,7 @@ do_deep: false # false: deep convection is switched off on domains with dx <= 4 
 #   resolution or refinement ratio.
 
 dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
-dt_ocean: null # Ocean coupling timestep [s]; a multiple of dt_atmos. Null uses dt_atmos.
+dt_ocean: null # Coupling timestep [s]; written as coupler_nml dt_cpld for FV3-202604. Null uses dt_atmos.
 
 # When set, k_split and n_split must be lists of length n_nests + 1, with the
 # first value for the global grid and the remaining values for the nests in
