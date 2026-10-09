@@ -4,7 +4,7 @@ export TMPDIR="$TMP_DIR"
 cd "$WORK_DIR" || exit 1
 
 set +e
-/fregrid "$UFS_UTILS_DIR/py_scripts/fv3_regrid.py"
+/fregrid "$UFS_UTILS_DIR/scripts/fv3_regrid.py"
 exit_code=$?
 set -e
 
