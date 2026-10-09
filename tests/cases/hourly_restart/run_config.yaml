@@ -3,7 +3,7 @@
 # no gap or duplicate at hour 6.
 
 description: test hourly restart
-init_datetime: "2024081400Z"
+init_datetime: "2023071400Z"
 run_length: 2
 run_length_units: hours
 resubmit: 3
@@ -15,5 +15,5 @@ generate_ic_data: true
 n_nodes: 1
 n_cpus: 48
 walltime: 2
-k_split: [1]
-n_split: [3]
+# k_split: [1] # Use the working ZIP's automatic C96 value: [2].
+# n_split: [3] # Use the working ZIP's automatic C96 value: [6].

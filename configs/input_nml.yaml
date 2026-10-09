@@ -17,6 +17,9 @@ coupler_nml:
   calendar: julian
   current_date: null
   days: null
+  # Full-coupler boundary arrays are absent with do_flux: false.
+  do_chksum: false
+  do_endpoint_chksum: false
   # Separate full-coupler components. Noah remains active via lsm: 1 below.
   do_flux: false
   do_ice: false
