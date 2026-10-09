@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Literal
 
 import f90nml
-
 import regional_bc
 from fv3_ic_data import get_ic_data, validate_hrrr_bounds
 from fv3_runtime import get_launcher, read_namelist
@@ -103,6 +102,8 @@ class ChgresCubeConfig:
     vgfrc_from_climo: bool = True
     lai_from_climo: bool = True
     minmax_vgfrc_from_climo: bool = True
+    # Substrate temperature from the lowest soil layer of the source data
+    # (UFS_UTILS default: false, the static climatology).
     tg3_from_soil: bool = True
     wam_cold_start: bool = False
 
@@ -298,7 +299,9 @@ def build_run_specs() -> list[RunSpec]:
                 "regional",
                 7,
                 ic_dir / f"C{res}_mosaic.nc",
-                [f"C{res}_oro_data.tile7.halo0.nc"],
+                # The regional target grid carries the boundary halo
+                # (halo_bndy = halo + 1 rows), as in the UFS regional workflow.
+                [f"C{res}_oro_data.tile7.halo{state.halo + 1}.nc"],
             )
         ]
 
@@ -322,7 +325,7 @@ def build_run_specs() -> list[RunSpec]:
         block = load_block(domain)  # empty dict falls back to the built-in default
         for model, overrides in plan_runs(domain, tile, block):
             data_dir, data_file = get_ic_data(
-                model, state.init_datetime, state.forecast_hour
+                model, state.ic_cycle, state.forecast_hour
             )
             varmap_dir = state.fix_src / "varmap_tables"
             geogrid_file_input_grid = None
@@ -392,12 +395,10 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
     cp(spec.source_mosaic, canonical)
 
     # Record which model supplied each field group.
-    key = f"{domain}_ic_source"
-    if key not in state:
-        state[key] = {"atm": None, "sfc": None, "nst": None}
+    source = state.ic_source.setdefault(domain, {"atm": None, "sfc": None, "nst": None})
     for name, on in fields_on:
         if on:
-            state[key][name] = model
+            source[name] = model
 
     # Serialise the dataclass, coercing Path to str and tuple to list for f90nml.
     # fort.41 stays in tmp_dir as in the original: consumed by the launch below
@@ -444,21 +445,32 @@ def run_chgres_cube() -> None:
             + "try HRRR and default to GFS if nest is not fully within HRRR domain"
         )
 
-    for spec in specs:
-        run_chgres(spec, n_cpus)
+    is_regional = state.gtype in ("regional_gfdl", "regional_esg")
+    links = (
+        link_regional_target(state.c_res, state.halo + 1, state.tmp / "input")
+        if is_regional
+        else []
+    )
 
-    if state.gtype in ("regional_gfdl", "regional_esg"):
-        regional = next(spec for spec in specs if spec.domain == "regional")
+    try:
+        for spec in specs:
+            run_chgres(spec, n_cpus)
 
-        def run_bc(domain_label: str, source_mosaic, config) -> Path:
-            spec = RunSpec(
-                domain=domain_label, source_mosaic=source_mosaic, config=config
+        if is_regional:
+            regional = next(spec for spec in specs if spec.domain == "regional")
+
+            def run_bc(domain_label: str, source_mosaic, config) -> Path:
+                spec = RunSpec(
+                    domain=domain_label, source_mosaic=source_mosaic, config=config
+                )
+                return run_chgres(spec, n_cpus)
+
+            regional_bc.generate_boundary_files(
+                regional.config, regional.source_mosaic, run_bc
             )
-            return run_chgres(spec, n_cpus)
-
-        regional_bc.generate_boundary_files(
-            regional.config, regional.source_mosaic, run_bc
-        )
+    finally:
+        for link in links:
+            link.unlink(missing_ok=True)
 
     stage_files()
     state.generate_ic_data = False
@@ -477,3 +489,29 @@ def link_fix_files(c_res: int, fix_dir: Path) -> None:
         dest = src.parent / src.name.replace(f"C{c_res}", "", 1)
         if not dest.exists():
             dest.symlink_to(src.resolve())
+
+
+def link_regional_target(c_res: int, halo: int, ic_dir: Path) -> list[Path]:
+    """Point the regional target-grid names read by chgres_cube at halo files.
+
+    chgres_cube reads the tile named in the mosaic (C{res}_grid.tile7.nc)
+    from orog_dir_target_grid and the surface climatology as
+    C{res}.<field>.tile7.nc from fix_dir_target_grid. For a regional grid
+    these are the files with the boundary halo. Returns the links created so
+    the caller can remove them before staging.
+    """
+    links = []
+    pairs = [(ic_dir / f"C{c_res}_grid.tile7.nc", f"C{c_res}_grid.tile7.halo{halo}.nc")]
+    for halo_file in sorted(
+        (ic_dir / "fix_sfc").glob(f"C{c_res}.*.tile7.halo{halo}.nc")
+    ):
+        name = halo_file.name.replace(f".halo{halo}.nc", ".nc")
+        pairs.append((halo_file.parent / name, halo_file.name))
+
+    for link, target in pairs:
+        if not (link.parent / target).exists():
+            raise FileNotFoundError(f"Missing regional input: {link.parent / target}")
+        link.unlink(missing_ok=True)
+        link.symlink_to(target)
+        links.append(link)
+    return links

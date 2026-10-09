@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+import shutil
 import sys
 import traceback
 from collections.abc import Mapping
@@ -11,8 +12,8 @@ from pathlib import Path
 import f90nml
 import xarray as xr
 import yaml
-
 from fv3_paths import paths
+from fv3_update_fix import ensure_fix_file, missing_message
 
 log = logging.getLogger("PREPROCESS")
 
@@ -26,22 +27,127 @@ def get_newres(gridfile: Path) -> int:
     no relation to the equivalent resolution, so it cannot be used in its place.
     """
     with xr.open_dataset(gridfile) as ds:
-        nx = ds.nx.shape[0]
         res_equiv = ds.attrs.get("RES_equiv", None)
 
     if res_equiv is None:
-        res_equiv = int(nx / 2)
+        raise ValueError(
+            f"{gridfile} has no RES_equiv attribute; run global_equiv_resol first"
+        )
 
     return int(res_equiv)
 
 
+def merged_run_config() -> dict:
+    """The case run_config.yaml, with unset or null keys from configs/run_config.yaml.
+
+    The same merge is applied by drivers/case_submit.py at submission.
+    """
+    default = read_namelist(Path(paths["configs"]) / "run_config.yaml")
+    case = read_namelist(Path(paths["run_dir"]) / "run_config.yaml") or {}
+    merged = dict(case)
+    for key, value in default.items():
+        if merged.get(key) is None and value is not None:
+            merged[key] = value
+    return merged
+
+
+# run_config.yaml keys that determine the grid and its orography. Files staged
+# in IC/grid or IC/orography are reused only while these are unchanged.
+GRID_KEYS = (
+    "c_res",
+    "gtype",
+    "stretch_factor",
+    "target_lon",
+    "target_lat",
+    "refine_ratio",
+    "parent_tile",
+    "lon_min",
+    "lon_max",
+    "lat_min",
+    "lat_max",
+    "halo",
+    "idim",
+    "jdim",
+    "delx",
+    "dely",
+)
+# The staged orography also depends on whether the GSL files were made.
+OROGRAPHY_KEYS = (*GRID_KEYS, "make_gsl_orog")
+STAGED_RECORD = ".grid_settings.yaml"
+
+
+def _grid_settings(keys: tuple = OROGRAPHY_KEYS) -> dict:
+    cfg = merged_run_config()
+    return {k: to_builtin(cfg.get(k)) for k in keys}
+
+
+def staged_files(mod_dir: Path | None) -> list[Path]:
+    """Files to reuse from IC/grid or IC/orography, or [] to generate them.
+
+    The directories hold the output of a preprocess_grid_only or
+    preprocess_orog_only run, possibly edited, or files supplied by the user.
+    Raises when they were staged for different grid settings, since a grid
+    of another resolution, box or grid type would be reused silently.
+    """
+    if mod_dir is None or not Path(mod_dir).is_dir():
+        return []
+    files = sorted(f for f in Path(mod_dir).iterdir() if f.name != STAGED_RECORD)
+    if not files:
+        return []
+
+    record = Path(mod_dir) / STAGED_RECORD
+    if record.exists():
+        saved = yaml.safe_load(record.read_text()) or {}
+        current = _grid_settings(tuple(saved))
+        changed = sorted(k for k in saved if saved[k] != current[k])
+        if changed:
+            raise ValueError(
+                f"{mod_dir} holds files staged for other grid settings "
+                + f"({', '.join(changed)} changed). Remove the directory to "
+                + "regenerate them, or restore the settings."
+            )
+    else:
+        log.warning(
+            f"Reusing {mod_dir} without a record of its grid settings; "
+            + "the files must match run_config.yaml"
+        )
+    return files
+
+
+def stage_for_reuse(src_dir: Path, mod_dir: Path, keys: tuple = GRID_KEYS) -> None:
+    """Copy src_dir to mod_dir and record the settings (`keys`) it was made for."""
+    mod_dir = Path(mod_dir)
+    mod_dir.mkdir(parents=True, exist_ok=True)
+    for f in Path(src_dir).iterdir():
+        dest = mod_dir / f.name
+        if f.is_dir():
+            shutil.copytree(f, dest, dirs_exist_ok=True)
+        else:
+            shutil.copy2(f, dest)
+    with open(mod_dir / STAGED_RECORD, "w") as fh:
+        yaml.safe_dump(_grid_settings(keys), fh, sort_keys=False)
+
+
 def get_launcher(n_procs: int | None = None) -> list:
-    return ["mpirun", "-np", str(n_procs), "--host", f"localhost:{n_procs}"]
+    """mpirun for the preprocessing executables on this node.
+
+    The rank count follows the CPUs visible to the process, which can exceed
+    the Slurm task slots (n_cpus_per_task > 1), so oversubscription is
+    allowed; Open MPI then does not bind ranks to cores.
+    """
+    return [
+        "mpirun",
+        "--oversubscribe",
+        "-np",
+        str(n_procs),
+        "--host",
+        f"localhost:{n_procs}",
+    ]
 
 
 def open_yaml(path: Path) -> dict:
     with open(path, "r") as f:
-        data = dict(yaml.safe_load(f))
+        data = dict(yaml.safe_load(f) or {})
     return data
 
 
@@ -158,22 +264,45 @@ def get_stream_handles() -> list[str]:
 
                 stream_files.append(parts[0].strip().strip('"').strip("'"))
 
-            except Exception:
+            except (IndexError, KeyError, ValueError):
                 # The source parser treats this as a field-section line.
                 continue
 
     return list(dict.fromkeys(stream_files))
 
 
-def report_missing_fixed_files(missing_files: list[Path], sub_dir: str = "am") -> None:
-    url = f"https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/{sub_dir}"
-    print("Missing required file(s):")
-    for f in missing_files:
-        print(f"  - {f}")
-    print(
-        f"Please download them from\n\t{url}\nand place them in\n\t{paths['fix_src'] / sub_dir}."
-    )
-    raise FileNotFoundError("Missing required fixed files. See above for details.")
+def fix_file(rel: str, required: bool = True) -> Path | None:
+    """Path of a fix_src file, fetched from the NOAA fix bucket when missing.
+
+    `rel` is relative to fix_src, for example "am/global_glacier.2x2.grb".
+    Raises FileNotFoundError when a required file is unavailable locally and
+    remotely; returns None for an optional one.
+    """
+    return ensure_fix_file(paths["fix_src"], rel, required=required)
+
+
+def require_fix_files(files: list[Path], sub_dir: str = "") -> None:
+    """Ensure `files` exist, fetching any missing from fix_src's remote source.
+
+    Raises FileNotFoundError naming every file that cannot be found. Paths
+    outside fix_src (for example executables) cannot be fetched and are
+    reported directly. `sub_dir` is accepted for older call sites.
+    """
+    fix_src = Path(paths["fix_src"])
+    unresolved = []
+    for f in files:
+        if Path(f).exists():
+            continue
+        try:
+            rel = Path(f).relative_to(fix_src).as_posix()
+        except ValueError:
+            unresolved.append(str(f))
+            continue
+        if fix_file(rel, required=False) is None:
+            unresolved.append(rel)
+
+    if unresolved:
+        raise FileNotFoundError(missing_message(fix_src, unresolved))
 
 
 @contextmanager
@@ -192,7 +321,7 @@ def handle_errors(exc_type, value, tb):
     def _norm_path(p: str) -> str:
         try:
             return str(Path(p).resolve())
-        except Exception:
+        except (OSError, RuntimeError):
             return p
 
     user_frames = [

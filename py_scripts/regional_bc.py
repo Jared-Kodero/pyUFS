@@ -20,19 +20,17 @@ BC_INTERVAL_HOURS = 3
 
 # Operational cycle and forecast-lead availability.
 #
-# GFS:
+# GFS (0.25 degree pgrb2):
 #   - cycles: 00/06/12/18 UTC
-#   - absolute forecast horizon: f384
-#   - continuous 3-hourly output: through f240
-#   - output after f240: 12-hourly through f384
+#   - forecast horizon: f384, 3-hourly throughout since GFS v15 (12 June 2019;
+#     checked on noaa-gfs-bdp-pds for 2026); before that, 12-hourly after f240
 #
 # HRRR:
 #   - cycles: every UTC hour
 #   - standard cycles: through f018
 #   - extended 00/06/12/18 UTC cycles: through f048
 #
-# This module requires one uninterrupted 3-hourly boundary sequence. Therefore,
-# its applicable GFS limit is f240, not the absolute f384 forecast horizon.
+# This module requires one uninterrupted 3-hourly boundary sequence.
 SYNOPTIC_CYCLE_HOURS = frozenset({0, 6, 12, 18})
 
 MODEL_CYCLE_HOURS: dict[str, frozenset[int]] = {
@@ -42,7 +40,9 @@ MODEL_CYCLE_HOURS: dict[str, frozenset[int]] = {
 
 HRRR_EXTENDED_CYCLE_HOURS = SYNOPTIC_CYCLE_HOURS
 
-GFS_MAX_3H_FORECAST_HOUR = 240
+GFS_MAX_3H_FORECAST_HOUR = 384
+GFS_LEGACY_MAX_3H_FORECAST_HOUR = 240
+GFS_V15_DATE = pd.Timestamp("2019-06-12")
 HRRR_STANDARD_MAX_FORECAST_HOUR = 18
 HRRR_EXTENDED_MAX_FORECAST_HOUR = 48
 
@@ -85,14 +85,18 @@ def bc_external_model() -> str:
     fields agree across the blending halo. Any atmosphere source other than
     HRRR falls back to GFS.
     """
-    source = str((state.regional_ic_source or {}).get("atm", "GFS")).upper()
+    source = str(state.ic_source.get("regional", {}).get("atm") or "GFS").upper()
 
     return "HRRR" if source == "HRRR" else "GFS"
 
 
-def max_3h_forecast_hour(model: str, cycle_hour: int) -> int:
+def max_3h_forecast_hour(
+    model: str, cycle_hour: int, cycle: pd.Timestamp | None = None
+) -> int:
     """Return the maximum continuous 3-hourly lead for a model cycle."""
     if model == "GFS":
+        if cycle is not None and cycle < GFS_V15_DATE:
+            return GFS_LEGACY_MAX_3H_FORECAST_HOUR
         return GFS_MAX_3H_FORECAST_HOUR
 
     if cycle_hour in HRRR_EXTENDED_CYCLE_HOURS:
@@ -121,32 +125,31 @@ def _insufficient_horizon_guidance(
         ):
             return (
                 f"Change the HRRR cycle to {synoptic_cycles} UTC to use an "
-                "extended forecast through f048, or switch the atmosphere "
-                f"source to GFS using a {synoptic_cycles} UTC cycle."
+                + "extended forecast through f048, or switch the atmosphere "
+                + f"source to GFS using a {synoptic_cycles} UTC cycle."
             )
 
         if required_hour <= GFS_MAX_3H_FORECAST_HOUR:
             return (
                 "No HRRR cycle provides enough forecast lead. Switch the "
-                f"atmosphere source to GFS and use a {synoptic_cycles} UTC "
-                "cycle. GFS provides a continuous 3-hourly sequence through "
-                f"f{GFS_MAX_3H_FORECAST_HOUR:03d}."
+                + f"atmosphere source to GFS and use a {synoptic_cycles} UTC "
+                + "cycle. GFS provides a continuous 3-hourly sequence through "
+                + f"f{GFS_MAX_3H_FORECAST_HOUR:03d}."
             )
 
         return (
             "Neither HRRR nor the configured GFS product provides a "
-            f"continuous 3-hourly single-cycle sequence through "
-            f"f{required_hour:03d}. Reduce the integration length, use a "
-            "larger boundary interval with appropriate temporal "
-            "interpolation, or implement multi-cycle boundary forcing."
+            + "continuous 3-hourly single-cycle sequence through "
+            + f"f{required_hour:03d}. Reduce the integration length, use a "
+            + "larger boundary interval with appropriate temporal "
+            + "interpolation, or implement multi-cycle boundary forcing."
         )
 
     return (
-        "GFS reaches f384, but its continuous 3-hourly output ends at "
-        f"f{GFS_MAX_3H_FORECAST_HOUR:03d}. Changing the GFS cycle will not "
-        "increase this limit. Reduce the integration length, use a larger "
-        "boundary interval with appropriate temporal interpolation, or "
-        "implement multi-cycle boundary forcing."
+        "Changing the GFS cycle will not increase this limit (f384 since GFS "
+        + "v15, f240 before 12 June 2019). Reduce the integration length, use "
+        + "a larger boundary interval with appropriate temporal interpolation, "
+        + "or implement multi-cycle boundary forcing."
     )
 
 
@@ -175,13 +178,13 @@ def validate_forecast_horizon(
         valid_cycles = _cycle_list(valid_cycle_hours)
         message = (
             f"{model} has no {cycle_hour:02d} UTC forecast cycle. "
-            f"Change state.init_datetime to a {valid_cycles} UTC cycle."
+            + f"Change state.init_datetime to a {valid_cycles} UTC cycle."
         )
         log.warning(message)
         raise ValueError(message)
 
     required_hour = hours[-1]
-    available_hour = max_3h_forecast_hour(model, cycle_hour)
+    available_hour = max_3h_forecast_hour(model, cycle_hour, cycle)
 
     if required_hour <= available_hour:
         return
@@ -194,10 +197,10 @@ def validate_forecast_horizon(
 
     message = (
         f"Insufficient {model} boundary data for the "
-        f"{cycle.strftime('%Y-%m-%d %H UTC')} cycle: a complete "
-        f"{BC_INTERVAL_HOURS}-hourly sequence is available only through "
-        f"f{available_hour:03d}, but the regional integration requires "
-        f"f{required_hour:03d}. {guidance}"
+        + f"{cycle.strftime('%Y-%m-%d %H UTC')} cycle: a complete "
+        + f"{BC_INTERVAL_HOURS}-hourly sequence is available only through "
+        + f"f{available_hour:03d}, but the regional integration requires "
+        + f"f{required_hour:03d}. {guidance}"
     )
 
     log.warning(message)
@@ -222,8 +225,9 @@ def generate_boundary_files(base_config, source_mosaic, run_spec) -> None:
         the boundary output. Passed in by chgres_cube so this module never
         imports it, avoiding a circular import.
 
-    Source files remain on the cold-start driving cycle and advance by forecast
-    lead: f000, f003, f006, ... . Output files are written to ``state.bc_data``
+    Source files remain on the driving cycle (``state.ic_cycle``) and advance
+    by forecast lead from ``state.forecast_hour``: for forecast_hour 6, f006,
+    f009, ... are written as hours 000, 003, ... . Output files are written to ``state.bc_data``
     as ``gfs_bndy.tile7.HHH.nc`` and linked into ``state.input`` separately by
     ``link_bc_to_input``.
     """
@@ -235,19 +239,23 @@ def generate_boundary_files(base_config, source_mosaic, run_spec) -> None:
     for stale in bc_dir.glob("gfs_bndy.tile7.*.nc"):
         stale.unlink()
 
-    cycle = pd.Timestamp(state.init_datetime)
+    # Boundary files are numbered by hours since the model start; the model
+    # starts at the forecast_hour lead of the source cycle.
+    cycle = pd.Timestamp(state.ic_cycle)
+    lead0 = int(state.forecast_hour or 0)
     hours = bc_forecast_hours()
 
     # Validate the complete sequence before downloading or processing any data.
-    validate_forecast_horizon(model, cycle, hours)
+    validate_forecast_horizon(model, cycle, [lead0 + h for h in hours])
 
     for fh in hours:
-        valid = cycle + pd.Timedelta(hours=fh)
+        lead = lead0 + fh
+        valid = cycle + pd.Timedelta(hours=lead)
 
         data_dir, data_file = get_ic_data(
             model,
             datetime=cycle,
-            forecast_hour=fh,
+            forecast_hour=lead,
         )
 
         config = replace(

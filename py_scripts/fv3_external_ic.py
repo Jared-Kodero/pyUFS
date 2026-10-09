@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fv3_runtime import log
 from fv3_state import load_fv3_state, state
+from regional_bc import bc_forecast_hours
 
 # Settings that describe the staged grid and initial conditions. The bundle's
 # state.yaml is authoritative for these; every other setting (description,
@@ -16,6 +17,7 @@ BUNDLE_KEYS = frozenset(
         "levels",
         "init_datetime",
         "forecast_hour",
+        "ic_cycle",
         "target_lon",
         "target_lat",
         "stretch_factor",
@@ -42,8 +44,9 @@ BUNDLE_KEYS = frozenset(
         "jend_nest",
         "nest_ioffsets",
         "nest_joffsets",
+        "ic_source",
     }
-)  # plus every "<domain>_ic_source" key
+)
 
 
 def _resolved_ok(path: Path) -> bool:
@@ -96,6 +99,25 @@ def _ic_manifest(
                         in GRID/ (mosaic filenames vary by gtype, so these
                         are matched by pattern rather than by exact name)
     """
+    if gtype in ("regional_gfdl", "regional_esg"):
+        # Names given by fv3_stage_data.stage_regional_inputs (halo 3).
+        grid_required = [
+            grid_dir / f"C{c_res}_grid.tile7.halo3.nc",
+            grid_dir / f"C{c_res}_grid.tile7.halo4.nc",
+        ]
+        input_required = [
+            input_dir / name
+            for name in (
+                "gfs_ctrl.nc",
+                "gfs_data.nc",
+                "sfc_data.nc",
+                "oro_data.nc",
+                "oro_data.tile7.halo4.nc",
+                "grid_spec.nc",
+            )
+        ]
+        return grid_required, input_required, 1
+
     global_tiles, nest_tiles = _expected_tiles(gtype, n_nests)
 
     grid_required = [
@@ -156,6 +178,25 @@ def _validate_ic_files(c_res: int, gtype: str, n_nests: int) -> None:
         raise FileNotFoundError(f"IC validation failed in {state.work_dir}: {detail}")
 
 
+def _validate_bc_files() -> None:
+    """A regional bundle must hold a boundary file for every boundary hour of
+    this case, whose run length may exceed the bundle's."""
+    if state.gtype not in ("regional_gfdl", "regional_esg"):
+        return
+    bc_dir = Path(state.bc_data)
+    missing = [
+        h
+        for h in bc_forecast_hours()
+        if not _resolved_ok(bc_dir / f"gfs_bndy.tile7.{h:03d}.nc")
+    ]
+    if missing:
+        raise FileNotFoundError(
+            f"No boundary files {bc_dir}/gfs_bndy.tile7.HHH.nc for hours {missing} "
+            + f"of this {state.total_run_hours} h run; regenerate the IC bundle "
+            + "for the full run length"
+        )
+
+
 def _stage_external_bundle(src: Path, dst: Path) -> None:
     """
     Copy an external IC bundle into the case directory, preserving symlinks
@@ -204,6 +245,12 @@ def init_external_ic() -> bool:
     if external:
         _stage_external_bundle(ic_dir, case_home)
         log.info(f"Copied external IC data from {ic_dir} to {case_home}")
+        # Archived INPUT directories of the bundle's own segments would collide
+        # with the archive this case writes at its first restart.
+        ic_archive = case_home / "IC"
+        for archived in [ic_archive / "INPUT", *ic_archive.glob("R*_INPUT")]:
+            if archived.is_dir() and not archived.is_symlink():
+                shutil.rmtree(archived)
     else:
         log.info(f"IC data source: {case_home}")
 
@@ -212,11 +259,7 @@ def init_external_ic() -> bool:
     # settings, so a bundle can be shared by experiment arms.
     if not (case_home / "state.yaml").exists():
         raise FileNotFoundError(f"Missing state.yaml in {case_home}")
-    case = {
-        k: v
-        for k, v in state.items()
-        if k not in BUNDLE_KEYS and not k.endswith("_ic_source")
-    }
+    case = {k: v for k, v in state.items() if k not in BUNDLE_KEYS}
     expected = {k: state.get(k) for k in ("init_datetime", "gtype", "levels")}
     load_fv3_state()
     state.update(case)
@@ -229,5 +272,6 @@ def init_external_ic() -> bool:
 
     # 4. Validate the exact files the model needs for this configuration.
     _validate_ic_files(c_res=state.c_res, gtype=state.gtype, n_nests=state.n_nests)
+    _validate_bc_files()
 
     return True

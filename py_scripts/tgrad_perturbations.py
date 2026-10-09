@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from pathlib import Path
 
@@ -433,6 +434,21 @@ def validate_tgrad_perturbations(perturbations: object) -> tuple[dict, list] | N
             p[out] = {k: float(v) for k, v in value.items()}
         else:
             p[out] = {pole: float(value) for pole in POLES[p["poles"]]}
+
+    # NaN passes every range test below and would blank the climatology.
+    numbers = {
+        "lat_start": [p["lat_start"]],
+        "lat_full": [p["lat_full"]],
+        "monthly_scale": p["monthly_scale"],
+        "polar_delta_t_k": list(p["dt_poles"].values()),
+        "sic_reduction": list(p["sic_poles"].values()),
+    }
+    for k in ("uniform_warming_k", "opened_water_delta_t_k"):
+        if k in p:
+            numbers[k] = [p[k]]
+    for key, values in numbers.items():
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError(f"`{key}` must be finite. Got {values}")
 
     for pole, dt in p["dt_poles"].items():
         if abs(dt) > DELTA_T_MAX:

@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-
 from fv3_runtime import read_namelist, sort_paths
 from fv3_state import save_fv3_state, state
 from fv3_timings import get_timings
@@ -65,12 +64,16 @@ def get_grid_info() -> None:
 
 
 def get_regional_grid_info() -> None:
-    """Read the single, unshaved tile-7 grid used by a regional domain."""
-    files = sorted(grid_dir.glob("C*_grid.tile7.nc"), key=sort_paths)
+    """Read the compute-domain (halo0) tile-7 grid of a regional domain.
+
+    npx and npy count the compute-domain points, without the boundary halo
+    (the halo0 grid written by fv3_shave).
+    """
+    files = sorted(grid_dir.glob("C*_grid.tile7.halo0.nc"), key=sort_paths)
 
     if not files:
         raise FileNotFoundError(
-            f"No regional grid file matching C*_grid.tile7.nc found in {grid_dir}."
+            f"No regional grid file matching C*_grid.tile7.halo0.nc found in {grid_dir}."
         )
     if len(files) > 1:
         names = ", ".join(path.name for path in files)
@@ -91,10 +94,10 @@ def calc_regional_pes() -> None:
     if state.n_cpus <= 0:
         raise ValueError(f"Invalid CPU count for regional grid: {state.n_cpus}")
 
-    state.grid_pes = [state.n_cpus]
-    state.total_pes = state.n_cpus
+    pes, layouts = _largest_decomposable(state.n_cpus, ntiles=1)
+    state.grid_pes = [pes]
+    state.total_pes = pes
 
-    layouts = get_layouts(state.grid_pes)
     state.layout = layouts["layout"]
     state.io_layout = layouts["io_layout"]
     state.blocksize = layouts["blocksize"]
@@ -102,18 +105,30 @@ def calc_regional_pes() -> None:
 
 def calc_uniform_pes() -> None:
 
-    total_pes = 6 * (state.n_cpus // 6)
-    state.grid_pes = [total_pes]
-    state.total_pes = total_pes
+    pes, layouts = _largest_decomposable(state.n_cpus, ntiles=6)
+    state.grid_pes = [pes]
+    state.total_pes = pes
 
-    layouts = get_layouts([total_pes // 6])
     state.layout = layouts["layout"]
     state.io_layout = layouts["io_layout"]
     state.blocksize = layouts["blocksize"]
 
 
-def check_user_define_pes() -> bool:
+def _largest_decomposable(ncpus: int, ntiles: int) -> tuple[int, dict]:
+    """Largest PE count <= ncpus, a multiple of ntiles, with a valid layout."""
+    for per_tile in range(ncpus // ntiles, 0, -1):
+        try:
+            return per_tile * ntiles, get_layouts([per_tile])
+        except ValueError:
+            continue
+    raise ValueError(f"No domain decomposition fits within {ncpus} PEs")
 
+
+def check_user_define_pes() -> bool:
+    """Use fv_nest_nml grid_pes from the case input.nml/.yaml/.yml if set.
+
+    The first existing file is read, matching fv3_namelists.namelist_overrides.
+    """
     user_nml = state.run_dir / "input"
     suffixes = (".nml", ".yaml", ".yml")
 
@@ -121,15 +136,26 @@ def check_user_define_pes() -> bool:
     grid_pes = None
     for suffix in suffixes:
         _path = Path(user_nml).with_suffix(suffix)
-        if not _path.exists():
-            continue
-        else:
+        if _path.exists():
             override_nml = read_namelist(_path)
+            break
 
     if override_nml:
         grid_pes = override_nml.get("fv_nest_nml", {}).get("grid_pes")
     if not grid_pes:
         return False
+
+    grid_pes = [int(p) for p in grid_pes]
+    if len(grid_pes) != state.n_nests + 1:
+        raise ValueError(
+            f"fv_nest_nml grid_pes needs {state.n_nests + 1} entries, got {grid_pes}"
+        )
+    if grid_pes[0] % 6 != 0:
+        raise ValueError(f"Global grid_pes ({grid_pes[0]}) must be a multiple of 6")
+    if sum(grid_pes) > state.n_cpus:
+        raise ValueError(
+            f"grid_pes {grid_pes} exceed the {state.n_cpus} tasks requested"
+        )
 
     state.grid_pes = grid_pes
     state.total_pes = sum(grid_pes)
@@ -167,25 +193,24 @@ def calc_nest_pes() -> None:
     weights *= global_base_pes / weights[0]
 
     # Permit compact decompositions in four-rank increments. Restrict candidates
-    # to layouts no more elongated than 2:1 before grid-specific orientation.
-    valid_nest_pes = []
-
-    for pes in range(16, state.n_cpus + 1, 4):
-        for layout_x in range(isqrt(pes), 0, -1):
-            if pes % layout_x == 0:
-                layout_y = pes // layout_x
-
-                if layout_y / layout_x <= 2.0:
-                    valid_nest_pes.append(pes)
-
-                break
-
-    valid = np.asarray(valid_nest_pes, dtype=np.int64)
+    # to layouts no more elongated than 2:1 before grid-specific orientation,
+    # and per grid to counts it can be split into (get_layouts).
+    counts = _square_pe_counts(range(16, state.n_cpus + 1, 4))
+    valid = []
+    for k in range(1, state.n_nests + 1):
+        fits = _decomposable(counts, state.npx[k] - 1, state.npy[k] - 1)
+        if fits.size == 0:
+            raise ValueError(
+                f"Nest {k + 1:02d} ({state.npx[k] - 1} x {state.npy[k] - 1} cells) is too "
+                + f"small for 16 PEs with at least {MIN_LOCAL_CELLS} cells per edge"
+            )
+        valid.append(fits)
 
     final_pes = allocate_pes(
         weights=weights,
         ncpus=state.n_cpus,
         valid_nest_pes=valid,
+        global_cells=(state.npx[0] - 1, state.npy[0] - 1),
     )
 
     ntiles_list = [6] + [1] * state.n_nests
@@ -204,10 +229,37 @@ def calc_nest_pes() -> None:
     save_fv3_state()
 
 
+def _decomposable(counts: np.ndarray | range, nx: int, ny: int) -> np.ndarray:
+    """Counts p with a layout lx * ly = p leaving at least MIN_LOCAL_CELLS
+    cells per subdomain edge on an nx x ny grid (as required by get_layouts)."""
+    ok = []
+    for p in counts:
+        p = int(p)
+        if any(
+            p % lx == 0
+            and nx / lx >= MIN_LOCAL_CELLS
+            and ny / (p // lx) >= MIN_LOCAL_CELLS
+            for lx in range(1, p + 1)
+        ):
+            ok.append(p)
+    return np.asarray(ok, dtype=np.int64)
+
+
+def _square_pe_counts(counts: range, ratio: float = 2.0) -> np.ndarray:
+    """Counts whose most nearly square factorization is at most ratio:1."""
+    valid = []
+    for pes in counts:
+        layout_x = next(x for x in range(isqrt(pes), 0, -1) if pes % x == 0)
+        if (pes // layout_x) / layout_x <= ratio:
+            valid.append(pes)
+    return np.asarray(valid, dtype=np.int64)
+
+
 def allocate_pes(
     weights: list[float] | np.ndarray,
     ncpus: int,
-    valid_nest_pes: list[int] | np.ndarray,
+    valid_nest_pes: list[int] | np.ndarray | list[np.ndarray],
+    global_cells: tuple[int, int] | None = None,
 ) -> list[int]:
     """
     Allocate PEs by minimizing the largest estimated grid time:
@@ -215,13 +267,19 @@ def allocate_pes(
         T_g ~ weight_g / P_g
 
     Rules:
-        - global PE count is a multiple of 6
-        - nest PE counts are selected from valid_nest_pes
+        - global PE count is a multiple of 6 (and, with global_cells, its
+          per-tile count decomposes the tile)
+        - nest PE counts are selected from valid_nest_pes: one array for all
+          nests, or one array per nest
         - use exactly ncpus when possible
         - among equivalent bottlenecks, prefer the smallest timing spread
+
+    The last nest is determined by the others (the remainder of ncpus, or the
+    largest valid count that fits), so the search spans one dimension fewer
+    than the full product, and it is evaluated one global count at a time to
+    bound memory. The result equals that of the full search.
     """
     weights = np.asarray(weights, dtype=np.float64)
-    valid = np.asarray(valid_nest_pes, dtype=np.int64)
 
     if weights.ndim != 1 or len(weights) < 2:
         raise ValueError("weights must contain the global grid and at least one nest.")
@@ -229,66 +287,105 @@ def allocate_pes(
     if np.any(~np.isfinite(weights)) or np.any(weights <= 0.0):
         raise ValueError("All PE weights must be finite and positive.")
 
-    valid = np.unique(valid[(valid >= 16) & (valid <= ncpus)])
+    n_nest = len(weights) - 1
+    per_nest = (
+        list(valid_nest_pes)
+        if len(valid_nest_pes) and np.ndim(valid_nest_pes[0]) == 1
+        else [valid_nest_pes] * n_nest
+    )
+    if len(per_nest) != n_nest:
+        raise ValueError("valid_nest_pes needs one array per nest.")
+    per_nest = [np.asarray(v, dtype=np.int64) for v in per_nest]
+    per_nest = [np.unique(v[(v >= 16) & (v <= ncpus)]) for v in per_nest]
 
-    if valid.size == 0:
+    if any(v.size == 0 for v in per_nest):
         raise ValueError("No valid nest PE counts are available.")
 
-    min_required = 6 + (len(weights) - 1) * int(valid.min())
+    min_required = 6 + sum(int(v.min()) for v in per_nest)
 
     if min_required > ncpus:
         raise ValueError(
             f"Insufficient CPUs for PE allocation: ncpus={ncpus}, but at least {min_required} are required."
         )
 
-    global_valid_list = []
-
-    for global_pes in range(6, ncpus + 1, 6):
-        pes_per_tile = global_pes // 6
-
-        for layout_x in range(isqrt(pes_per_tile), 0, -1):
-            if pes_per_tile % layout_x == 0:
-                layout_y = pes_per_tile // layout_x
-
-                if layout_y / layout_x <= 2.0:
-                    global_valid_list.append(global_pes)
-
-                break
-
-    global_valid = np.asarray(global_valid_list, dtype=np.int64)
+    per_tile = _square_pe_counts(range(1, ncpus // 6 + 1))
+    if global_cells is not None:
+        per_tile = _decomposable(per_tile, *global_cells)
+    global_valid = 6 * per_tile
 
     if global_valid.size == 0:
         raise ValueError("No valid global-grid PE counts are available.")
 
-    choices = [global_valid] + [valid] * (len(weights) - 1)
+    n_inner = len(weights) - 2  # nests chosen freely; the last one is derived
+    best_exact = None  # (bottleneck, spread, row)
+    best_fit = None  # (total, bottleneck, spread, row)
 
-    mesh = np.meshgrid(*choices, indexing="ij")
-    candidates = np.stack([entry.ravel() for entry in mesh], axis=1)
-
-    exact = candidates[candidates.sum(axis=1) == ncpus]
-
-    if exact.size == 0:
-        candidates = candidates[candidates.sum(axis=1) <= ncpus]
-
-        if candidates.size == 0:
-            raise ValueError("No PE allocation fits within ncpus.")
-
-        max_used_pes = candidates.sum(axis=1).max()
-        candidates = candidates[candidates.sum(axis=1) == max_used_pes]
+    last_valid = per_nest[-1]
+    if n_inner:
+        mesh = np.meshgrid(*per_nest[:-1], indexing="ij")
+        inner_all = np.stack([m.ravel() for m in mesh], axis=1)
     else:
-        candidates = exact
+        inner_all = np.empty((1, 0), dtype=np.int64)
 
-    predicted_time = weights[np.newaxis, :] / candidates
+    for g in global_valid:
+        inner = inner_all
+        remainder = ncpus - g - inner.sum(axis=1)
 
-    bottleneck_time = predicted_time.max(axis=1)
-    timing_spread = np.ptp(predicted_time, axis=1)
+        # Largest valid count for the last nest that fits in the remainder.
+        pos = np.searchsorted(last_valid, remainder, side="right") - 1
+        fits = pos >= 0
+        if not fits.any():
+            continue
+        last = last_valid[np.clip(pos, 0, None)]
 
-    best = np.lexsort((timing_spread, bottleneck_time))[0]
+        rows = np.column_stack([np.full(len(inner), g), inner, last])[fits]
+        remainder = remainder[fits]
 
-    return candidates[best].astype(int).tolist()
+        predicted = weights[np.newaxis, :] / rows
+        bottleneck = predicted.max(axis=1)
+        spread = np.ptp(predicted, axis=1)
+
+        # The last nest takes the whole remainder: all ncpus are used.
+        exact = rows[:, -1] == remainder
+
+        if exact.any():
+            idx = np.flatnonzero(exact)
+            k = idx[np.lexsort((spread[idx], bottleneck[idx]))[0]]
+            cand = (bottleneck[k], spread[k], rows[k])
+            if best_exact is None or cand[:2] < best_exact[:2]:
+                best_exact = cand
+
+        if best_exact is None:
+            totals = rows.sum(axis=1)
+            idx = np.flatnonzero(totals == totals.max())
+            k = idx[np.lexsort((spread[idx], bottleneck[idx]))[0]]
+            cand = (-int(totals[k]), bottleneck[k], spread[k], rows[k])
+            if best_fit is None or cand[:3] < best_fit[:3]:
+                best_fit = cand
+
+    if best_exact is not None:
+        return best_exact[2].astype(int).tolist()
+    if best_fit is None:
+        raise ValueError("No PE allocation fits within ncpus.")
+    return best_fit[3].astype(int).tolist()
+
+
+# Smallest compute-domain edge per PE. FV3 exchanges 3-point halos
+# (fv_mp_mod ng = 3), and a subdomain narrower than the halo cannot be
+# updated from its neighbours alone.
+MIN_LOCAL_CELLS = 4
 
 
 def get_layouts(pes: list[int]) -> dict[str, list[int]]:
+    """Choose layout, io_layout and blocksize for each grid.
+
+    Among the factor pairs of each PE count, the layout prefers, in order:
+    subdomains no smaller than MIN_LOCAL_CELLS on either edge; a cell count
+    that divides evenly in both directions, so every PE holds the same
+    subdomain (mpp_define_domains otherwise distributes the remainder
+    unevenly); and the most nearly square subdomain, which minimizes the
+    halo-exchange perimeter per cell.
+    """
     layouts = []
     io_layouts = []
     blocksizes = []
@@ -301,7 +398,7 @@ def get_layouts(pes: list[int]) -> dict[str, list[int]]:
         ny = state.npy[grid_index] - 1
 
         best_layout = None
-        best_score = np.inf
+        best_key = None
 
         for layout_x in range(1, isqrt(grid_pes) + 1):
             if grid_pes % layout_x != 0:
@@ -315,44 +412,24 @@ def get_layouts(pes: list[int]) -> dict[str, list[int]]:
             ):
                 local_nx = nx / x_layout
                 local_ny = ny / y_layout
-
-                # Prefer locally square subdomains while respecting the grid shape.
-                score = abs(np.log(local_nx / local_ny))
-
-                if score < best_score:
-                    best_score = score
+                key = (
+                    min(local_nx, local_ny) < MIN_LOCAL_CELLS,
+                    nx % x_layout != 0 or ny % y_layout != 0,
+                    abs(np.log(local_nx / local_ny)),
+                )
+                if best_key is None or key < best_key:
+                    best_key = key
                     best_layout = [x_layout, y_layout]
 
-        if best_layout is None:
-            # Fall back to the factor pair that gives the most nearly square
-            # local domains, even when nx and ny are not exactly divisible.
-            fallback_layout = None
-            fallback_score = np.inf
-
-            for layout_x in range(1, isqrt(grid_pes) + 1):
-                if grid_pes % layout_x != 0:
-                    continue
-
-                layout_y = grid_pes // layout_x
-
-                for x_layout, y_layout in (
-                    (layout_x, layout_y),
-                    (layout_y, layout_x),
-                ):
-                    local_nx = nx / x_layout
-                    local_ny = ny / y_layout
-
-                    score = abs(np.log(local_nx / local_ny))
-
-                    if score < fallback_score:
-                        fallback_score = score
-                        fallback_layout = [x_layout, y_layout]
-
-            # grid_pes > 0 guarantees that [1, grid_pes] is available.
-            best_layout = fallback_layout or [1, grid_pes]
+        if best_key[0]:
+            raise ValueError(
+                f"Grid {grid_index} ({nx} x {ny} cells) cannot be split over "
+                + f"{grid_pes} PEs with at least {MIN_LOCAL_CELLS} cells per edge"
+            )
 
         layouts.append(best_layout)
         io_layouts.append([1, 1])
+        # Physics block of 32 columns, as in the SHiELD_build test cases.
         blocksizes.append(32)
 
     return {

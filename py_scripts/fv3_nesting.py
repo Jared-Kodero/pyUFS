@@ -1,44 +1,59 @@
 # nesting.py
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
-
 from fv3_runtime import log
 from fv3_state import FV3State, save_fv3_state, state
-from fv3_utils import cres_to_deg, exit_code, run_cmd
+from fv3_utils import cres_to_deg, run_cmd
 
 nest_info = []
 
 
+def lon_width(lon_min: float, lon_max: float) -> float:
+    """Eastward width of a longitude range [deg]; a box may cross 0 or 180
+    degrees (lon_max < lon_min), so 170 to -170 is 20 degrees wide."""
+    return (lon_max - lon_min) % 360.0
+
+
 def get_centers(params: FV3State) -> FV3State:
-    params.target_lon = round((params.lon_min[0] + params.lon_max[0]) * 0.5, 2)
+    """Centre the cube (target_lon, target_lat) on the first nest box."""
+    width = lon_width(params.lon_min[0], params.lon_max[0])
+    centre = (params.lon_min[0] + 0.5 * width + 180.0) % 360.0 - 180.0
+    params.target_lon = round(centre, 2)
     params.target_lat = round((params.lat_min[0] + params.lat_max[0]) * 0.5, 2)
     return params
 
 
 def validate_nests(params: FV3State) -> list:
-    x_min = params.lon_min
-    x_max = params.lon_max
-    y_min = params.lat_min
-    y_max = params.lat_max
+    """Check the nest boxes against refine_ratio, classify them, centre the cube.
+
+    One box per refine_ratio entry. Scalars are accepted for a single nest.
+    """
     n_nests = params.n_nests
     refine_ratios = params.refine_ratio
 
-    if not all(isinstance(v, list) for v in [x_min, x_max, y_min, y_max]):
-        raise TypeError(
-            "Bounding box parameters must be provided as lists, when gtype='nest'."
-        )
+    boxes = {}
+    for key in ("lon_min", "lon_max", "lat_min", "lat_max"):
+        value = params[key]
+        if value is None or (isinstance(value, list) and None in value):
+            raise ValueError(f"gtype nest requires {key} (one value per nest)")
+        if not isinstance(value, list):
+            value = [value]
+        if len(value) != n_nests:
+            raise ValueError(
+                f"{key} has {len(value)} value(s) but refine_ratio defines "
+                + f"{n_nests} nest(s); give one box per nest"
+            )
+        boxes[key] = [float(v) for v in value]
+        params[key] = boxes[key]
 
-    if any(v is None for v in [x_min, x_max, y_min, y_max]):
-        raise ValueError("Missing bounding box parameters for gtype='nest'.")
-
-    if n_nests > 0:
-        valid_bboxes = len(x_min) == len(x_max) == len(y_min) == len(y_max)
-        if not valid_bboxes:
-            raise ValueError("Mismatch between number of bounding box parameters.")
+    for i in range(n_nests):
+        if lon_width(boxes["lon_min"][i], boxes["lon_max"][i]) == 0.0:
+            raise ValueError(f"Nest {i + 2:02d}: lon_min equals lon_max")
+        if boxes["lat_min"][i] >= boxes["lat_max"][i]:
+            raise ValueError(f"Nest {i + 2:02d}: lat_min must be less than lat_max")
 
     params = get_centers(params)
     params = classify_nesting(params)
@@ -66,57 +81,36 @@ def validate_nests(params: FV3State) -> list:
     return nest_info
 
 
-def classify_nesting(params: FV3State) -> FV3State:
-    lon_min = params.lon_min
-    lon_max = params.lon_max
-    lat_min = params.lat_min
-    lat_max = params.lat_max
-    n = len(lon_min)
+def _contains(outer: int, inner: int, b: dict) -> bool:
+    """Box `inner` lies within box `outer` (longitudes on the circle)."""
+    w_out = lon_width(b["lon_min"][outer], b["lon_max"][outer])
+    w_in = lon_width(b["lon_min"][inner], b["lon_max"][inner])
+    offset = (b["lon_min"][inner] - b["lon_min"][outer]) % 360.0
+    return (
+        offset + w_in <= w_out
+        and b["lat_min"][outer] <= b["lat_min"][inner]
+        and b["lat_max"][inner] <= b["lat_max"][outer]
+    )
 
-    # 1. Basic integrity checks
-    if not (len(lon_max) == len(lat_min) == len(lat_max) == n):
+
+def classify_nesting(params: FV3State) -> FV3State:
+    """telescoping when each box contains the next, otherwise same_level."""
+    b = {k: params[k] for k in ("lon_min", "lon_max", "lat_min", "lat_max")}
+    n = len(b["lon_min"])
+    if not all(len(v) == n for v in b.values()):
         raise ValueError("All coordinate lists must have the same length.")
 
+    params.nest_type = "same_level"
     if n < 2:
-        params.nest_type = "same_level"
         return params
 
-    for i in range(n):
-        # 2. Check if the individual boxes are physically valid
-        if lon_min[i] >= lon_max[i] or lat_min[i] >= lat_max[i]:
-            raise ValueError(
-                f"Domain {i} has invalid bounds: min must be less than max."
-            )
-
     for i in range(n - 1):
-        parent_contains_child = (
-            lon_min[i] <= lon_min[i + 1]
-            and lon_max[i] >= lon_max[i + 1]
-            and lat_min[i] <= lat_min[i + 1]
-            and lat_max[i] >= lat_max[i + 1]
-        )
-
-        child_contains_parent = (
-            lon_min[i] >= lon_min[i + 1]
-            and lon_max[i] <= lon_max[i + 1]
-            and lat_min[i] >= lat_min[i + 1]
-            and lat_max[i] <= lat_max[i + 1]
-        )
-
-        is_nested = parent_contains_child or child_contains_parent
-
-        if not is_nested:
-            params.nest_type = "same_level"
-            break
-
-        if child_contains_parent:
+        if _contains(i + 1, i, b):
             raise ValueError(
                 f"Domains {i} and {i + 1} are nested but ordered incorrectly!"
             )
-
-        # if we reach here, parent contains child
+    if all(_contains(i, i + 1, b) for i in range(n - 1)):
         params.nest_type = "telescoping"
-
     return params
 
 
@@ -171,35 +165,77 @@ def calc_parent_grid_index(
         lats = ds.y.values
     nyp, nxp = lons.shape
 
-    lon_min %= 360
-    lon_max %= 360
-
-    mask = (lons >= lon_min) & (lons <= lon_max) & (lats >= lat_min) & (lats <= lat_max)
+    # Longitude test on the circle, so a box may cross 0 or 180 degrees: a
+    # point is inside when its eastward offset from lon_min does not exceed
+    # the eastward width of the box.
+    width = (lon_max - lon_min) % 360.0
+    in_lon = (lons - lon_min) % 360.0 <= width
+    mask = in_lon & (lats >= lat_min) & (lats <= lat_max)
     j_idx, i_idx = np.where(mask)
 
-    # Initial bracket with one-cell padding, packed as [i, j] vectors.
-    starts = np.array([i_idx.min(), j_idx.min()])
-    ends = np.array([i_idx.max(), j_idx.max()])
-    limits = np.array([nxp, nyp])
-
-    # Parity: odd starts, even ends.
-    starts = np.where(starts & 1, starts, starts - 1)
-    ends = np.where(ends & 1, ends - 1, ends)
-
-    if np.any(starts < 1) or np.any(ends > limits):
-        nest_tile = parent_tile + 1
-        log.error(
-            f"Tile {nest_tile} bounding box is larger than or crosses the parent tile {parent_tile} bounds, This is not supported!"
+    if i_idx.size == 0:
+        raise ValueError(
+            f"Nest {idx + 2:02d} bounding box [{lon_min}, {lon_max}] x "
+            + f"[{lat_min}, {lat_max}] contains no point of parent tile {parent_tile}; "
+            + "check parent_tile and the box"
         )
-        exit_code(1)
-        sys.exit(1)
+
+    # Smallest block of parent cells that covers the box. make_hgrid takes
+    # 1-based supergrid indices (istart odd, iend even); parent cells
+    # (istart+1)/2 .. iend/2 span 0-based supergrid points istart-1 .. iend,
+    # and supergrid segment [k, k+1] lies in cell k//2 + 1. The box edges lie
+    # on the segments just outside the first and last points inside it.
+    n_cells = np.array([(nxp - 1) // 2, (nyp - 1) // 2])
+    lo = np.array([i_idx.min(), j_idx.min()])
+    hi = np.array([i_idx.max(), j_idx.max()])
+    first = np.maximum(lo - 1, 0) // 2 + 1
+    last = np.minimum(hi // 2 + 1, n_cells)
+
+    # make_hgrid needs `halo` parent cells around the nest inside the tile
+    # (create_gnomonic_cubic_grid.c).
+    halo = int(state.halo or 0)
+    if np.any(first - halo < 1) or np.any(last + halo > n_cells):
+        raise ValueError(
+            f"Nest {idx + 2:02d} box reaches within {halo} cells of the edge of parent "
+            + f"tile {parent_tile} (cells {first.tolist()}..{last.tolist()} of "
+            + f"{n_cells.tolist()}); move or shrink the box, or choose another parent_tile"
+        )
 
     return {
-        "istart_nest": int(starts[0]),
-        "iend_nest": int(ends[0]),
-        "jstart_nest": int(starts[1]),
-        "jend_nest": int(ends[1]),
+        "istart_nest": int(2 * first[0] - 1),
+        "iend_nest": int(2 * last[0]),
+        "jstart_nest": int(2 * first[1] - 1),
+        "jend_nest": int(2 * last[1]),
     }
+
+
+NEST_INDEX_KEYS = (
+    "parent_tile",
+    "istart_nest",
+    "iend_nest",
+    "jstart_nest",
+    "jend_nest",
+    "nest_ioffsets",
+    "nest_joffsets",
+)
+
+
+def _reset_nest_indices() -> None:
+    for k in NEST_INDEX_KEYS:
+        state[k] = []
+
+
+def _append_nest_indices(parent_tile: int, indices: dict) -> None:
+    """Record one nest and refresh the FV3 offsets of all recorded nests."""
+    state.parent_tile.append(parent_tile)
+    state.istart_nest.append(indices["istart_nest"])
+    state.iend_nest.append(indices["iend_nest"])
+    state.jstart_nest.append(indices["jstart_nest"])
+    state.jend_nest.append(indices["jend_nest"])
+
+    # Convert supergrid (grid file) indices to FV3 parent cell indices
+    state.nest_ioffsets = [999] + [(i // 2) + 1 for i in state.istart_nest]
+    state.nest_joffsets = [999] + [(j // 2) + 1 for j in state.jstart_nest]
 
 
 def get_nest_indices(
@@ -209,80 +245,26 @@ def get_nest_indices(
     parent_tile: int | None = None,
     i_refine_ratio: int | None = None,
     tile: int | None = None,
-) -> None:
-    """
-    normal: normal static nests each embedded directly in the same parent (global) grid.
-    """
+) -> dict:
+    """Bracket nest `tile_idx` (0-based) on its parent tile and record it.
 
-    keys = (
-        "parent_tile",
-        "istart_nest",
-        "iend_nest",
-        "jstart_nest",
-        "jend_nest",
-        "nest_ioffsets",
-        "nest_joffsets",
-    )
-
-    for k in keys:
-        state[k] = []
+    Nests are recorded in order: tile_idx 0 starts a new list and each later
+    call appends, so a same-level run keeps the indices of every nest for
+    fv_nest_nml. Returns the indices of this nest.
+    """
+    if tile_idx == 0:
+        _reset_nest_indices()
+    if len(state.istart_nest) != tile_idx:
+        raise RuntimeError(
+            f"Nest {tile_idx} bracketed out of order ({len(state.istart_nest)} recorded)"
+        )
 
     if not grid_dir:
         grid_dir = gen_global_nest_parent(c_res)
 
-    i = tile_idx  # Nest index (0-based)
-
     grid_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
-    indices = calc_parent_grid_index(i, parent_tile, grid_fname)
-
-    state.parent_tile.append(parent_tile)
-    state.istart_nest.append(indices["istart_nest"])
-    state.iend_nest.append(indices["iend_nest"])
-    state.jstart_nest.append(indices["jstart_nest"])
-    state.jend_nest.append(indices["jend_nest"])
-
-    # Convert supergrid (grid file) indices to FV3 parent cell indices
-    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.istart_nest]
-    nest_joffsets = [999] + [(j // 2) + 1 for j in state.jstart_nest]
-    state.nest_ioffsets = nest_ioffsets
-    state.nest_joffsets = nest_joffsets
+    indices = calc_parent_grid_index(tile_idx, parent_tile, grid_fname)
+    _append_nest_indices(parent_tile, indices)
 
     save_fv3_state()
-
-
-def get_nest_tele_indices(
-    c_res: int, n_nests: int, refine_ratio: list, grid_dir: Path
-) -> None:
-
-    # Reset previous same_level indices if they exist
-    keys = (
-        "parent_tile",
-        "istart_nest",
-        "iend_nest",
-        "jstart_nest",
-        "jend_nest",
-        "nest_ioffsets",
-        "nest_joffsets",
-    )
-    for k in keys:
-        state[k] = []
-
-    tiles = [i + 7 for i in range(n_nests)]
-
-    for i, tile in enumerate(tiles):
-        parent_tile = tile - 1
-        grid_parent_fname = grid_dir / f"C{c_res}_grid.tile{parent_tile}.nc"
-        np.prod(refine_ratio[: i + 1])  # not used now
-        indices = calc_parent_grid_index(i, parent_tile, grid_parent_fname)
-
-        state.parent_tile.append(parent_tile)
-        state.istart_nest.append(indices["istart_nest"])
-        state.iend_nest.append(indices["iend_nest"])
-        state.jstart_nest.append(indices["jstart_nest"])
-        state.jend_nest.append(indices["jend_nest"])
-
-    nest_ioffsets = [999] + [(i // 2) + 1 for i in state.istart_nest]
-    nest_joffsets = [999] + [(j // 2) + 1 for j in state.jstart_nest]
-    state.nest_ioffsets = nest_ioffsets
-    state.nest_joffsets = nest_joffsets
-    save_fv3_state()
+    return indices
