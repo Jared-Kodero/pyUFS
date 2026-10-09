@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fv3_runtime import get_launcher
+from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -35,11 +35,14 @@ def run_single_shave(
     with open(in_grid_txt, "w") as f:
         f.write(f"{idim} {jdim} {halo} '{in_grid}' '{out_grid}'\n")
 
-    with open(in_orog_txt, "r") as fin:
-        run_cmd(cmd, stdin=fin, cwd=tmp_dir, stdout=log_file, stderr=log_file)
-
-    with open(in_grid_txt, "r") as fin:
-        run_cmd(cmd, stdin=fin, cwd=tmp_dir, stdout=log_file, stderr=log_file)
+    for control in (in_orog_txt, in_grid_txt):
+        with open(control, "r") as fin:
+            result, msgs = run_cmd(
+                cmd, stdin=fin, cwd=tmp_dir, stdout=log_file, stderr=log_file
+            )
+        if result != 0:
+            log.error(msgs)
+            raise RuntimeError(f"shave failed for {control.name}")
 
     # Copy outputs to final filenames
     out_orog_final = tmp_ic_dir / f"C{c_res}_oro_data.tile{tile}.{halo_tag}.nc"
@@ -95,8 +98,8 @@ def run_shave(
     """
 
     log_file = state.logs / "shave.log"
-    shave = exec_dir / "shave"
-    cmd = [get_launcher(1), f"{shave}"]
+    # shave is a serial program (UFS_UTILS fv3gfs_driver_grid.sh).
+    cmd = [str(exec_dir / "shave")]
 
     # ----------------------------------------------------------------------------
     # Run three shave passes: halo+1, halo, and halo=0. All land in tmp_ic_dir so

@@ -1,155 +1,67 @@
 # -----------------------------------------------------------------------------
-# chgres_cube configuration template
+# chgres_cube overrides (template)
 #
-# Set paths and input options for the target grid and external input dataset.
-# Keep the tracer lists in identical order: tracers[i] maps to tracers_input[i].
+# Copy to the case directory as chgres_cube.yaml (global or regional domain)
+# or chgres_cube_nestNN.yaml (nest NN), then set only the keys to change.
+# A null key keeps the workflow value given in its comment, so a verbatim
+# copy changes nothing. Keys are those of the chgres_cube namelist
+# (UFS_UTILS sorc/chgres_cube.fd/program_setup.F90); unknown keys stop
+# preprocessing. The target grid, input files, cycle time, regional halos and
+# convert_* switches are derived per domain and are not normally overridden.
 # -----------------------------------------------------------------------------
 
 config:
-  # ---------------------------------------------------------------------------
-  # Target grid definition
-  # ---------------------------------------------------------------------------
+  # --- Input model -----------------------------------------------------------
+  # GFS (all domains) or HRRR (nests and regional domains inside HRRR coverage;
+  # the surface then still comes from GFS). Default: GFS, HRRR for nests.
+  external_model: null
+  input_type: null # grib2
 
-  # Output mosaic file for the target FV3 cube-sphere grid.
+  # --- Target grid (derived per domain) -------------------------------------
   mosaic_file_target_grid: null
+  fix_dir_target_grid: null # <tmp>/input/fix_sfc
+  orog_dir_target_grid: null # <tmp>/input
+  orog_files_target_grid: null # oro.C<res>.tile<N>.nc; regional C<res>_oro_data.tile7.halo4.nc
+  vcoord_file_target_grid: null # <fix_src>/am/global_hyblev.l<levels>.txt
 
-  # Directory containing fixed surface fields for the target grid.
-  fix_dir_target_grid: null
-
-  # Directory containing target-grid orography files.
-  orog_dir_target_grid: null
-
-  # Orography filename for each cube-sphere tile.
-  # These files are resolved relative to orog_dir_target_grid unless full paths
-  # are supplied.
-  orog_files_target_grid:
-    - _oro_data.tile1.nc
-    - _oro_data.tile2.nc
-    - _oro_data.tile3.nc
-    - _oro_data.tile4.nc
-    - _oro_data.tile5.nc
-    - _oro_data.tile6.nc
-
-  # Target vertical-coordinate definition. Replace {levels} with the desired
-  # number of vertical model levels.
-  vcoord_file_target_grid: global_hyblev.l{levels}.txt
-
-  # ---------------------------------------------------------------------------
-  # Input data definition
-  # ---------------------------------------------------------------------------
-
-  # Directory containing atmospheric, surface, or nested input data.
+  # --- Input data (derived from the downloaded analysis) --------------------
   data_dir_input_grid: null
-
-  # Atmospheric input files, file pattern, or workflow-defined file list.
+  grib2_file_input_grid: null
+  geogrid_file_input_grid: null # HRRR only: <fix_src>/am/geo_em.d01.nc_HRRRX
+  varmap_file: null # GFSphys_var_map.txt; HRRR GSDphys_var_map.txt
   atm_files_input_grid: null
-
-  # Surface input files, file pattern, or workflow-defined file list.
   sfc_files_input_grid: null
 
-  # Input GRIB2 file. Required only when input_type uses GRIB2 data.
-  grib2_file_input_grid: null
-
-  # WPS geogrid file. Required only for regional-grid definitions.
-  geogrid_file_input_grid: null
-
-  # Variable mapping file that defines input-to-output field correspondences.
-  varmap_file: null
-
-  # WAM physics parameter file. Required only when wave-atmosphere coupling is
-  # enabled.
-  wam_parm_file: null
-
-  # Input dataset format, for example:
-  # gaussian_nemsio, gaussian_netcdf, grib2
-  input_type: null
-
-  # Name of the external model providing the input fields, for example:
-  # GFS, FV3, FV3LAM, HRRR
-  external_model: null
-
-  # ---------------------------------------------------------------------------
-  # Cycle time
-  # ---------------------------------------------------------------------------
-
-  # Analysis or forecast cycle valid time in UTC.
-  # Format: YYYY/MM/DD/HH
+  # --- Cycle (init_datetime) --------------------------------------------------
   cycle_year: null
   cycle_mon: null
   cycle_day: null
   cycle_hour: null
 
-  # ---------------------------------------------------------------------------
-  # Conversion controls
-  # ---------------------------------------------------------------------------
+  # --- Conversions (set per domain; nests and regional domains ignore these)
+  convert_atm: null # true
+  convert_sfc: null # true
+  convert_nst: null # false (GFS grib2 carries no NSST fields)
 
-  # Enable conversion of atmospheric fields.
-  convert_atm: true
+  # --- Tracers ----------------------------------------------------------------
+  # For grib2 input both lists are taken from the varmap file, so these apply
+  # only to other input types; tracers[i] maps to tracers_input[i].
+  tracers: null
+  tracers_input: null
 
-  # Enable conversion of land, sea-ice, and other surface fields.
-  convert_sfc: true
+  # --- Regional domain (set by the workflow for regional grids) --------------
+  regional: null # 0 global or nest; 1 regional (IC and hour-0 boundary)
+  halo_bndy: null # halo + 1 = 4
+  halo_blend: null # 10, equal to fv_core_nml nrows_blend
 
-  # Enable conversion of near-surface temperature (NST) fields.
-  convert_nst: true
-
-  # ---------------------------------------------------------------------------
-  # Tracer configuration
-  # ---------------------------------------------------------------------------
-
-  # Output tracer names expected by the target model.
-  tracers:
-    - sphum
-    - liq_wat
-    - o3mr
-    - ice_wat
-    - rainwat
-    - snowwat
-    - graupel
-
-  # Corresponding tracer names in the input dataset.
-  # The ordering must exactly match the tracers list above.
-  tracers_input:
-    - spfh
-    - clwmr
-    - o3mr
-    - icmr
-    - rwmr
-    - snmr
-    - grle
-
-  # ---------------------------------------------------------------------------
-  # Regional-domain controls
-  # ---------------------------------------------------------------------------
-
-  # Set to 0 for a global grid. Use the workflow-supported regional setting for
-  # limited-area domains.
-  regional: 0
-
-  # Number of halo grid cells used for boundary processing.
-  halo_bndy: 0
-
-  # Number of halo grid cells used to blend lateral boundaries.
-  halo_blend: 0
-
-  # ---------------------------------------------------------------------------
-  # Land-surface and climatological fields
-  # ---------------------------------------------------------------------------
-
-  # Number of soil layers written to output soil temperature and moisture fields.
-  nsoill_out: 4
-
-  # Use climatological fields rather than input-model fields where true.
-  sotyp_from_climo: true # Soil type
-  vgtyp_from_climo: true # Vegetation type
-  vgfrc_from_climo: true # Vegetation fraction
-  lai_from_climo: true # Leaf area index
-  minmax_vgfrc_from_climo: true # Minimum and maximum vegetation fraction
-
-  # Derive deep-soil temperature (tg3) from soil data.
-  tg3_from_soil: false
-
-  # Optional Thompson microphysics climatology file.
+  # --- Land surface -----------------------------------------------------------
+  nsoill_out: null # 4
+  sotyp_from_climo: null # true
+  vgtyp_from_climo: null # true
+  vgfrc_from_climo: null # true
+  lai_from_climo: null # true
+  minmax_vgfrc_from_climo: null # true
+  tg3_from_soil: null # true: substrate temperature from the lowest soil layer of the source data; false: from the static climatology
   thomp_mp_climo_file: null
-
-  # Set true for a WAM cold start; false for a warm start.
-  wam_cold_start: false
+  wam_parm_file: null
+  wam_cold_start: null # false

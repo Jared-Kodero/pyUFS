@@ -27,18 +27,18 @@
 # Environment variables such as $USER and $HOME are expanded.
 
 case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
-jobtmp: /jobtmp/$USER/gfdl_shield # Node-local scratch. When present, the model runs here and syncs back to case_root.
-fix_src: /oscar/data/deeps/shared/gfdl_shield/fix # Source tree for static datasets (the fix directory)
-ufs_utils: /oscar/data/deeps/shared/gfdl_shield/ufs_py
-shield_image: /oscar/data/deeps/shared/gfdl_shield/containers/shield.sif
-fregrid_image: /oscar/data/deeps/shared/gfdl_shield/containers/fregrid.sif
-preprocess_image: /oscar/data/deeps/shared/gfdl_shield/containers/preprocess.sif
+jobtmp: /jobtmp/$USER/gfdl_shield # Node-local scratch. When it exists on the compute node, the job runs here and syncs back to case_root; otherwise it runs in place under case_root.
+fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Static datasets (the fix directory). Missing files are fetched from the NOAA fix bucket into it, so it must be writable (README section 7).
+ufs_utils: /oscar/data/deeps/shared/gfdl_shield/pyUFS
+shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model image (README section 2)
+fregrid_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/fregrid.sif # Regridding image
+preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing image
 shield_root: /oscar/data/deeps/shared/gfdl_shield
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x # Native executable. Required for multi-node native runs; otherwise the container image is used.
-containers_root: /oscar/data/deeps/shared/gfdl_shield/containers # If empty, images are built by configs/install_images.sh before the first stage.
-container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers. Must include every directory used by the workflow.
-modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Host modules loaded for the workflow. Must include every library used by the workflow.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/bins/shield/FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x # Native executable built from SHiELD_build FV3-202604-public (README section 19). Required for multi-node runs; "" selects the container image for single-node runs.
+containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Where configs/install_images.sh writes {shield,fregrid,preprocess}.sif. When any image is missing, a job builds all three here, so the three image paths above must point into this directory.
+container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers (a list or a comma-separated string; variables are expanded). Must include every directory used by the workflow, and each must exist on the compute nodes.
+modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Host modules loaded before a native shield_exe is launched (the libraries it was built with). Not used with the container image.
 
 # -----------------------------------------------------------------------------
 # 1. JOB SUBMISSION (SLURM)
@@ -84,7 +84,7 @@ use_modern_diag: false # true: use a case-local diag_table.yaml (required) and d
 # (optional) with diag_manager_nml use_modern_diag and data_override_nml use_data_table_yaml.
 # Write them yourself or convert legacy tables with fms_yaml_tools (diag-table-to-yaml,
 # data-table-to-yaml) in the format of the FMS version SHiELD is built with
-# (FV3-202411: FMS 2024.03). false keeps the legacy ASCII diag_table.
+# (FV3-202604: FMS 2026.01; FV3-202411: FMS 2024.03). false keeps the legacy ASCII diag_table.
 pack_output: false # Pack only the final output files as int16 with scale_factor/add_offset (ECMWF style).
 # Quantization error is (max - min) / 131066 of each variable over the file
 # (about 0.002 K for temperature).
@@ -93,13 +93,13 @@ pack_output: false # Pack only the final output files as int16 with scale_factor
 # 3. EXECUTION CONTROL
 # -----------------------------------------------------------------------------
 
-init_datetime: null # Initialization cycle, UTC, format YYYYMMDDHHZ (REQUIRED).
+init_datetime: null # Cycle of the IC source data, UTC, format YYYYMMDDHHZ, hour 00, 06, 12 or 18 (REQUIRED). The model starts forecast_hour hours later.
 # The literal Z suffix is required. The cycle hour must be 00, 06, 12, or 18.
 # Example: "2026031200Z".
 run_length: null # Length of one segment, in run_length_units (REQUIRED)
 run_length_units: hours # hours | days | months | years. months and years are calendar
 # months (coupler_nml months; years are passed as 12 months) and need a start day <= 28.
-forecast_hour: 0 # Lead hour of the source dataset used for ICs; 0 selects the analysis
+forecast_hour: 0 # Lead hour of the init_datetime forecast used for ICs (0: the analysis). The model starts at init_datetime + forecast_hour; regional boundaries use the same cycle from this lead on, so regional runs need a multiple of 3.
 resubmit: 0 # Number of sequential resubmissions. The run has resubmit + 1 segments, each run_length long.
 continue_run: false # Managed internally by the driver. Segment 0 is a cold start; later segments are warm starts driven by resubmit.
 
@@ -127,6 +127,25 @@ preprocess_only: false # Stage the complete grid and ICs, then exit
 preprocess_grid_only: false # Generate the grid only, then exit (stages to IC/grid). Implies preprocess_only.
 preprocess_orog_only: false # Generate orography only, then exit (stages to IC/orography). Implies preprocess_only.
 
+# 5a. Surface analysis and coupled grids (UFS_UTILS programs of the preprocessing
+# image; cold starts with generate_ic_data only). File paths may use variables.
+run_global_cycle: false # true: update the chgres_cube surface files (INPUT/sfc_data*) with global_cycle, as ush/global_cycle_driver.sh: climatologies of the model namsfc blended with the analyses below. Global, stretch and nest grids.
+global_cycle_sst_file: null # SST analysis, GRIB1 (FNTSFA; e.g. gdas.tHHz.rtgssthr.grb). null: none
+global_cycle_ice_file: null # Sea-ice concentration analysis, GRIB1 (FNACNA; e.g. seaice.5min.blend.grb). null: none, or the emcsfc_ice_blend output
+global_cycle_snow_file: null # Snow analysis, GRIB1 (FNSNOA; e.g. snogrb_t1534.3072.1536). null: none, or the emcsfc_snow2mdl output
+global_cycle_vars: { FSNOL: -2.0, FSNOS: 99999.0 } # Further NAMSFC entries (CYCLVARS of global_cycle_driver.sh)
+run_emcsfc_snow: false # true: build the snow analysis from IMS (and AFWA) data with emcsfc_snow2mdl (ush/emcsfc_snow.sh). Requires run_global_cycle.
+ims_snow_file: null # IMS snow cover, GRIB2 or GRIB1 (e.g. imssnow96.grb.grib2). Required with run_emcsfc_snow.
+afwa_snow_nh_file: null # AFWA northern-hemisphere snow depth (optional)
+afwa_snow_sh_file: null # AFWA southern-hemisphere snow depth (optional)
+afwa_snow_global_file: null # AFWA global snow depth (optional)
+run_emcsfc_ice_blend: false # true: build the ice analysis by blending IMS ice cover into the MMAB 5-minute concentration with emcsfc_ice_blend (ush/emcsfc_ice_blend.sh). Needs cnvgrib, copygb2 and copygb (NCEP grib_util) on PATH. Requires run_global_cycle.
+ims_ice_file: null # IMS ice cover, GRIB2 or GRIB1. Required with run_emcsfc_ice_blend.
+five_min_ice_file: null # MMAB 5-minute ice concentration, GRIB2 (e.g. seaice.5min.grib2). Required with run_emcsfc_ice_blend.
+run_cpld_gridgen: false # true: generate MOM6/CICE6 grids and mapped ocean masks for this cubed sphere with cpld_gridgen (ush/cpld_gridgen.sh) into IC/cpld_gridgen, for coupled UFS configurations; SHiELD does not read them. Needs ESMF_Scrip2Unstruct. Global grids only.
+cpld_gridgen_res: "100" # MOM6 resolution: "500", "100", "050" or "025" (5, 1, 1/2, 1/4 degree). Other than "025", the 025 grid is generated first, as cpld_gridgen requires.
+cpld_gridgen_postwgts: false # true: also write the rectilinear post-processing weights (needs ncremap, NCO)
+
 # -----------------------------------------------------------------------------
 # 6. HORIZONTAL GRID
 # -----------------------------------------------------------------------------
@@ -136,8 +155,8 @@ preprocess_orog_only: false # Generate orography only, then exit (stages to IC/o
 
 c_res: 96 # Cubed-sphere face resolution, an integer: 48, 96, 192, 384, 768, 1152 or 3072.
 gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
-target_lon: -96 # Grid center longitude [degrees]; used for stretch and regional. For nest, set to the first nest box center.
-target_lat: 35.0 # Grid center latitude [degrees]; used for stretch and regional. For nest, set to the first nest box center.
+target_lon: -96 # Grid centre longitude [degrees] for stretch and regional_esg. For nest and regional_gfdl it is replaced by the centre of the (first) box.
+target_lat: 35.0 # Grid centre latitude [degrees] for stretch and regional_esg. For nest and regional_gfdl it is replaced by the centre of the (first) box.
 stretch_factor: 1.0 # Schmidt stretching coefficient. Must be greater than 1 for gtype: stretch. Values greater than 1 refine the target region.
 
 # 6a. Nested grids (active when gtype = nest)
@@ -147,19 +166,20 @@ stretch_factor: 1.0 # Schmidt stretching coefficient. Must be greater than 1 for
 # same parent grid.
 # Example: for 3 telescoping nests set refine_ratio to [4, 4, 2] so that, from a
 # C96 parent, the inner nest reaches about 3 km.
-refine_ratio: [3] # Refinement ratio for each nest relative to its parent grid
-parent_tile: 6 # Parent cubed-sphere tile, 1 to 6
-halo: 3 # Halo width for the nest boundary exchange
+refine_ratio: [3] # Refinement ratio for each nest relative to its parent grid; the first value also refines regional_gfdl
+parent_tile: 6 # Parent cubed-sphere tile, 1 to 6; one value, or a list with one entry per same-level nest. The first box centre lies on tile 6.
+halo: 3 # Halo width for the nest boundary exchange; regional grids require 3
 
-lon_min: null # Western nest bound(s) [degrees east]; list required for multiple nests
-lon_max: null # Eastern nest bound(s) [degrees east]; list required for multiple nests
-lat_min: null # Southern nest bound(s) [degrees north]; list required for multiple nests
-lat_max: null # Northern nest bound(s) [degrees north]; list required for multiple nests
+lon_min: null # Western nest bound(s) [degrees east]; one per refine_ratio entry (a scalar for one nest). Boxes may cross 0 or 180 degrees (lon_max < lon_min).
+lon_max: null # Eastern nest bound(s) [degrees east]; one per refine_ratio entry (a scalar for one nest)
+lat_min: null # Southern nest bound(s) [degrees north]; one per refine_ratio entry (a scalar for one nest)
+lat_max: null # Northern nest bound(s) [degrees north]; one per refine_ratio entry (a scalar for one nest)
+# regional_gfdl uses the first box; regional_esg is set by target_lon/lat and 6b.
 
 # 6b. Regional ESG grids (active when gtype = regional_esg)
 idim: 200 # Zonal grid points
 jdim: 200 # Meridional grid points
-delx: 0.0585 # Supergrid spacing, zonal      [degrees]
+delx: 0.0585 # Supergrid spacing, zonal      [degrees]; model spacing is 2 * delx (0.0585 ~ 13 km)
 dely: 0.0585 # Supergrid spacing, meridional [degrees]
 
 # -----------------------------------------------------------------------------
@@ -167,7 +187,7 @@ dely: 0.0585 # Supergrid spacing, meridional [degrees]
 # -----------------------------------------------------------------------------
 
 levels: 64 # Hybrid sigma-pressure levels
-do_deep: false # Deep convection parameterization (disable for dx < 4 km)
+do_deep: false # false: deep convection is switched off on domains with dx <= 4 km and kept elsewhere; true: kept on every domain
 
 # -----------------------------------------------------------------------------
 # 8. TIME STEPPING (CFL CONSTRAINED)
@@ -183,16 +203,16 @@ do_deep: false # Deep convection parameterization (disable for dx < 4 km)
 #
 # Index convention for k_split and n_split:
 #   [0] = global grid
-#   [1] = nest01
-#   [2] = nest02
-#   [3] = nest03
+#   [1] = first nest  (nest02, tile 7)
+#   [2] = second nest (nest03, tile 8)
+#   [3] = third nest  (nest04, tile 9)
 #
 # Guideline:
 #   dt_atmos is CFL constrained and should decrease with increasing horizontal
 #   resolution or refinement ratio.
 
 dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
-dt_ocean: null # Ocean coupling timestep [s]. Null triggers automatic selection.
+dt_ocean: null # Ocean coupling timestep [s]; a multiple of dt_atmos. Null uses dt_atmos.
 
 # When set, k_split and n_split must be lists of length n_nests + 1, with the
 # first value for the global grid and the remaining values for the nests in
@@ -207,16 +227,16 @@ n_split: null # Acoustic-substep counts per remap split for each grid; first val
 # -----------------------------------------------------------------------------
 
 lake_cutoff: 0.2 # Land / water fractional threshold
-add_lake: false # Activate the lake model
-make_gsl_orog: false # Generate GSL orography fields (used by the gravity wave drag scheme)
+add_lake: false # Add lake fraction and depth to the orography (uniform and regional_gfdl only); no lake model is enabled
+make_gsl_orog: false # Generate GSL drag-suite orography files (oro_data_ls/ss); not read by SHiELD physics
 
 # -----------------------------------------------------------------------------
 # 10. LAND SURFACE PERTURBATIONS
 # -----------------------------------------------------------------------------
 # Apply controlled perturbations to soil-state variables for ensemble spread or
 # sensitivity experiments. sm_perturbations is a single mapping, not a list.
-# Perturbations are applied to the surface restart files sfc_data.tile*.nc, and
-# sfc_data.nestNN.tile*.nc for nested tiles.
+# Perturbations are applied to the surface restart files sfc_data.tile*.nc,
+# sfc_data.nestNN.tile*.nc for nested tiles, and sfc_data.nc for regional grids.
 #
 # Schema (flat mapping)
 # ---------------------
@@ -243,15 +263,17 @@ make_gsl_orog: false # Generate GSL orography fields (used by the gravity wave d
 #   anom_scale:        float
 #   fill_value:        float | "mean"
 #   use_climo:         bool
-#   climo_file:        str      # global file; must contain target_var and match soil_layers.
+#   climo_file:        str      # global file; must contain target_var on the model soil layers.
 #                               # Defaults to fix/era5/sm_monthly_1950_2025.nc when use_climo is true.
+#                               # The month used is that of the start of the segment.
 #   do_nudge:          bool     # relax toward a reference on restart segments (index >= 1)
 #   tau_hours:         float    # nudging timescale; default 24. alpha = (hours in the previous segment) / tau_hours, clipped to [0, 1].
-#   do_hold:           bool     # carry the perturbed state forward on restart segments (index >= 1)
+#   do_hold:           bool     # carry the perturbed target_var layers forward on restart segments (index >= 1)
 #   apply_on_restarts: int | "all" | list[int]
 #
 # Constraints
 # -----------
+#   Perturbations act on soil points (valid smc); stc uses the same points.
 #   Volumetric soil moisture is clipped to [0.01, 0.99] m3 m-3.
 #   Ice content (smc - slc) is preserved; slc is reconstructed after an smc edit.
 #   Multiple methods are applied sequentially in the listed order.

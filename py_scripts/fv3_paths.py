@@ -55,11 +55,28 @@ def configure_directories(state: FV3State) -> dict:
         _clear(paths["hist"])
         _clear(paths["restarts"])
 
-    if int(state.get("restart_no", 0)) == 0 and state.generate_ic_data:
-        _clear(paths["input"])
-        _clear(paths["ic_data"] / "INPUT")
-        for archived_input in paths["ic_data"].glob("R*_INPUT"):
-            _clear(archived_input)
+    if int(state.get("restart_no", 0)) == 0:
+        # A cold start writes INPUT afresh: from the generated ICs, or from an
+        # external bundle copied in by fv3_external_ic. Without either, the
+        # case's own INPUT holds the ICs and is kept.
+        external = state.get("external_ic_dir")
+        in_place = not state.generate_ic_data and (
+            not external
+            or Path(external).resolve() == Path(paths["work_dir"]).resolve()
+        )
+        if not in_place:
+            _clear(paths["input"])
+            _clear(paths["ic_data"] / "INPUT")
+            for archived_input in paths["ic_data"].glob("R*_INPUT"):
+                _clear(archived_input)
+        elif (paths["input"] / "coupler.res").exists():
+            # INPUT then holds a promoted restart: the coupler would start the
+            # clock at its date while the atmosphere is cold started.
+            raise RuntimeError(
+                f"{paths['input']} holds a model restart (coupler.res) from earlier "
+                + "segments; the cold-start inputs are archived in IC/INPUT. Restore "
+                + "them to INPUT, set external_ic_dir, or set generate_ic_data: true."
+            )
 
     for d in case_paths.values():
         d.mkdir(parents=True, exist_ok=True)
@@ -117,18 +134,44 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
     # Promote RESTART -> INPUT
     prev_model_restart.rename(curr_input_data)
 
-    # Re-link static (non-netCDF) files from initial archived INPUT if present
-    initial_input = archive_dir / "INPUT"
-    if initial_input.exists():
-        for f in initial_input.iterdir():
-            if f.is_file() and f.suffix != ".nc":
-                target = curr_input_data / f.name
+    relink_static_inputs(archive_dir / "INPUT", curr_input_data)
 
-                if target.exists() or target.is_symlink():
-                    target.unlink()
 
-                rel_target = os.path.relpath(f, start=target.parent)
-                target.symlink_to(rel_target)
+# Cold-start inputs that a warm start must not reuse: the initial conditions
+# (replaced by RESTART) and the regional boundary files (relinked from
+# state.bc_data by regional_bc.link_bc_to_input).
+COLD_START_ONLY = ("gfs_data", "sfc_data", "gfs_bndy")
+
+
+def relink_static_inputs(initial_input: Path, input_dir: Path) -> None:
+    """Link the static inputs of the cold-start INPUT into a promoted INPUT.
+
+    RESTART holds only the model state. The files the model also reads at a
+    warm start (oro_data*, the GSL oro_data_ls/ss tiles, grid and mosaic
+    links, gfs_ctrl.nc for regional boundaries, fix-file links) live in the
+    cold-start INPUT, archived as IC/INPUT. Without them the physics sets the
+    orographic fields to zero (FV3GFS_io.F90, sfc_prop_restart_read). Files
+    already provided by RESTART are kept.
+
+    Symbolic links are copied verbatim: INPUT and IC/INPUT links are relative
+    to the original INPUT directory, which the promoted INPUT replaces.
+    Regular files are linked to their archived copy.
+    """
+    if not initial_input.exists():
+        return
+
+    for f in sorted(initial_input.iterdir()):
+        if f.name.startswith(COLD_START_ONLY):
+            continue
+
+        target = input_dir / f.name
+        if target.exists() or target.is_symlink():
+            continue
+
+        if f.is_symlink():
+            target.symlink_to(os.readlink(f))
+        else:
+            target.symlink_to(os.path.relpath(f, start=input_dir))
 
 
 def parse_dirs(cfg: dict) -> dict:
@@ -146,5 +189,7 @@ def parse_dirs(cfg: dict) -> dict:
     )
 
     for k in dir_keys:
+        if cfg[k] is None:
+            continue
         cfg[k] = str(Path(os.path.expandvars(cfg[k])))
     return cfg

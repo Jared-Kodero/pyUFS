@@ -1,204 +1,111 @@
-#!/usr/bin/env python3
+"""emcsfc_ice_blend (UFS_UTILS): blended sea-ice concentration analysis.
+
+Follows ush/emcsfc_ice_blend.sh: the IMS ice cover is converted to GRIB2
+when needed, its ICEC records are interpolated to the 5-minute grid
+(copygb2), blended with the MMAB 5-minute concentration, and the result is
+converted to GRIB1 with the land bitmap that global_cycle reads (FNACNA).
+cnvgrib, copygb2 and copygb come from NCEP grib_util and must be on PATH.
+"""
+
+from __future__ import annotations
+
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
-from fv3_runtime import log
+from fv3_runtime import fix_file, log
 from fv3_state import state
-from fv3_utils import cp
+from fv3_utils import find_tool
+
+GRID173 = (
+    "0 0 0 0 0 0 0 0 4320 2160 0 0 89958000 42000 48 -89958000 359958000 83000 83000 0"
+)
+BLENDED = "seaice.5min.blend.grb"
 
 
-def run_ice_blend(
-    ims_file: Path,
-    five_min_file: Path,
-    five_min_mask: Path,
-    blend_exec: Path,
-    blended_file: Path,
-    wgrib2: str = "wgrib2",
-    cnvgrib: str = "cnvgrib",
-    copygb: str = "copygb",
-    copygb2: str = "copygb2",
-    directory: Path | None = None,
-    sendcom: bool = False,
-    tmp_ic_dir: Path | None = None,
-    verbose: bool = True,
-    n_nests: int = 0,  # NEW: number of nests for multinest support
-    nest_idx: int | None = None,  # NEW: current nest index being processed
-):
-    """
-    Wrapper for the emcsfc_ice_blend program.
+def run_ice_blend(work_dir: Path) -> Path:
+    """Run emcsfc_ice_blend; returns the blended GRIB1 ice analysis."""
+    ims = Path(os.path.expandvars(str(state.ims_ice_file)))
+    five_min = Path(os.path.expandvars(str(state.five_min_ice_file)))
+    for path, what in ((ims, "IMS ice"), (five_min, "MMAB 5-minute ice")):
+        if not path.exists():
+            raise FileNotFoundError(f"{what} file not found: {path}")
+    tools = {
+        name: find_tool(name) for name in ("wgrib2", "cnvgrib", "copygb2", "copygb")
+    }
+    mask = fix_file("am/emcsfc_gland5min.grib2")
 
-    Parameters
-    ----------
-    ims_file : Path
-        IMS ice cover data (grib1 or grib2).
-    five_min_file : Path
-        5-minute global ice concentration (grib2).
-    five_min_mask : Path
-        Land/sea mask of the 5-minute file (grib2).
-    blend_exec : Path
-        Path to `emcsfc_ice_blend` executable.
-    blended_file : Path
-        Output blended ice concentration file (grib1 for GFS).
-    wgrib2, cnvgrib, copygb, copygb2 : str
-        External fv3_utilities (must be available in PATH or given as full paths).
-    workdir : Path
-        Working directory (temporary). Defaults to CWD.
-    sendcom : bool
-        If True, copy blended file to `comout`.
+    shutil.rmtree(work_dir, ignore_errors=True)
+    work_dir.mkdir(parents=True)
+    log_file = state.logs / "emcsfc_ice_blend.log"
 
-    verbose : bool
-        If True, print diagnostic commands.
-    """
+    def step(cmd: list[str], env: dict | None = None) -> None:
+        with open(log_file, "a") as out:
+            rc = subprocess.run(
+                cmd, cwd=work_dir, env=env, stdout=out, stderr=out, check=False
+            ).returncode
+        if rc != 0:
+            raise RuntimeError(
+                f"emcsfc_ice_blend step failed ({' '.join(cmd)}); see {log_file}"
+            )
 
-    directory = Path(directory)
-
-    # Create unique log file for each nest to avoid overwriting
-    if nest_idx is not None and nest_idx > 0:
-        log_file = state.logs / f"ice_blend_nest{nest_idx:02d}.log"
-        # Create nest-specific output file name to avoid overwriting
-        blended_file = Path(
-            str(blended_file).replace(".grb", f"_nest{nest_idx:02d}.grb")
-        )
-    else:
-        log_file = state.logs / "ice_blend.log"
-    directory.mkdir(parents=True, exist_ok=True)
-
-    # -------------------------------------------------------------------------
-    # Step 1: IMS input check + convert to grib2 if needed
-    # -------------------------------------------------------------------------
-    if not Path(ims_file).exists():
-        raise FileNotFoundError(f"IMS ice file missing: {ims_file}")
-
-    # check if grib1
-    result = subprocess.run(
-        [wgrib2, "-Sec0", str(ims_file)],
+    sec0 = subprocess.run(
+        [tools["wgrib2"], "-Sec0", str(ims)],
         capture_output=True,
         text=True,
-        stderr=log_file,
-        cwd=directory,
+        check=False,
     )
-    if "grib1 message" in result.stdout:
-        subprocess.run(
-            [cnvgrib, "-g12", "-p40", str(ims_file), "ims.grib2"],
-            check=True,
-            stdout=log_file,
-            stderr=log_file,
-            cwd=directory,
-        )
+    if "grib1 message" in sec0.stdout + sec0.stderr:
+        step([tools["cnvgrib"], "-g12", "-p40", str(ims), "ims.grib2"])
     else:
-        cp(ims_file, "ims.grib2")
-
-        subprocess.run(
-            [wgrib2, "ims.grib2", "-match", "ICEC", "-grib", "ims.icec.grib2"],
-            check=True,
-            stdout=log_file,
-            stderr=log_file,
-            cwd=directory,
-        )
-
-    grid173 = "0 0 0 0 0 0 0 0 4320 2160 0 0 89958000 42000 48 -89958000 359958000 83000 83000 0"
-
-    subprocess.run(
+        shutil.copyfile(ims, work_dir / "ims.grib2")
+    step([tools["wgrib2"], "ims.grib2", "-match", "ICEC", "-grib", "ims.icec.grib2"])
+    step(
         [
-            copygb2,
+            tools["copygb2"],
             "-x",
             "-i3",
             "-g",
-            grid173,
+            GRID173,
             "ims.icec.grib2",
             "ims.icec.5min.grib2",
-        ],
-        check=True,
-        stdout=log_file,
-        stderr=log_file,
-        cwd=directory,
+        ]
     )
 
-    # -------------------------------------------------------------------------
-    # Step 2: check EMC/MMAB 5-min file
-    # -------------------------------------------------------------------------
-    if not Path(five_min_file).exists():
-        raise FileNotFoundError(f"MMAB 5-min ice data missing: {five_min_file}")
+    # The program reads the names from FORT11/15/17/51 into character(200)
+    # (emcsfc_ice_blend.f90), so the inputs are linked under short names.
+    (work_dir / "mask.grib2").symlink_to(Path(mask).resolve())
+    (work_dir / "five_min.grib2").symlink_to(five_min.resolve())
+    env = {
+        **os.environ,
+        "FORT17": "mask.grib2",
+        "FORT11": "ims.icec.5min.grib2",
+        "FORT15": "five_min.grib2",
+        "FORT51": BLENDED,
+    }
+    step([str(state.ufs_exe / "emcsfc_ice_blend")], env=env)
 
-    # -------------------------------------------------------------------------
-    # Step 3: run blend program
-    # -------------------------------------------------------------------------
-    env = os.environ.copy()
-    env["FORT17"] = str(five_min_mask)
-    env["FORT11"] = "ims.icec.5min.grib2"
-    env["FORT15"] = str(five_min_file)
-    env["FORT51"] = str(blended_file)
-
-    subprocess.run(
-        [str(blend_exec)],
-        check=True,
-        env=env,
-        stdout=log_file,
-        stderr=log_file,
-        cwd=directory,
-    )
-
-    # -------------------------------------------------------------------------
-    # Step 4: postprocess (convert to grib1, fix bitmap)
-    # -------------------------------------------------------------------------
-
-    subprocess.run(
+    step(
         [
-            wgrib2,
+            tools["wgrib2"],
             "-set_int",
             "3",
             "51",
             "42000",
-            f"{blended_file}",
+            BLENDED,
             "-grib",
-            f"{blended_file}.corner",
-        ],
-        check=True,
-        stdout=log_file,
-        stderr=log_file,
-        cwd=directory,
+            f"{BLENDED}.corner",
+        ]
     )
+    step([tools["cnvgrib"], "-g21", f"{BLENDED}.corner", f"{BLENDED}.bitmap"])
+    (work_dir / BLENDED).unlink()
+    step([tools["copygb"], "-M", "#1.57", "-x", f"{BLENDED}.bitmap", BLENDED])
+    for suffix in (".corner", ".bitmap"):
+        (work_dir / f"{BLENDED}{suffix}").unlink(missing_ok=True)
 
-    subprocess.run(
-        [cnvgrib, "-g21", f"{blended_file}.corner", f"{blended_file}.bitmap"],
-        check=True,
-        stdout=log_file,
-        stderr=log_file,
-        cwd=directory,
-    )
-    os.remove(blended_file)
-
-    subprocess.run(
-        [copygb, "-M", "#1.57", "-x", f"{blended_file}.bitmap", str(blended_file)],
-        check=True,
-        stdout=log_file,
-        stderr=log_file,
-        cwd=directory,
-    )
-
-    comout = tmp_ic_dir / "ice_blend"
-
-    if sendcom and comout:
-        comout.mkdir(parents=True, exist_ok=True)
-        cp(blended_file, comout)
-
-    # cleanup
-    for directory in [f"{blended_file}.corner", f"{blended_file}.bitmap"]:
-        try:
-            os.remove(directory)
-        except FileNotFoundError:
-            pass
-
-    if verbose:
-        log.info(f"Ice blend completed successfully: {blended_file}")
-
-    # ice_file = state.get("ice_file", None)
-    # if ice_file:
-    #     emcsfc_ice_inputs = get_func_signature(run_ice_blend)
-    #     emcsfc_ice_inputs = {
-    #         k: v for k, v in state.items() if k in emcsfc_ice_inputs and v is not None
-    #     }
-    #     run_ice_blend(
-    #         **emcsfc_ice_inputs,
-    #     )
+    out = work_dir / BLENDED
+    if not out.exists():
+        raise RuntimeError(f"emcsfc_ice_blend wrote no {out} (see {log_file})")
+    log.info(f"emcsfc_ice_blend wrote the ice analysis {out}")
+    return out

@@ -91,7 +91,9 @@ def get_timings() -> dict:
 
     best_guess_timings = get_best_guess_timings()
     dt_atmos = state.dt_atmos or best_guess_timings["dt_atmos"]
-    dt_ocean = state.dt_ocean or best_guess_timings["dt_ocean"]
+    # The coupler requires dt_ocean to be a multiple of dt_atmos; without an
+    # explicit value, couple every atmospheric step.
+    dt_ocean = state.dt_ocean or dt_atmos
     k_split = state.k_split or best_guess_timings["k_split"]
     n_split = state.n_split or best_guess_timings["n_split"]
 
@@ -109,6 +111,8 @@ def get_timings() -> dict:
             f"Length of n_split ({len(n_split)}) does not match number of domains ({state.n_nests + 1})"
         )
 
+    validate_time_steps(dt_atmos, dt_ocean)
+
     timings = {}
 
     timings["dt_atmos"] = dt_atmos
@@ -118,3 +122,30 @@ def get_timings() -> dict:
 
     state.update(timings)
     return timings
+
+
+def validate_time_steps(dt_atmos: int, dt_ocean: int) -> None:
+    """Apply the SHiELD coupler checks before the model is launched.
+
+    coupler_main.F90 stops when dt_ocean is not a multiple of dt_atmos or
+    when the run length is not a multiple of dt_ocean. Segment lengths are
+    whole hours, or whole days for days, months and years.
+    """
+    for name, value in (("dt_atmos", dt_atmos), ("dt_ocean", dt_ocean)):
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"{name} must be a positive integer [s], got {value!r}")
+
+    if dt_ocean % dt_atmos != 0:
+        raise ValueError(
+            f"dt_ocean ({dt_ocean} s) must be a multiple of dt_atmos ({dt_atmos} s)"
+        )
+
+    unit_s = 3600 if state.run_length_units == "hours" else 86400
+    length_s = unit_s * (
+        state.run_length if state.run_length_units in ("hours", "days") else 1
+    )
+    if length_s % dt_ocean != 0:
+        raise ValueError(
+            f"The segment length ({state.run_length} {state.run_length_units}) "
+            + f"must be a multiple of dt_ocean ({dt_ocean} s)"
+        )

@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import f90nml
-
 from fv3_runtime import log, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
@@ -91,8 +90,10 @@ def run_filter_topo(
 
         cp(filter_topo, ".")
 
-        # Decide stretch factor
-        if gtype in ["stretch", "regional_gfdl"]:
+        # Stretch factor of the filtered tiles: the global tiles of a nested
+        # run are filtered as a stretched grid, as in UFS_UTILS
+        # fv3gfs_driver_grid.sh (gtype=stretch for the nest case).
+        if gtype in ["stretch", "regional_gfdl", "nest"]:
             stretch = stretch_factor
         else:
             stretch = 1.0

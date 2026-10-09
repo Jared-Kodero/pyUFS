@@ -45,11 +45,6 @@ fms_affinity_nml:
   debug_affinity: false
   debug_cpuset: false
 
-fms_io_nml:
-  checksum_required: false
-  max_files_r: 100
-  max_files_w: 100
-
 fms_nml:
   clock_grain: ROUTINE
   domains_stack_size: 3000000
@@ -179,7 +174,6 @@ gfs_physics_nml:
   ysupbl: true
   zhao_mic: false
   lsm: 1
-  sfc_coupled: true
 
 integ_phys_nml:
   do_inline_mp: true

@@ -118,14 +118,50 @@ def stage_files() -> None:
             f.symlink_to(rel_target)
 
     if state.gtype in ("regional_gfdl", "regional_esg"):
-        # Regional orography is produced as shaved halo files; the model reads the
-        # halo0 field as oro_data.tile7.nc (the halo3/halo4 grid and mosaic files
-        # are moved to GRID by the grid/mosaic loop below).
-        for f in list(state.input.glob("C*_oro_data.tile7.halo0.nc")):
-            rename(f, state.input / "oro_data.tile7.nc")
+        stage_regional_inputs()
 
-        # Link the regional boundary files (kept in state.bc_data) into INPUT. The
-        # links target state.bc_data, outside state.tmp, so they survive the cleanup.
-        link_bc_to_input()
+    # Empty TMP, including hidden entries such as the parent grid that
+    # regional_gfdl bracketing writes to TMP/.tmp_make_grid.
+    for entry in Path(state.tmp).iterdir():
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
 
-    os.system(f"rm -rf {state.tmp}/*")
+
+def _link(link: Path, target: Path) -> None:
+    link.unlink(missing_ok=True)
+    link.symlink_to(os.path.relpath(target, start=link.parent))
+
+
+def stage_regional_inputs() -> None:
+    """Give the regional inputs the names the model reads.
+
+    Follows SHiELD_build RTS/GAEA_RTS/Regional3km.csh: the model grid is the
+    halo-3 tile read through INPUT/grid_spec.nc (fv_grid_nml grid_file),
+    the boundary code reads grid.tile7.halo4.nc and oro_data.tile7.halo4.nc
+    (fv_regional_bc.F90), and the single-tile initial conditions and
+    orography carry no tile suffix (FMS2 adds one only for multi-tile
+    domains or tile numbers above 1).
+    """
+    res, halo = state.c_res, state.halo
+    inp, grid = Path(state.input), Path(state.grid)
+
+    rename(inp / f"C{res}_oro_data.tile7.halo0.nc", inp / "oro_data.nc")
+    rename(
+        inp / f"C{res}_oro_data.tile7.halo{halo + 1}.nc",
+        inp / f"oro_data.tile7.halo{halo + 1}.nc",
+    )
+    rename(inp / "gfs_data.tile7.nc", inp / "gfs_data.nc")
+    rename(inp / "sfc_data.tile7.nc", inp / "sfc_data.nc")
+
+    _link(inp / "grid_spec.nc", grid / f"C{res}_mosaic.nc")
+    _link(inp / f"C{res}_grid.tile7.nc", grid / f"C{res}_grid.tile7.halo{halo}.nc")
+    _link(
+        inp / f"grid.tile7.halo{halo + 1}.nc",
+        grid / f"C{res}_grid.tile7.halo{halo + 1}.nc",
+    )
+
+    # Link the regional boundary files (kept in state.bc_data) into INPUT. The
+    # links target state.bc_data, outside state.tmp, so they survive the cleanup.
+    link_bc_to_input()

@@ -144,5 +144,4 @@ gfs_physics_nml:
   use_ufo: true
   xkzminv: 0.0
   zhao_mic: false
-  sfc_coupled: true
   lsm: 2

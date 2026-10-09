@@ -23,7 +23,7 @@ if __name__ == "__main__":
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         exit_code(code)
         raise
-    except BaseException:
+    except BaseException:  # noqa: BLE001 - record any failure in exit_code
         handle_errors(*sys.exc_info())
         exit_code(1)
         sys.exit(1)

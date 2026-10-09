@@ -1,103 +1,84 @@
+"""Surface analysis update of the cold-start ICs (run_global_cycle).
+
+Follows ush/global_cycle_driver.sh: after chgres_cube, global_cycle updates
+INPUT/sfc_data* from the climatologies and the optional SST, sea-ice and
+snow analyses. The six global tiles run as one 6-rank job; each nest has
+its own tile size and runs as a 1-rank job. The snow and ice analyses can
+be built first with emcsfc_snow2mdl and emcsfc_ice_blend; they are kept in
+IC/surface_analysis.
+"""
+
+from __future__ import annotations
+
 import os
+import shutil
 from pathlib import Path
 
+from emcsfc_ice_blend import run_ice_blend
+from emcsfc_snow import run_emcsfc_snow
 from fv3_runtime import log
 from fv3_state import state
-from fv3_utils import cp
-from global_cycle import run_global_cycle
+from global_cycle import namsfc_entries, run_global_cycle
+
+GLOBAL_GTYPES = ("uniform", "stretch", "nest")
 
 
-def drive_global_cycle(
-    datetime: str,
-    c_res: int,
-    fix: Path,  # fixed files directory
-    tmp: Path,  # root temporary directory
-    tmp_ic_dir: Path,  # Temporary directory for initial conditions
-    n_nests: int = 0,
-    n_tiles: int = 6,
-    **kwargs,
-):
-    """
-    Python driver for global_cycle.
-    Reproduces fv3 surface update behavior, including symbolic linking
-    of restart, grid, and orography files into the working directory.
-    """
-
-    # Resolution formatting
-    c_res = f"C{c_res}"
-    fixed_am = fix / "am"
-
-    # Default: global-only
-    nest_range = range(n_nests + 1) if n_nests > 0 else [0]
-
-    for nest_idx in nest_range:
-        # Create working directory
-        tmp_dir = (
-            tmp / f"global_cycle_nest{nest_idx:02d}"
-            if nest_idx > 0
-            else tmp / "global_cycle"
+def surface_domains() -> list[tuple[str, list[tuple[Path, Path, Path]]]]:
+    """(label, [(sfc, grid, orog), ...]) for the global tiles and each nest."""
+    inp, grid, res = Path(state.input), Path(state.grid), state.c_res
+    domains = [
+        (
+            "global",
+            [
+                (
+                    inp / f"sfc_data.tile{t}.nc",
+                    grid / f"C{res}_grid.tile{t}.nc",
+                    inp / f"oro_data.tile{t}.nc",
+                )
+                for t in range(1, 7)
+            ],
         )
-        tmp_dir.mkdir(parents=True, exist_ok=True)
-
-        log.info(f"PREPARING RUN DIRECTORY: {tmp_dir}")
-
-        # ------------------------------------------------------------------------------
-        # 1. Link restart and static files (same as Bash loop)
-        # ------------------------------------------------------------------------------
-
-        for n in range(1, n_tiles + 1):
-            tile = f"tile{n}.nc"
-
-            # Input and output surface files
-            sfc_in = state.input / f"sfc_data.{tile}"
-            sfc_out = state.input / f"sfcanl_data.{tile}"
-
-            # Copy input -> output (like Bash does before linking)
-            cp(sfc_in, sfc_out)
-            os.chmod(sfc_out, 0o644)
-
-            # Link using legacy names (the executable expects these)
-            (tmp_dir / f"fnbgsi.{n:03d}").symlink_to(sfc_in)
-            (tmp_dir / f"fnbgso.{n:03d}").symlink_to(sfc_out)
-
-            # Grid and orography from fix_fv3 (here assumed under ic_dir)
-            grid_file = state.input / f"{c_res}_grid.{tile}"
-            orog_file = state.input / f"oro_data.{tile}"
-
-            (tmp_dir / f"fngrid.{n:03d}").symlink_to(grid_file)
-            (tmp_dir / f"fnorog.{n:03d}").symlink_to(orog_file)
-
-            # Optional snow increment
-            if kwargs.get("do_sno_inc", False):
-                xainc = state.input / f"xainc.{tile}"
-                if xainc.exists():
-                    (tmp_dir / f"xainc.{n:03d}").symlink_to(xainc)
-
-        # ------------------------------------------------------------------------------
-        # 2. Call Fortran executable wrapper
-        # ------------------------------------------------------------------------------
-
-        run_global_cycle(
-            datetime=datetime,
-            c_res=c_res,
-            tmp_dir=tmp_dir,
-            fixed_am=fixed_am,
-            tmp_ic_dir=tmp_ic_dir,
-            exec_dir=state.ufs_exe,
-            n_nests=n_nests,
-            nest_idx=nest_idx,
-            **kwargs,
+    ]
+    for k in range(1, int(state.n_nests or 0) + 1):
+        tile, idx = 6 + k, k + 1
+        domains.append(
+            (
+                f"nest{idx:02d}",
+                [
+                    (
+                        inp / f"sfc_data.nest{idx:02d}.tile{tile}.nc",
+                        grid / f"C{res}_grid.tile{tile}.nc",
+                        inp / f"oro_data.nest{idx:02d}.tile{tile}.nc",
+                    )
+                ],
+            )
         )
+    return domains
 
-        log.info(f"Completed global_cycle for nest: {nest_idx}")
 
-    log.info("Global cycle finished successfully for all nests.")
+def _path(value: str | None) -> str | None:
+    return os.path.expandvars(str(value)) if value else None
 
-    # global_cycle_inputs = get_func_signature(drive_global_cycle)
-    # global_cycle_inputs = {
-    #     k: v for k, v in state.items() if k in global_cycle_inputs and v is not None
-    # }
 
-    # drive_global_cycle(
-    #     **global_cycle_inputs,
-    # )
+def run_surface_cycle() -> None:
+    if not state.run_global_cycle:
+        return
+
+    sst = _path(state.global_cycle_sst_file)
+    ice = _path(state.global_cycle_ice_file)
+    snow = _path(state.global_cycle_snow_file)
+    keep = Path(state.ic_data) / "surface_analysis"
+    if state.run_emcsfc_snow:
+        snow = str(run_emcsfc_snow(keep / "emcsfc_snow"))
+    if state.run_emcsfc_ice_blend:
+        ice = str(run_ice_blend(keep / "emcsfc_ice_blend"))
+    for name, value in (("SST", sst), ("ice", ice), ("snow", snow)):
+        if value and not Path(value).exists():
+            raise FileNotFoundError(f"global_cycle {name} analysis not found: {value}")
+        log.info(f"global_cycle {name} analysis: {value or 'none (climatology)'}")
+
+    namsfc = namsfc_entries(sst, ice, snow, state.global_cycle_vars)
+    work = Path(state.tmp) / "global_cycle"
+    for label, files in surface_domains():
+        run_global_cycle(label, files, work / label, namsfc, state.init_datetime)
+    shutil.rmtree(work, ignore_errors=True)
