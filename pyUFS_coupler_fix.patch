@@ -1,0 +1,236 @@
+diff --git a/README.md b/README.md
+index a2d5da2..2d426f7 100644
+--- a/README.md
++++ b/README.md
+@@ -83,10 +83,13 @@ container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
+ dependencies used inside the preprocessing container are listed in `configs/env.yaml`
+ and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
+ `cartopy`, and `wgrib2`. The scheduler is SLURM. `drivers/sbatch.sh` submits
+-`drivers/case_run.sh` and forwards the resolved environment. When `jobtmp` exists on the
+-compute node, the case directory is copied there, the stages run there, and the results
+-are synchronized back to the case directory after preprocessing and after a successful
+-segment; on failure the logs are copied back. Otherwise the job runs in place inside the
++`drivers/case_run.sh` and forwards the resolved environment. Whenever the configured
++`jobtmp` directory exists on the compute node, the case runs there and the results are
++synchronized back after preprocessing and after a successful segment; on failure the
++logs are copied back. Only an absent `jobtmp` falls back to the case directory; node
++count does not change this preference. The fallback does not create `jobtmp` afterward.
++The driver logs the selected paths and the reason. When work and case directories
++coincide, no copy or deletion is performed for staging. The fallback runs inside the
+ case tree. The run directory (`case_root/<parent>/<case>`) must not contain the submission
+ directory, since it is mirrored with deletion and removed after archiving;
+ `case_submit.sh` refuses such a layout. Every `container_bindpath` entry must exist on the
+@@ -182,7 +185,7 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
+ | Key | Meaning |
+ | --- | --- |
+ | `case_root` | Root of the persistent case tree. |
+-| `jobtmp` | Node-local scratch root. When it exists on the compute node the job runs there and syncs back to `case_root`; otherwise it runs in place. |
++| `jobtmp` | Preferred work root whenever it exists on the compute node. Only an absent directory falls back to `case_root`; node count does not change this preference. |
+ | `fix_src` | Source tree for static datasets (the `fix` directory). |
+ | `ufs_utils` | Configured workflow path. The launcher ultimately derives the active repository from `drivers/case_submit.py`. |
+ | `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for the model, regridding and preprocessing (Section 2). |
+@@ -303,7 +306,7 @@ Regional ESG grids, active when `gtype: regional_esg`, additionally use:
+ | Key | Meaning |
+ | --- | --- |
+ | `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
+-| `dt_ocean` | Ocean coupling time step in seconds. Null uses `dt_atmos`. |
++| `dt_ocean` | Coupling time step in seconds. Null uses `dt_atmos`; written as `coupler_nml dt_cpld` for the FV3-202604 driver. |
+ | `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
+ | `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
+ 
+@@ -1013,12 +1016,30 @@ shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+ | `ice_param`, `*_null` | unpinned | unpinned |
+ | Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` |
+ 
+-Every namelist variable the workflow writes was checked against the `namelist`
+-declarations of both profiles (GFDL_atmos_cubed_sphere, SHiELD_physics, atmos_drivers,
+-FMS, FMSCoupler); a model run with the `FV3-202604-public` executable on Oscar has still to
+-confirm the profile.
+-
+-The namelist templates use only variables declared in both profiles, except
++The two profiles compile different coupler drivers. The tagged `FV3-202411-public`
++`shield` build uses `FMSCoupler/SHiELD/coupler_main.F90`, which reads `dt_ocean`.
++The `FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld`
++and rejects `coupler_nml dt_ocean`. The current template and direct timestep
++assignment target this full driver.
++For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename
++alone does not identify its coupler interface. The workflow retains `dt_ocean`
++as the run configuration key and writes its value directly to `dt_cpld`.
++Case-local `input.nml` or `input.yaml` overrides are passed through normally;
++the model reports incompatible namelist keys.
++
++In the full-driver template, `coupler_nml do_land = false` skips the separate
++land component linked from `land_null`. Noah still runs inside SHiELD physics
++with `gfs_physics_nml lsm = 1`; the standard `shield` build defines
++`_USE_LEGACY_LAND_`, and `atmos_model_nml fullcoupler_fluxes` defaults to 0.
++Likewise, `coupler_nml do_ocean = false` skips the external ocean component,
++while `gfs_physics_nml do_ocean = true` retains the internal slab ocean.
++`do_flux = false` skips the coupler's component-exchange flux calculation;
++surface fluxes are still calculated by the atmospheric physics. The `ice_npes`
++and `land_npes` settings follow the upstream SHiELD regression cases. A legacy
++driver requires its own namelist and timestep assignment. These defaults describe the standard
++`shield` build, not a coupled `shiemom_lm4` experiment.
++
++The remaining namelist templates use variables declared in both profiles, except
+ `interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
+ SHiELD_build test cases also set. In particular they do not set `gfs_physics_nml
+ sfc_coupled`: in `FV3-202411-public` it selects the ocean surface fluxes supplied by a
+diff --git a/configs/input_nml.yaml b/configs/input_nml.yaml
+index d137efe..9a01392 100644
+--- a/configs/input_nml.yaml
++++ b/configs/input_nml.yaml
+@@ -17,9 +17,17 @@ coupler_nml:
+   calendar: julian
+   current_date: null
+   days: null
++  # Separate full-coupler components. Noah remains active via lsm: 1 below.
++  do_flux: false
++  do_ice: false
++  do_land: false
++  do_ocean: false
+   dt_atmos: null
+-  dt_ocean: null
++  # dt_ocean: null # Legacy SHiELD driver; FV3-202604 uses dt_cpld below.
++  dt_cpld: null
+   hours: null
++  ice_npes: -1
++  land_npes: -1
+   minutes: 0
+   months: 0
+   seconds: 0
+diff --git a/configs/run_config.yaml b/configs/run_config.yaml
+index 23dd5f3..dc8c3ba 100755
+--- a/configs/run_config.yaml
++++ b/configs/run_config.yaml
+@@ -27,7 +27,7 @@
+ # Environment variables such as $USER and $HOME are expanded.
+ 
+ case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
+-jobtmp: /jobtmp/$USER/gfdl_shield # Node-local scratch. When it exists on the compute node, the job runs here and syncs back to case_root; otherwise it runs in place under case_root.
++jobtmp: /jobtmp/$USER/gfdl_shield # Preferred work root whenever it exists on the compute node. Only an absent directory falls back to case_root; node count does not change this preference.
+ fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Static datasets (the fix directory). Missing files are fetched from the NOAA fix bucket into it, so it must be writable (README section 7).
+ ufs_utils: /oscar/data/deeps/shared/gfdl_shield/pyUFS
+ shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model image (README section 2)
+@@ -212,7 +212,7 @@ do_deep: false # false: deep convection is switched off on domains with dx <= 4
+ #   resolution or refinement ratio.
+ 
+ dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
+-dt_ocean: null # Ocean coupling timestep [s]; a multiple of dt_atmos. Null uses dt_atmos.
++dt_ocean: null # Coupling timestep [s]; written as coupler_nml dt_cpld for FV3-202604. Null uses dt_atmos.
+ 
+ # When set, k_split and n_split must be lists of length n_nests + 1, with the
+ # first value for the global grid and the remaining values for the nests in
+diff --git a/drivers/case_run.sh b/drivers/case_run.sh
+index bfa39f6..0979acb 100644
+--- a/drivers/case_run.sh
++++ b/drivers/case_run.sh
+@@ -13,20 +13,28 @@ module purge
+ 
+ cd "$CASE_PWD"
+ 
+-export WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+ export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+ export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+ 
+-
+-if  [ ! -d "$JOBTMP_DIR" ]; then 
+-    SYNC=0
+-    WORK_DIR="$CASE_DIR"
+-    TMP_DIR="$CASE_ROOT_DIR/tmp"
+-    mkdir -p "$JOBTMP_DIR"
+-else
+-    SYNC=1
+-    TMP_DIR="$JOBTMP_DIR/tmp"
+-    rm -rf "$WORK_DIR"
++mkdir -p "$CASE_DIR"
++export WORK_DIR="$CASE_DIR"
++SYNC=0
++TMP_DIR="$CASE_ROOT_DIR/tmp"
++WORK_DIR_REASON="jobtmp does not exist on this compute node"
++
++# Preserve the original preference: use jobtmp whenever it exists. Do not
++# create it after selecting the fallback, changing the next run's decision.
++if [[ -d "$JOBTMP_DIR" ]]; then
++    SCRATCH_WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
++    if [[ "$SCRATCH_WORK_DIR" -ef "$CASE_DIR" ]]; then
++        WORK_DIR_REASON="jobtmp and case_root identify the same case directory"
++    else
++        SYNC=1
++        WORK_DIR="$SCRATCH_WORK_DIR"
++        TMP_DIR="$JOBTMP_DIR/tmp"
++        WORK_DIR_REASON="configured jobtmp exists"
++        rm -rf "$WORK_DIR"
++    fi
+ fi
+ 
+ 
+@@ -83,6 +91,9 @@ else
+      exec >"$CASE_LOG_FILE" 2>&1
+ fi
+ 
++printf '%s - Case.Run - INFO - Node: %s; JOBTMP_DIR=%s; WORK_DIR=%s; CASE_DIR=%s; SYNC=%s; %s\n' \
++    "$(date '+%Y-%m-%d %H:%M')" "$(hostname)" "$JOBTMP_DIR" "$WORK_DIR" "$CASE_DIR" "$SYNC" "$WORK_DIR_REASON"
++
+ 
+ export TMPDIR="$TMP_DIR"
+ export APPTAINER_CACHEDIR=$TMP_DIR
+@@ -94,14 +105,13 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
+ PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
+ SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
+ 
+-SYNC_DIRS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
+-
+-
+ $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
+ 
+ 
+ if (( $(<"$EXIT_CODE_FILE") == 0)); then
+-    $SYNC_DIRS
++    if (( SYNC == 1 )); then
++        rsync -a --delete "$WORK_DIR/" "$CASE_DIR/"
++    fi
+     if (( $CASE_PREPROCESS_ONLY == 1 )); then
+         rm -f "$CASE_DATA_SYMLINK"
+         ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
+@@ -129,11 +139,12 @@ if (( $(<"$EXIT_CODE_FILE") == 0 )); then $FREGRID || true; fi
+ EXIT_CODE=$(<"$EXIT_CODE_FILE")
+ 
+ if  (( EXIT_CODE == 0 && SYNC == 1 )); then
+-    $SYNC_DIRS
++    rsync -a --delete "$WORK_DIR/" "$CASE_DIR/"
+ fi
+ 
+-if (( EXIT_CODE != 0 )); then
+-    cp -rf "$WORK_DIR"/LOGS "$CASE_DIR"/LOGS
++if (( EXIT_CODE != 0 )) && [[ ! "$WORK_DIR" -ef "$CASE_DIR" ]]; then
++    mkdir -p "$CASE_DIR"/LOGS
++    cp -rf "$WORK_DIR"/LOGS/. "$CASE_DIR"/LOGS/
+ fi
+ 
+ 
+diff --git a/drivers/case_submit.py b/drivers/case_submit.py
+index 314cee4..d6ab016 100755
+--- a/drivers/case_submit.py
++++ b/drivers/case_submit.py
+@@ -120,7 +120,7 @@ def get_paths(cfg: dict):
+ 
+         if v in ("case_root", "archive_root") and not Path(value).exists():
+             Path(value).mkdir(parents=True, exist_ok=True)
+-        # jobtmp is node-local; case_run.sh creates it on the compute node.
++        # jobtmp availability is checked on the compute node by case_run.sh.
+ 
+         paths[k] = value
+ 
+diff --git a/scripts/fv3_namelists.py b/scripts/fv3_namelists.py
+index 8ccdae4..44b91b8 100644
+--- a/scripts/fv3_namelists.py
++++ b/scripts/fv3_namelists.py
+@@ -159,7 +159,7 @@ def update_global_nml(
+ 
+     # Use first-guess timings unless overridden by user
+     nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
+-    nml["coupler_nml"]["dt_ocean"] = timings["dt_ocean"]
++    nml["coupler_nml"]["dt_cpld"] = timings["dt_ocean"]
+ 
+     # FIX: Pull explicitly from the global keys
+     nml["fv_core_nml"]["n_split"] = timings["n_split"][0]
