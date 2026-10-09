@@ -120,7 +120,7 @@ def get_paths(cfg: dict):
 
         if v in ("case_root", "archive_root") and not Path(value).exists():
             Path(value).mkdir(parents=True, exist_ok=True)
-        # jobtmp is node-local; case_run.sh creates it on the compute node.
+        # jobtmp availability is checked on the compute node by case_run.sh.
 
         paths[k] = value
 
