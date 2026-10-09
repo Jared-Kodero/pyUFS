@@ -100,20 +100,6 @@ def disable_deep_convection(nml: dict, tile: int, name: str):
     return nml
 
 
-def domains_stack_size(npx: int, npy: int, layout: list, npz: int) -> int:
-    """fms_nml domains_stack_size [8-byte words] needed by one domain.
-
-    The mpp_domains buffer holds the halo-extended subdomain of every field
-    updated in one call; 32 three-dimensional fields with a 4-point halo are
-    allowed for. FMS allocates two buffers of this size, and stops with the
-    size it needs if the value is too small. SHiELD_build sets 3e6 (C48,
-    C384) to 2e7-9.6e7 (C3072).
-    """
-    nx = -(-(npx - 1) // layout[0]) + 8
-    ny = -(-(npy - 1) // layout[1]) + 8
-    return max(4_000_000, nx * ny * (npz + 1) * 32)
-
-
 # for all nests
 def common_configs(nml: dict):
     nml["fv_core_nml"]["npz"] = state.levels - 1
@@ -183,14 +169,7 @@ def update_global_nml(
     nml["fv_core_nml"]["layout"] = state.layout[0]
     nml["fv_core_nml"]["io_layout"] = state.io_layout[0]
     nml["atmos_model_nml"]["blocksize"] = state.blocksize[0]
-    # fms_init reads fms_nml once, from input.nml, for every PE (nest PEs
-    # included), so the buffer is sized for the largest domain.
-    nml["fms_nml"]["domains_stack_size"] = max(
-        domains_stack_size(
-            state.npx[i], state.npy[i], state.layout[i], state.levels - 1
-        )
-        for i in range(len(state.npx))
-    )
+    nml["fms_nml"]["domains_stack_size"] = 536870912  # 5GB
 
     if n_nests > 0:
         nml["fv_nest_nml"]["grid_pes"] = state.grid_pes
@@ -283,12 +262,7 @@ def update_nest_nml(
         nml["fv_core_nml"]["io_layout"] = state.io_layout[i]
         nml["atmos_model_nml"]["blocksize"] = state.blocksize[i]
         # Ignored by FMS (fms_nml is read from input.nml); kept consistent.
-        nml["fms_nml"]["domains_stack_size"] = max(
-            domains_stack_size(
-                state.npx[k], state.npy[k], state.layout[k], state.levels - 1
-            )
-            for k in range(len(state.npx))
-        )
+        nml["fms_nml"]["domains_stack_size"] = 536870912  # 5GB
 
         nml = update_namsfc(nml)
 
