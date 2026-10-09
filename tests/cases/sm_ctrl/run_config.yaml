@@ -11,3 +11,5 @@ n_nodes: 1
 n_cpus: 48
 walltime: 4
 constraint_node: "48core"
+k_split: [1]
+n_split: [3]
