@@ -1,5 +1,5 @@
 # Global C96 with the top three soil layers dried by 20% at the initial time.
-# Methods and options: configs/run_config.yaml section 10, py_scripts/sm_perturbations.py.
+# Methods and options: configs/run_config.yaml section 10, scripts/sm_perturbations.py.
 description: C96 dry soil
 init_datetime: "2026031200Z"
 run_length: 24

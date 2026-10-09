@@ -52,12 +52,12 @@ may instead run from a native executable:
 
 - `preprocess_image` (`docker://gfdlfv3/preprocessing`, with UFS_UTILS at
   `/UFS_UTILS/exec`, plus the Python environment of `configs/env.yaml`) runs the
-  preprocessing driver `py_scripts/driver.py`.
+  preprocessing driver `scripts/driver.py`.
 - `shield_image` (`docker://gfdlfv3/shield`) runs `SHiELD_nh.prod.64bit.x` when no
   native `shield_exe` is given.
 - `fregrid_image` (`docker://gfdlfv3/fre-nctools` plus the same Python environment) runs
-  the regridding stage `py_scripts/fv3_regrid.py`. Regridding is done in Python (xarray
-  and xESMF, `py_scripts/pyfregrid.py`), not by the FRE-NCtools `fregrid` program.
+  the regridding stage `scripts/fv3_regrid.py`. Regridding is done in Python (xarray
+  and xESMF, `scripts/pyfregrid.py`), not by the FRE-NCtools `fregrid` program.
 
 `configs/install_images.sh` builds all three into `containers_root` as `preprocess.sif`,
 `shield.sif` and `fregrid.sif`, so the three image keys must point there. If any image is
@@ -97,6 +97,9 @@ compute node, or Apptainer does not start.
 ```text
 pyUFS/
 ├── case_submit.sh           # Thin wrapper around drivers/case_submit.py
+├── bins/                    # Default directory for binaries
+├── containers/              # Default directory for containers
+├── fix/                     # Default directory for fix files
 ├── configs/                 # Default configuration and templates
 │   ├── run_config.yaml      # Default configuration and inline documentation
 │   ├── env.yaml             # Conda environment for the preprocess container
@@ -114,12 +117,11 @@ pyUFS/
 ├── drivers/                 # Submission and runtime job scripts
 │   ├── case_submit.py       # Config validation and job submission
 │   ├── sbatch.sh            # sbatch submission template
-│   └── case_run.sh          # Runtime driver executed on the compute node
-├── docs/state_audit.md      # FV3State key sources and required fields
-├── examples/               # Example run_config.yaml files and overrides (Section 18)
+│   └── case_run.sh          # Runtime driver executed on the compute nodes
+├── examples/                # Example run_config.yaml files and overrides (Section 18)
 ├── preprocess               # Preprocess stage entrypoint
 ├── fregrid                  # Regridding stage entrypoint (fregrid image)
-├── py_scripts/              # Workflow implementation
+├── scripts/              # Workflow implementation
 ├── tests/                   # Test suite without containers or a scheduler (tests/README.md)
 └── README.md
 ```
@@ -143,7 +145,7 @@ default file.
 6. `case_run.sh` prepares directories, stages the case to the working directory, runs the
    preprocess container, launches SHiELD, runs the regridding stage, synchronizes outputs, and optionally
    resubmits the next segment or archives the case.
-7. Inside the preprocess container, `py_scripts/driver.py` calls the initial driver on the
+7. Inside the preprocess container, `scripts/driver.py` calls the initial driver on the
    first segment and the restart driver on later segments.
 
 The initial driver performs grid generation, orography generation, initial condition
@@ -337,7 +339,7 @@ reference source:
 
 https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
 
-Missing files are fetched at run time. `py_scripts/fv3_update_fix.py` looks for each file
+Missing files are fetched at run time. `scripts/fv3_update_fix.py` looks for each file
 the workflow reads in `fix_src`, then under the name NOAA uses for it in `fix_src` (for
 example `am/fix_co2_update/global_co2historicaldata_2020.txt` for
 `am/co2historicaldata_2020.txt`, which it links), and then in the NOAA bucket, newest
@@ -621,7 +623,7 @@ Use the repository code as the handoff point when building a custom conversion p
 rather than mutating the default files directly.
 
 The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
-`py_scripts/fv3_external_ic.py`); all other settings, including segment settings and
+`scripts/fv3_external_ic.py`); all other settings, including segment settings and
 `tgrad_perturbations`, come from the case `run_config.yaml`. The case model start
 (`init_datetime` plus `forecast_hour`), `gtype` and `levels` must match the bundle.
 
@@ -665,7 +667,7 @@ are checked before the grid is generated.
 ## 9. Modifying the grid
 
 For `uniform`, `stretch`, and `nest` cases, grid generation is driven from
-`py_scripts/fv3_make_grid.py` and staged through a modification directory. The generator
+`scripts/fv3_make_grid.py` and staged through a modification directory. The generator
 copies user-supplied files verbatim when a non-empty modification directory is present, so
 the procedure is stage, edit, and re-inject. The regional branches do not currently stage
 and terminate through this same grid-only path.
@@ -683,7 +685,7 @@ and terminate through this same grid-only path.
 ## 10. Modifying orography
 
 For `uniform`, `stretch`, and `nest` cases, orography generation is driven from
-`py_scripts/fv3_make_orog.py` and follows the same stage, edit, and re-inject pattern as the
+`scripts/fv3_make_orog.py` and follows the same stage, edit, and re-inject pattern as the
 grid. Orography is generated after the grid, so a grid must exist first. The regional
 branches do not currently stage and terminate through this same orography-only path.
 
@@ -706,7 +708,7 @@ preserve raw edits.
 ## 11. Soil moisture perturbations
 
 Soil moisture perturbations are applied at model initialization and at the start of each
-restart segment by `py_scripts/sm_perturbations.py`. They act on the surface restart files
+restart segment by `scripts/sm_perturbations.py`. They act on the surface restart files
 `sfc_data.tile*.nc`, `sfc_data.nest{NN}.tile*.nc` for nested tiles, and `sfc_data.nc` for a
 regional domain. Target variables are `smc` (total volumetric soil moisture), `slc`
 (liquid volumetric soil moisture), and `stc` (soil temperature). All three are perturbed on
@@ -876,7 +878,7 @@ Merging concatenates records along time; it does not average (Section 22).
 ### 14.1 Grid visualization
 
 The initial driver optionally renders the generated grid through
-`py_scripts/fv3_plot_grid.py`. Plotting is a diagnostic step: it reads the
+`scripts/fv3_plot_grid.py`. Plotting is a diagnostic step: it reads the
 `C*_grid.tile*.nc` supergrid files from `state.grid`, requires `cartopy` and its Natural
 Earth cache under `fix_src/carto`, and writes to `state.run_dir`. Two figures are produced.
 
@@ -928,7 +930,7 @@ as an independent job with its own working directory `memNN` and its own log. Us
 moisture perturbations to build spread.
 
 Member 1 is unperturbed; other members get temperature noise seeded from the case
-checksum (`py_scripts/fv3_ensemble_driver.py`), which includes `tgrad_perturbations`
+checksum (`scripts/fv3_ensemble_driver.py`), which includes `tgrad_perturbations`
 when set. Perturbations are generated only when ICs are generated; to pair members
 across experiments, stage the same member bundle through `external_ic_dir`.
 
@@ -1068,7 +1070,7 @@ run it there so the workflow reads the local `run_config.yaml` and any case-loca
 
 ## 21. SST and sea-ice perturbations (`tgrad_perturbations`)
 
-`py_scripts/tgrad_perturbations.py` writes perturbed copies of the monthly SST and sea-ice
+`scripts/tgrad_perturbations.py` writes perturbed copies of the monthly SST and sea-ice
 climatologies to `FIXED/MODS` once, at the cold start, and points `namsfc` at them. Restart
 segments keep these files; `preprocess_only` exits before they are written. Any block,
 including `method: none`, also prescribes SST and sea ice from the climatologies. The block

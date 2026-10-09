@@ -15,3 +15,5 @@ generate_ic_data: true
 n_nodes: 1
 n_cpus: 48
 walltime: 2
+k_split: [1]
+n_split: [3]

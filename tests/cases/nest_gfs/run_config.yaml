@@ -20,3 +20,5 @@ n_nodes: 2
 n_cpus: 96
 walltime: 4
 constraint_node: "48core"
+k_split: [1, 2, 2]
+n_split: [3, 6, 6]
