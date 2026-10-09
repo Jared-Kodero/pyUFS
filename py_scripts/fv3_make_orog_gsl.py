@@ -1,8 +1,8 @@
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log, report_missing_fixed_files, tmp_cwd
-from fv3_state import FV3State, state
+from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
+from fv3_state import state
 from fv3_utils import cp, run_cmd
 
 
@@ -21,8 +21,6 @@ def _run_make_orog_gsl(
 
     if not make_gsl_orog:
         return
-
-    local_state = FV3State(local_state)
 
     state.update(local_state)
 
@@ -43,24 +41,23 @@ def _run_make_orog_gsl(
     else:
         out_grid = f"C{c_res}_grid.tile{tile}.halo{halo}.nc"
 
-    files = {
-        workdir / out_grid: grid_dir / out_grid,
-        workdir / "HGT.Beljaars_filtered.lat-lon.30s_res.nc": topo_dir
+    # Inputs linked into the work directory: {link name: source}.
+    links = {
+        out_grid: grid_dir / out_grid,
+        "HGT.Beljaars_filtered.lat-lon.30s_res.nc": topo_dir
         / "HGT.Beljaars_filtered.lat-lon.30s_res.nc",
-        workdir / "geo_em.d01.lat-lon.2.5m.HGT_M.nc": topo_dir
+        "geo_em.d01.lat-lon.2.5m.HGT_M.nc": topo_dir
         / "geo_em.d01.lat-lon.2.5m.HGT_M.nc",
-        orog_gsl: exec_dir / "orog_gsl",
     }
 
-    missing_files = [f for f in files if not f.exists()]
-    if missing_files:
-        report_missing_fixed_files(missing_files, sub_dir="orog_gsl")
+    require_fix_files([*links.values(), orog_gsl])
 
     # Work in temporary directory
     with tmp_cwd(workdir):
-        # Symlinks to required inputs
-        for src, dst in files.items():
-            (src).symlink_to(dst)
+        for name, src in links.items():
+            link = workdir / name
+            link.unlink(missing_ok=True)
+            link.symlink_to(src)
 
         cp(orog_gsl, ".")
 
@@ -127,8 +124,8 @@ def run_make_orog_gsl(
         the function will use these files instead of generating new ones.
     """
 
-    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
-        return
+    if staged_files(mod_dir):
+        return  # copied with the staged orography by run_make_orog
 
     args = [
         (
@@ -141,7 +138,7 @@ def run_make_orog_gsl(
             topo_dir,
             exec_dir,
             tmp,
-            dict(state),
+            state.to_dict(),
         )
         for tile in tiles
     ]

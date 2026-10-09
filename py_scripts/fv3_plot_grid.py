@@ -12,6 +12,7 @@ nest: parent_tile[k] is the tile hosting nest k + 1, which occupies tile 7 + k.
 A chain such as [6, 7, 8] telescopes, so all three nests resolve to face 6.
 """
 
+import logging
 import random
 import time
 from pathlib import Path
@@ -27,6 +28,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.colors import hsv_to_rgb, rgb_to_hsv, to_hex, to_rgb, to_rgba
 from matplotlib.patches import PathPatch, Polygon, Rectangle
 from matplotlib.path import Path as MplPath
+
+log = logging.getLogger("PREPROCESS")
 
 matplotlib.use("Agg")
 
@@ -490,7 +493,7 @@ def draw_land(
                     if clip_path is not None:
                         for patch in patches:
                             patch.set_clip_path(clip_path)
-    except Exception:
+    except Exception:  # noqa: BLE001 - plotting is diagnostic; never fail the run
         return
 
 
@@ -902,10 +905,15 @@ def plot_tiles(grid_dir: Path):
 def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
 
+    # Ensemble members share run_dir: the first to take the lock plots. Their
+    # start is staggered so the lock is rarely contended; a lock left by a
+    # killed job is ignored after an hour.
     plot_lock = state.run_dir / "plot.lock"
-
-    try:
+    if state.n_ensembles:
         time.sleep(random.uniform(0, 60))
+    try:
+        if plot_lock.exists() and time.time() - plot_lock.stat().st_mtime > 3600:
+            plot_lock.unlink(missing_ok=True)
         plot_lock.touch(exist_ok=False)
     except FileExistsError:
         return
@@ -930,6 +938,7 @@ def plot_grid():
                 )
 
         except Exception:
+            log.exception("Grid plotting failed; continuing")
             return
     finally:
         plot_lock.unlink(missing_ok=True)

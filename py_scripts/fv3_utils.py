@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 from collections import namedtuple
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from itertools import pairwise
 from pathlib import Path
 
@@ -14,6 +14,24 @@ import pandas as pd
 from fv3_paths import paths
 
 log = logging.getLogger("PREPROCESS")
+
+
+def find_tool(name: str) -> str:
+    """An external program: on PATH, in the bin directory of the running
+    Python environment (the preprocess image's conda environment), or linked
+    at / as the preprocess image links wgrib2."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for path in (
+        Path(os.path.realpath(sys.executable)).parent / name,
+        Path("/") / name,
+    ):
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    raise FileNotFoundError(
+        f"{name} not found on PATH, in {Path(sys.executable).parent} or at /"
+    )
 
 
 def exit_code(code: int = 0) -> None:
@@ -29,38 +47,22 @@ def redirect_streams(
     original_stdout = sys.stdout
     original_stderr = sys.stderr
 
-    out_file = None
-    err_file = None
-
-    try:
-        if stdout == stderr and stdout is not None:
-            out_file = open(stdout, "a")
+    with ExitStack() as stack:
+        out_file = stack.enter_context(open(stdout, "a")) if stdout else None
+        if stderr is not None and stderr == stdout:
             err_file = out_file
-
         else:
-            if stdout:
-                out_file = open(stdout, "a")
+            err_file = stack.enter_context(open(stderr, "a")) if stderr else None
 
-            if stderr:
-                err_file = open(stderr, "a")
-
-        if out_file:
-            sys.stdout = out_file
-
-        if err_file:
-            sys.stderr = err_file
-
-        yield out_file, err_file
-
-    finally:
-        sys.stdout = original_stdout
-        sys.stderr = original_stderr
-
-        if out_file:
-            out_file.close()
-
-        if err_file and err_file is not out_file:
-            err_file.close()
+        try:
+            if out_file:
+                sys.stdout = out_file
+            if err_file:
+                sys.stderr = err_file
+            yield out_file, err_file
+        finally:
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
 
 
 def run_cmd(
@@ -101,8 +103,8 @@ def run_cmd(
 
         return exc.returncode, f"{type(exc).__name__}: {exc}\n{msgs}"
 
-    except Exception as exc:
-        log.warning("Exception running command: %s", " ".join(cmd))
+    except OSError as exc:  # executable missing or not runnable
+        log.warning("Exception running command: %s", " ".join(map(str, cmd)))
         return 1, f"{type(exc).__name__}: {exc}\n{msgs}"
 
 
@@ -165,10 +167,11 @@ def env_setup():
     os.environ["PATH"] = f"{openmpi_bin}:{python_path}:{bin_paths}:{sys_path}"
 
 
-def parse_datetime(dt):
+def parse_datetime(dt, cycle: bool = True):
+    """Parse YYYYMMDDHHZ; with cycle, require a 00, 06, 12 or 18 UTC cycle."""
     dt = pd.to_datetime(dt, format="%Y%m%d%HZ")
     valid_hours = [0, 6, 12, 18]
-    if dt.hour not in valid_hours:
+    if cycle and dt.hour not in valid_hours:
         log.error(
             f"Invalidcycle hour: {dt.hour:02d}Z. Valid GFS cycle times are 00Z, 06Z, 12Z, and 18Z."
         )

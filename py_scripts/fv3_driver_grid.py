@@ -8,11 +8,46 @@ from fv3_make_mosaic import run_make_mosaic
 from fv3_make_orog import run_make_orog
 from fv3_make_orog_gsl import run_make_orog_gsl
 from fv3_nesting import get_nest_indices
-from fv3_runtime import get_newres, log
+from fv3_runtime import GRID_KEYS, OROGRAPHY_KEYS, get_newres, log, stage_for_reuse
 from fv3_shave import run_shave
 from fv3_state import save_fv3_state, state
-from fv3_utils import clear_dir, cp
+from fv3_utils import cp
 from sfc_climo_gen import run_sfc_climo_gen
+
+# Minimum number of regional grid points gained in each direction by widening
+# the bracket of a regional_gfdl domain (UFS_UTILS fv3gfs_driver_grid.sh).
+REGIONAL_GFDL_EXTRA = 10
+
+
+def widen_regional_bracket(
+    istart: int, iend: int, jstart: int, jend: int, refine: int
+) -> tuple[int, int, int, int]:
+    """Widen a regional_gfdl parent bracket by `add` supergrid points per side
+    until the grid gains at least REGIONAL_GFDL_EXTRA points per direction.
+
+    add grows in steps of two, which keeps istart odd and iend even for any
+    refine_ratio (make_hgrid requires both); the reference shell grows it by
+    one and fails for refine ratios 2, 4 and >= 10.
+    """
+    add = 0
+    # Gain per direction: add/2 parent cells on each of two sides, refine points each.
+    while add * refine < REGIONAL_GFDL_EXTRA:
+        add += 2
+    return istart - add, iend + add, jstart - add, jend + add
+
+
+def _stage_and_exit(src: Path, kind: str) -> None:
+    """End a preprocess_grid_only or preprocess_orog_only run: keep the files
+    in IC/<kind> for the next run (fv3_runtime.staged_files) and exit."""
+    dest = state.ic_data / kind
+    stage_for_reuse(src, dest, OROGRAPHY_KEYS if kind == "orography" else GRID_KEYS)
+    path = str(dest).replace(str(state.work_dir), str(state.case_dir))
+    state.preprocess_only = False
+    state.preprocess_grid_only = False
+    state.preprocess_orog_only = False
+    save_fv3_state()
+    log.info(f"{kind.capitalize()} files staged in {path}")
+    sys.exit(0)
 
 
 def run_driver(
@@ -90,18 +125,7 @@ def run_driver(
         )
 
         if state.preprocess_grid_only:
-            cp(tmp / "grid", state.ic_data / "grid")
-            clear_dir(tmp / "grid")
-
-            path = str(state.ic_data / "grid").replace(
-                str(state.work_dir), str(state.case_dir)
-            )
-            state.preprocess_only = False
-            state.preprocess_grid_only = False
-            save_fv3_state()
-            log.info(f"Grid files staged in {path}")
-            sys.exit(0)
-            return
+            _stage_and_exit(tmp / "grid", "grid")
 
         if gtype == "nest":
             n_tiles = 6 + n_nests
@@ -137,17 +161,7 @@ def run_driver(
         )
 
         if state.preprocess_orog_only:
-            cp(tmp / "orog", state.ic_data / "orography")
-            clear_dir(tmp / "orog")
-            path = str(state.ic_data / "orography").replace(
-                str(state.work_dir), str(state.case_dir)
-            )
-            state.preprocess_only = False
-            state.preprocess_orog_only = False
-            save_fv3_state()
-            log.info(f"Orography files staged in {path}")
-            sys.exit(0)
-            return
+            _stage_and_exit(tmp / "orog", "orography")
 
         # --- Add lake fraction if requested ---
 
@@ -187,8 +201,9 @@ def run_driver(
                 cp(tmp / "orog" / f"oro.C{c_res}.tile{tile}.nc", tmp_ic_dir)
 
         if make_gsl_orog:
-            gsl_orog_files = list((tmp / "orog").glob("*.nc"))
-            for f in gsl_orog_files:
+            # Only the GSL products; tmp/orog also holds the unfiltered oro.*
+            # files, which must not replace the filtered global orography.
+            for f in (tmp / "orog").glob(f"C{c_res}_oro_data_*.nc"):
                 cp(f, tmp_ic_dir)
 
         # --- Surface climatology ---
@@ -212,32 +227,27 @@ def run_driver(
     # ==========================================================
     elif gtype in ["regional_gfdl", "regional_esg"]:
         tile = 7
-        halop1 = halo + 1 if halo else 4
-
-        # A regional domain is placed on its parent tile like a single length-1
-        # nest. Obtain the parent-grid bracket the same way nested runs do; the
-        # bounding box was coerced to length-1 lists in the init driver. The ESG
-        # grid is defined from idim/jdim/delx/dely and does not consume the
-        # bracket, but the indices are still recorded in state for consistency.
-        refine = refine_ratio[0] if isinstance(refine_ratio, list) else refine_ratio
-        get_nest_indices(
-            c_res=c_res,
-            tile_idx=0,  # single regional domain
-            grid_dir=None,
-            parent_tile=parent_tile[0]
-            if isinstance(parent_tile, list)
-            else parent_tile,
-            i_refine_ratio=refine,
-        )
-
-        istart_nest = state.istart_nest[0]
-        iend_nest = state.iend_nest[0]
-        jstart_nest = state.jstart_nest[0]
-        jend_nest = state.jend_nest[0]
-        parent_tile = state.parent_tile[0]
+        halop1 = halo + 1
 
         # --- Expand halo region for regional_gfdl ---
         if gtype == "regional_gfdl":
+            # The GFDL regional grid is carved from parent tile 6 like a single
+            # nest; the bounding box was coerced to length-1 lists in the init
+            # driver. The ESG grid is defined by idim/jdim/delx/dely alone.
+            refine = refine_ratio[0] if isinstance(refine_ratio, list) else refine_ratio
+            get_nest_indices(
+                c_res=c_res,
+                tile_idx=0,  # single regional domain
+                grid_dir=None,
+                parent_tile=6,
+                i_refine_ratio=refine,
+            )
+
+            istart_nest = state.istart_nest[0]
+            iend_nest = state.iend_nest[0]
+            jstart_nest = state.jstart_nest[0]
+            jend_nest = state.jend_nest[0]
+
             # The GFDL regional grid is carved from the parent tile, so the
             # bracket is widened until it gains at least the blend halo width.
             nptsx = int(iend_nest - istart_nest + 1)
@@ -245,23 +255,16 @@ def run_driver(
             idim = int(nptsx * refine / 2)
             jdim = int(nptsy * refine / 2)
 
-            add = 0
-            while True:
-                add += 1
-                iend_halo = iend_nest + add
-                istart_halo = istart_nest - add
-                jend_halo = jend_nest + add
-                jstart_halo = jstart_nest - add
-                new_nptsx = iend_halo - istart_halo + 1
-                new_idim = int(new_nptsx * refine / 2)
-                if new_idim - idim >= 10:
-                    break
-            istart_nest, iend_nest, jstart_nest, jend_nest = (
-                istart_halo,
-                iend_halo,
-                jstart_halo,
-                jend_halo,
+            istart_nest, iend_nest, jstart_nest, jend_nest = widen_regional_bracket(
+                istart_nest, iend_nest, jstart_nest, jend_nest, refine
             )
+            # make_hgrid needs `halo` parent cells around the widened bracket.
+            for s_idx, e_idx in ((istart_nest, iend_nest), (jstart_nest, jend_nest)):
+                if (s_idx + 1) // 2 - halo < 1 or e_idx // 2 + halo > c_res:
+                    raise ValueError(
+                        "regional_gfdl box with its blending margin reaches the edge of "
+                        + "tile 6; shrink the box or move it away from the tile edge"
+                    )
 
             # --- Make grid ---
             run_make_grid(
@@ -272,7 +275,7 @@ def run_driver(
                 stretch_factor=stretch_factor,
                 target_lon=target_lon,
                 target_lat=target_lat,
-                refine_ratio=refine_ratio,
+                refine_ratio=refine,
                 istart_nest=istart_nest,
                 jstart_nest=jstart_nest,
                 iend_nest=iend_nest,
@@ -291,6 +294,7 @@ def run_driver(
                 gtype=gtype,
                 exec_dir=exe_dir,
                 out_dir=tmp / "grid",
+                mod_dir=state.ic_data / "grid",
             )
 
         elif gtype == "regional_esg":
@@ -303,12 +307,6 @@ def run_driver(
                 stretch_factor=stretch_factor,
                 target_lon=target_lon,
                 target_lat=target_lat,
-                refine_ratio=refine_ratio,
-                istart_nest=istart_nest,
-                jstart_nest=jstart_nest,
-                iend_nest=iend_nest,
-                jend_nest=jend_nest,
-                parent_tile=parent_tile,
                 halo=halo,
                 idim=idim,
                 jdim=jdim,
@@ -325,14 +323,8 @@ def run_driver(
                 mod_dir=state.ic_data / "grid",
             )
 
-            if state.preprocess_grid_only:
-                state.preprocess_only = False
-                state.preprocess_grid_only = False
-                log.info(
-                    "Preprocess grids only requested. Exiting after grid generation."
-                )
-                save_fv3_state()
-                return
+        if state.preprocess_grid_only:
+            _stage_and_exit(tmp / "grid", "grid")
 
         # --- Replace c_res with derived resolution ---
         # global_equiv_resol wrote the equivalent global resolution into the
@@ -347,10 +339,13 @@ def run_driver(
         # with the derived regional resolution.
         state.c_res = c_res
 
-        # replace c_res part in the prev generated grid/orog files with the new c_res for consistency
-        for f in list((tmp / "grid").glob(f"*{old_res}*")):
-            new_name = f.name.replace(f"{old_res}", f"{c_res}")
-            f.rename(tmp / "grid" / new_name)
+        # Name the files after the derived resolution. Only the C<res>_ prefix
+        # is replaced (the digits of old_res may occur inside the new value).
+        if old_res != c_res:
+            for f in list((tmp / "grid").glob(f"C{old_res}_*")):
+                f.rename(
+                    f.with_name(f"C{c_res}_" + f.name.removeprefix(f"C{old_res}_"))
+                )
 
         # --- Make orography ---
         run_make_orog(
@@ -365,13 +360,7 @@ def run_driver(
         )
 
         if state.preprocess_orog_only:
-            state.preprocess_only = False
-            state.preprocess_orog_only = False
-            log.info(
-                "Preprocess orography only requested. Exiting after orography generation."
-            )
-            save_fv3_state()
-            return
+            _stage_and_exit(tmp / "orog", "orography")
 
         run_add_lakefrac(
             add_lake=add_lake,
@@ -420,7 +409,7 @@ def run_driver(
             c_res=c_res,
             tiles=[tile],
             halo=0,
-            grid_dir=tmp / "grid",
+            grid_dir=tmp_ic_dir,  # the halo0 grid written by run_shave
             out_dir=tmp / "orog",
             topo_dir=orog_dir,
             exec_dir=exe_dir,

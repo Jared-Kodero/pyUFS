@@ -1,6 +1,6 @@
-# ufs_py HPC Run Guide
+# pyUFS HPC Run Guide
 
-`ufs_py` is a Python workflow for configuring, staging, and launching GFDL SHiELD cases on
+`pyUFS` is a Python workflow for configuring, staging, and launching GFDL SHiELD cases on
 Oscar and other HPC systems that do not provide the native UFS utilities layout. A thin
 shell wrapper hands off to Python, which validates the case configuration, assembles the
 launch environment, generates or stages the grid and initial conditions, runs SHiELD,
@@ -50,27 +50,52 @@ For model background, use the official references below.
 The workflow uses three Apptainer images referenced from `run_config.yaml`; SHiELD itself
 may instead run from a native executable:
 
-- `preprocess_image` runs the preprocessing driver `py_scripts/driver.py`.
-- `shield_image` runs the SHiELD executable when a native binary is not supplied.
-- `fregrid_image` runs the regridding stage `py_scripts/fv3_regrid.py`.
+- `preprocess_image` (`docker://gfdlfv3/preprocessing`, with UFS_UTILS at
+  `/UFS_UTILS/exec`, plus the Python environment of `configs/env.yaml`) runs the
+  preprocessing driver `py_scripts/driver.py`.
+- `shield_image` (`docker://gfdlfv3/shield`) runs `SHiELD_nh.prod.64bit.x` when no
+  native `shield_exe` is given.
+- `fregrid_image` (`docker://gfdlfv3/fre-nctools` plus the same Python environment) runs
+  the regridding stage `py_scripts/fv3_regrid.py`. Regridding is done in Python (xarray
+  and xESMF, `py_scripts/pyfregrid.py`), not by the FRE-NCtools `fregrid` program.
 
-If any image is missing, `case_run.sh` builds the images through
-`configs/install_images.sh` before the first stage (log in `image_build.log`). Source tags
-are set with `SHIELD_TAG`, `PREPROCESS_TAG`, and `FREGRID_TAG` (default `latest`); the
-sources, SHA-256 sums, and conda package lists are written to `$CONTAINERS_DIR/manifest`. Host modules loaded for the job are set
-by the `modules` key, with a default of `hpcx-mpi`, `netcdf-mpi`, `libyaml`, and `netcdf`.
-The Python dependencies used inside the preprocessing container are listed in
-`configs/env.yaml` and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`,
-`f90nml`, `metpy`, `cartopy`, and `wgrib2`. The scheduler is SLURM. `drivers/sbatch.sh`
-submits `drivers/case_run.sh` and forwards the resolved environment. Node-local scratch is
-used when `jobtmp` exists: the case directory is copied to the working directory on the
-compute node, the model runs there, and outputs are synchronized back to the case directory.
-When `jobtmp` is absent the workflow runs in place inside the case tree.
+`configs/install_images.sh` builds all three into `containers_root` as `preprocess.sif`,
+`shield.sif` and `fregrid.sif`, so the three image keys must point there. If any image is
+missing, `case_run.sh` runs it before the first stage (output in `image_build.log` in the
+working directory). To build or rebuild by hand:
+
+```bash
+CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash configs/install_images.sh
+```
+
+The preprocessing and SHiELD images do not contain the Open MPI help texts
+(`/opt/openmpi/share`), without which `mpirun` reports errors as missing help files; the
+script copies them from the fre-nctools image, which has the same Open MPI 4.1.0. Images
+are pulled from the `latest` tag, which is the newest published release of each
+(`gfdlfv3/shield:latest` is the 2024-12-03 push; the older tags are earlier releases).
+`SHIELD_TAG`, `PREPROCESS_TAG` and `FREGRID_TAG` select another tag. The sources, SHA-256
+sums and conda package lists are written to `$CONTAINERS_DIR/manifest`. A build needs
+internet access (Docker Hub, repo.anaconda.com, conda-forge) and several GB in `TMP_DIR`.
+
+The `modules` key lists the host modules loaded before a native `shield_exe` is launched
+(default `hpcx-mpi`, `netcdf-mpi`, `libyaml`, `netcdf`); it is not used with the
+container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
+dependencies used inside the preprocessing container are listed in `configs/env.yaml`
+and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
+`cartopy`, and `wgrib2`. The scheduler is SLURM. `drivers/sbatch.sh` submits
+`drivers/case_run.sh` and forwards the resolved environment. When `jobtmp` exists on the
+compute node, the case directory is copied there, the stages run there, and the results
+are synchronized back to the case directory after preprocessing and after a successful
+segment; on failure the logs are copied back. Otherwise the job runs in place inside the
+case tree. The run directory (`case_root/<parent>/<case>`) must not contain the submission
+directory, since it is mirrored with deletion and removed after archiving;
+`case_submit.sh` refuses such a layout. Every `container_bindpath` entry must exist on the
+compute node, or Apptainer does not start.
 
 ## 3. Repository layout
 
 ```text
-ufs_py/
+pyUFS/
 ├── case_submit.sh           # Thin wrapper around drivers/case_submit.py
 ├── configs/                 # Default configuration and templates
 │   ├── run_config.yaml      # Default configuration and inline documentation
@@ -78,13 +103,13 @@ ufs_py/
 │   ├── input_nml.yaml       # Base FV3 namelist template
 │   ├── input_nestXX_nml.yaml# Nest namelist template
 │   ├── field_table.yaml     # Tracer table
-│   ├── data_table.yaml      # Data override table
 │   ├── chgres_cube.yaml     # Initial-condition conversion template
 │   ├── diag_table           # Default diagnostic output table
 │   ├── diag_field.csv       # Diagnostic field reference
 │   ├── diag_table.monthly   # Default table for month or year segments
 │   ├── install_images.sh    # Container build helper
-│   ├── update_fix.py        # Fix tree download and check (sync_noaa_fix.sh wrapper)
+│   ├── update_fix.py        # Mirror of the NOAA fix tree (Section 7)
+│   ├── sync_noaa_fix.sh     # update_fix.py wrapper that loads awscli
 │   └── *.vars.csv           # GFS, HRRR, and ERA5 variable maps
 ├── drivers/                 # Submission and runtime job scripts
 │   ├── case_submit.py       # Config validation and job submission
@@ -92,10 +117,10 @@ ufs_py/
 │   └── case_run.sh          # Runtime driver executed on the compute node
 ├── docs/state_audit.md      # FV3State key sources and required fields
 ├── examples/               # Example run_config.yaml files and overrides (Section 18)
-├── tests/                   # pytest checks and HPC test cases (tests/README.md)
-├── fregrid                  # Regridding stage entrypoint
 ├── preprocess               # Preprocess stage entrypoint
+├── fregrid                  # Regridding stage entrypoint (fregrid image)
 ├── py_scripts/              # Workflow implementation
+├── tests/                   # Test suite without containers or a scheduler (tests/README.md)
 └── README.md
 ```
 
@@ -116,7 +141,7 @@ default file.
    `drivers/case_run.sh` through `drivers/sbatch.sh`. Ensemble members are submitted as
    separate jobs.
 6. `case_run.sh` prepares directories, stages the case to the working directory, runs the
-   preprocess container, launches SHiELD, runs fregrid, synchronizes outputs, and optionally
+   preprocess container, launches SHiELD, runs the regridding stage, synchronizes outputs, and optionally
    resubmits the next segment or archives the case.
 7. Inside the preprocess container, `py_scripts/driver.py` calls the initial driver on the
    first segment and the restart driver on later segments.
@@ -155,16 +180,16 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
 | Key | Meaning |
 | --- | --- |
 | `case_root` | Root of the persistent case tree. |
-| `jobtmp` | Node-local scratch root. When present, the model runs here and syncs back to `case_root`. |
+| `jobtmp` | Node-local scratch root. When it exists on the compute node the job runs there and syncs back to `case_root`; otherwise it runs in place. |
 | `fix_src` | Source tree for static datasets (the `fix` directory). |
 | `ufs_utils` | Configured workflow path. The launcher ultimately derives the active repository from `drivers/case_submit.py`. |
-| `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for each stage. |
-| `containers_root` | Directory holding the container images. |
+| `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for the model, regridding and preprocessing (Section 2). |
+| `containers_root` | Directory where `configs/install_images.sh` writes the three images; the image keys must point into it. |
+| `container_bindpath` | Host paths bound into the containers: a list or a comma-separated string; variables are expanded. Each path must exist on the compute nodes. |
 | `shield_root` | Reserved configuration key; it is not consumed by the current launcher. |
 | `archive_root` | Root of the archive tree. |
 | `shield_exe` | Path to a native SHiELD executable. Required for any multi-node run; an empty value selects the container path for single-node runs. |
-| `container_bindpath` | Host paths bound into the containers. |
-| `modules` | Host modules loaded for the job. |
+| `modules` | Host modules loaded before a native `shield_exe` is launched; unused with the container image. |
 
 Environment variables such as `$USER` and `$HOME` are expanded.
 
@@ -200,10 +225,10 @@ per-job memory flag is derived.
 
 | Key | Meaning |
 | --- | --- |
-| `init_datetime` | Initialization cycle, UTC, in `YYYYMMDDHHZ` form, for example `2026031200Z`. |
+| `init_datetime` | Cycle of the initial-condition source data, UTC, in `YYYYMMDDHHZ` form with hour 00, 06, 12 or 18, for example `2026031200Z`. The model starts `forecast_hour` hours later. |
 | `run_length` | Length of one segment, in `run_length_units`. |
 | `run_length_units` | `hours` (default), `days`, `months` or `years`. Months are calendar months from the segment start (`coupler_nml months`; years are passed as 12 months) and need a start day of 28 or earlier. |
-| `forecast_hour` | Lead hour of the source dataset used for initial conditions. 0 selects the analysis. |
+| `forecast_hour` | Lead hour of the `init_datetime` forecast used for initial conditions; 0 selects the analysis. With a non-zero value the model clock (`coupler_nml`, diagnostics, climatologies, the `chgres_cube` date) starts at `init_datetime + forecast_hour`, and regional boundaries are taken from the same cycle at leads `forecast_hour`, `forecast_hour + 3`, ..., written as boundary hours 000, 003, ...; regional runs therefore need a multiple of 3, and the last lead must exist (GFS: hourly to f120, 3-hourly to f384). The state records the source cycle as `ic_cycle`. |
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 
@@ -221,13 +246,17 @@ per-job memory flag is derived.
 
 Setting `preprocess_grid_only` or `preprocess_orog_only` implies `preprocess_only`.
 
+The UFS_UTILS surface-analysis and coupled-grid options (`run_global_cycle`,
+`run_emcsfc_snow`, `run_emcsfc_ice_blend`, `run_cpld_gridgen` and their inputs) are
+described in Section 8.9.
+
 ### 6.6 Horizontal grid
 
 | Key | Meaning |
 | --- | --- |
 | `c_res` | Cubed-sphere face resolution. Approximate spacing: C96 \~ 100 km, C192 \~ 50 km, C384 \~ 25 km, C768 \~ 13 km, C3072 \~ 3 km. |
 | `gtype` | `uniform`, `stretch`, `nest`, `regional_gfdl`, or `regional_esg`. |
-| `target_lon`, `target_lat` | Grid center used for stretched and regional grids. |
+| `target_lon`, `target_lat` | Grid centre for `stretch` and `regional_esg`. For `nest` and `regional_gfdl` it is replaced by the centre of the (first) box. |
 | `stretch_factor` | Schmidt stretching coefficient. Values greater than 1 refine the target region. |
 
 Nested grids, active when `gtype: nest`:
@@ -235,37 +264,44 @@ Nested grids, active when `gtype: nest`:
 | Key | Meaning |
 | --- | --- |
 | `refine_ratio` | Refinement ratio for each nest relative to its parent. A list defines multiple nests. |
-| `parent_tile` | Parent cubed-sphere tile, 1 to 6. |
-| `halo` | Halo width for the nest boundary exchange. |
-| `lon_min`, `lon_max`, `lat_min`, `lat_max` | Bounding box for each nest. For `gtype: nest`, all four values must be lists, including for a single nest. |
+| `parent_tile` | Parent cubed-sphere tile, 1 to 6: one value for all nests, or a list with one entry per same-level nest. The grid is rotated so that the centre of the first box lies on tile 6, so 6 is the usual value. A telescoping chain uses the first entry for its outermost nest; each inner nest has its predecessor as parent. |
+| `halo` | Halo width for the nest boundary exchange. Regional grids require 3. |
+| `lon_min`, `lon_max`, `lat_min`, `lat_max` | Bounding box of each nest: one value per `refine_ratio` entry (scalars are accepted for a single nest). A different number of boxes stops preprocessing. |
 
 When `gtype: nest`, the target longitude and latitude are set to the center of the first
-bounding box. The nest layout is classified automatically from the bounding boxes. If each
+bounding box. Each nest covers its box with the smallest block of whole parent cells and
+must stay `halo` parent cells inside its parent tile; all nests are generated by one
+`make_hgrid --nest_grids` call, and each telescoping nest is bracketed on the generated
+grid of its parent nest. The nest layout is classified automatically from the bounding boxes. If each
 box is contained inside its predecessor, the layout is telescoping and refinement ratios
 compound. Otherwise the nests are treated as independent nests on the same parent grid. For
 telescoping nests the effective refinement of nest `i` is the product of ratios up to and
-including `i`. Both regional grid types also require `lon_min`, `lon_max`, `lat_min`, and
-`lat_max`; the initialization driver uses these bounds to determine the parent-grid bracket.
+including `i`. A box may cross 0 or 180 degrees longitude. `regional_gfdl` also requires
+`lon_min`, `lon_max`, `lat_min`, and `lat_max`; the cube is centred on that box, as for
+nests, and the domain is bracketed on tile 6 and refined by the first `refine_ratio` entry;
+`regional_esg` is defined by `target_lon`, `target_lat` and the keys below. For both
+regional types `c_res` is replaced by the equivalent global resolution of the generated
+grid (`global_equiv_resol`).
 Regional ESG grids, active when `gtype: regional_esg`, additionally use:
 
 | Key | Meaning |
 | --- | --- |
 | `idim`, `jdim` | Zonal and meridional grid points. |
-| `delx`, `dely` | Supergrid spacing in degrees. |
+| `delx`, `dely` | Supergrid spacing in degrees. The model grid spacing is twice this value (0.0585 is about 13 km). |
 
 ### 6.7 Vertical grid and physics
 
 | Key | Meaning |
 | --- | --- |
 | `levels` | Number of hybrid sigma-pressure levels. |
-| `do_deep` | Deep convection parameterization. Disable for grid spacing below about 4 km. |
+| `do_deep` | `false` (default) switches deep convection off on every domain with grid spacing of 4 km or less and keeps it elsewhere; `true` keeps it on all domains. |
 
 ### 6.8 Time stepping
 
 | Key | Meaning |
 | --- | --- |
 | `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
-| `dt_ocean` | Ocean coupling time step in seconds. |
+| `dt_ocean` | Ocean coupling time step in seconds. Null uses `dt_atmos`. |
 | `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
 | `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
 
@@ -276,8 +312,8 @@ See Section 12 for the automatic values and the relations between these quantiti
 | Key | Meaning |
 | --- | --- |
 | `lake_cutoff` | Land and water fractional threshold. |
-| `add_lake` | Activate the lake model. |
-| `make_gsl_orog` | Generate the GSL orography fields used by the gravity wave drag scheme. |
+| `add_lake` | Add lake fraction and depth (GLDB v2) to the orography files; `uniform` and `regional_gfdl` only. It does not switch on a lake model. |
+| `make_gsl_orog` | Generate the GSL drag-suite orography files (`oro_data_ls`, `oro_data_ss`). SHiELD physics does not read them; they are staged for use outside SHiELD. |
 
 ### 6.10 Ensembles
 
@@ -301,14 +337,31 @@ reference source:
 
 https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
 
-`configs/update_fix.py` (or `configs/sync_noaa_fix.sh`, which loads `awscli`) syncs the
-latest version of each NOAA fix directory, restores the CO2 symlinks, downloads the
-UFS_UTILS varmap tables, and lists missing required files:
+Missing files are fetched at run time. `py_scripts/fv3_update_fix.py` looks for each file
+the workflow reads in `fix_src`, then under the name NOAA uses for it in `fix_src` (for
+example `am/fix_co2_update/global_co2historicaldata_2020.txt` for
+`am/co2historicaldata_2020.txt`, which it links), and then in the NOAA bucket, newest
+version directory first, so files dropped from the latest release (the binary orography
+inputs of the preprocessing image, present only in `orog/20231027`) are still found.
+Downloads go to `fix_src` under the NOAA name, with a link under the name the workflow
+reads; `fix_src` must therefore be writable. The chgres_cube variable maps come from the
+UFS_UTILS fork of the preprocessing image. A run stops only for a required file found
+neither locally nor remotely; `mld_DR003_c1m_reg2.0.grb` and `fix/era5` are not in the
+bucket and must be staged by hand. Set `UFS_PY_FIX_REMOTE=0` to disable remote lookups.
 
-```bash
-python configs/update_fix.py --dest /path/to/fix          # sync and check
-python configs/update_fix.py --dest /path/to/fix --check-only
-```
+For CO2 the observed record (`fix_co2_update`) is preferred over `co2dat_4a`, and both over
+the projection (`fix_co2_proj`). When no table exists for a model year, the latest earlier
+year is staged with a warning; the radiation code extrapolates from it
+(`radiation_gases.f`). The decadal volcanic aerosol tables (1850-1999) are linked into the
+working directory, where `radiation_aerosols.f` opens them.
+
+`configs/update_fix.py` (or `configs/sync_noaa_fix.sh`, which loads `awscli`) updates the
+whole tree in advance and is independent of the run-time lookup above. It mirrors the
+`am`, `orog` and `sfc_climo` directories of the NOAA bucket with `aws s3 sync`, keeps the
+newest version of each in `fix/`, removes the pre-generated `C<res>` directories, recreates
+the CO2 and volcanic-aerosol links without the `global_` prefix, and downloads the Cartopy
+Natural Earth data into `fix/carto`. It writes to the `fix` directory two levels above the
+directory it is run from (`../../fix`) and replaces the three directories there.
 
 The soil moisture climatology used by the perturbation module is
 `fix/era5/sm_monthly_1950_2025.nc`.
@@ -369,7 +422,11 @@ built-in behavior described above.
 
 `chgres_cube.py` also lists `fort.41` and `fort_nest{NN}.41` as candidates. Keys may be
 flat or nested in one `config` group, so a conventional namelist with a `&config` section
-and a YAML file copied from `configs/chgres_cube.yaml` are both accepted. `NN` is the
+and a YAML file copied from `configs/chgres_cube.yaml` are both accepted. Every key of the
+template is null, meaning "keep the workflow value" (given in its comment), so a verbatim
+copy changes nothing; set only the keys to change. The land-surface defaults follow
+UFS_UTILS, except `tg3_from_soil: true`: the deep-soil temperature comes from the lowest
+soil layer of the source data rather than the static substrate-temperature climatology. `NN` is the
 zero-padded nest index
 used throughout the workflow: the first nest
 is `nest02`, the second is `nest03`, and so on. For example:
@@ -520,7 +577,9 @@ limited-area conversion switches controlled by the planner.
 ### 8.6 Verifying which source was used
 
 The workflow records source provenance in `state.yaml` under a per-domain
-`{domain}_ic_source` key, with separate `atm`, `sfc`, and `nst` entries. This is the
+`ic_source` mapping, keyed by domain (`global`, `regional`, `nest02`, ...), with separate
+`atm`, `sfc`, and `nst` entries. State files written by earlier versions, with one
+`{domain}_ic_source` key per domain, are read as before. This is the
 recommended way to verify the resolved source after preprocessing.
 
 A domain converted from multiple sources also receives separate logs for each converted
@@ -563,8 +622,45 @@ rather than mutating the default files directly.
 
 The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
 `py_scripts/fv3_external_ic.py`); all other settings, including segment settings and
-`tgrad_perturbations`, come from the case `run_config.yaml`. The case `init_datetime`,
-`gtype` and `levels` must match the bundle.
+`tgrad_perturbations`, come from the case `run_config.yaml`. The case model start
+(`init_datetime` plus `forecast_hour`), `gtype` and `levels` must match the bundle.
+
+### 8.9 Surface analysis update and coupled grids (UFS_UTILS)
+
+Four UFS_UTILS programs of the preprocessing image can run after `chgres_cube` on a cold
+start with `generate_ic_data: true`, each when its `run_*` key is true (all false by
+default; `configs/run_config.yaml` section 5a lists the keys). They follow the
+corresponding UFS_UTILS `ush` scripts.
+
+- `run_global_cycle` runs `global_cycle` on `INPUT/sfc_data*` (`global_cycle_driver.sh`,
+  `global_cycle.sh`): the surface fields are updated at the model start from the
+  climatologies of the model `namsfc` (Section 7) and the optional analyses
+  `global_cycle_sst_file` (FNTSFA), `global_cycle_ice_file` (FNACNA) and
+  `global_cycle_snow_file` (FNSNOA), all GRIB1; a missing analysis keeps the first guess
+  and climatology for that field. The relaxation settings are those of the scripts
+  (`DELTSFC=6`, `FSMCL(2:4)=60`, `global_cycle_vars` for `CYCLVARS`, default
+  `FSNOL=-2., FSNOS=99999.`). The six global tiles run as one 6-rank job and each nest as
+  a 1-rank job, since the program takes one tile size per call. Global, stretched and
+  nested grids only. Logs: `LOGS/preprocess/global_cycle_<domain>.log`.
+- `run_emcsfc_snow` builds the snow analysis from `ims_snow_file` (and the optional AFWA
+  files) with `emcsfc_snow2mdl` on the T1534 Gaussian grid (`emcsfc_snow.sh`) and passes
+  it to `global_cycle`.
+- `run_emcsfc_ice_blend` blends `ims_ice_file` into the MMAB 5-minute concentration
+  `five_min_ice_file` with `emcsfc_ice_blend` (`emcsfc_ice_blend.sh`) and passes the GRIB1
+  result to `global_cycle`. The script's `cnvgrib`, `copygb2` and `copygb` (NCEP
+  grib_util) must be on `PATH`; they are not part of `configs/env.yaml`.
+- `run_cpld_gridgen` writes the MOM6/CICE6 grids, SCRIP files and the ocean mask mapped to
+  this cubed sphere with `cpld_gridgen` (`cpld_gridgen.sh`) into `IC/cpld_gridgen`, for
+  MOM6 resolution `cpld_gridgen_res` (`500`, `100`, `050`, `025`). The MOM6 inputs are
+  taken from `fix_src/mom6/<res>` (fetched from the NOAA fix bucket when missing). Other
+  resolutions need `Ct.mx025_SCRIP.nc`, so the 025 grid is generated first.
+  `ESMF_Scrip2Unstruct` must be available; `cpld_gridgen_postwgts: true` also needs
+  `ncremap` (NCO). SHiELD does not read these files; they serve coupled UFS
+  configurations.
+
+The analyses are not in the NOAA GFS buckets used for the initial conditions and must be
+staged by the user; the emcsfc outputs are kept in `IC/surface_analysis`. The settings
+are checked before the grid is generated.
 
 ## 9. Modifying the grid
 
@@ -602,8 +698,8 @@ branches do not currently stage and terminate through this same orography-only p
    Preserve filenames exactly.
 4. Set `preprocess_orog_only: false`, keep `generate_ic_data: true`, and resubmit.
 
-The topography filter runs after orography generation for uniform, stretched, and nested
-grids.
+The topography filter runs after orography generation on the global tiles of uniform,
+stretched, and nested grids. Nest tiles keep the unfiltered orography.
 Inject edited orography as the staged tile files rather than relying on the filter to
 preserve raw edits.
 
@@ -611,9 +707,10 @@ preserve raw edits.
 
 Soil moisture perturbations are applied at model initialization and at the start of each
 restart segment by `py_scripts/sm_perturbations.py`. They act on the surface restart files
-`sfc_data.tile*.nc`, and `sfc_data.nest{NN}.tile*.nc` for nested tiles. Target variables are
-`smc` (total volumetric soil moisture), `slc` (liquid volumetric soil moisture), and `stc`
-(soil temperature). Volumetric soil moisture is clipped to the interval $[0.01, 0.99]\,\mathrm{m^3\,m^{-3}}$. The frozen fraction is held fixed by keeping the ice content
+`sfc_data.tile*.nc`, `sfc_data.nest{NN}.tile*.nc` for nested tiles, and `sfc_data.nc` for a
+regional domain. Target variables are `smc` (total volumetric soil moisture), `slc`
+(liquid volumetric soil moisture), and `stc` (soil temperature). All three are perturbed on
+soil points, identified by valid `smc`. Volumetric soil moisture is clipped to the interval $[0.01, 0.99]\,\mathrm{m^3\,m^{-3}}$. The frozen fraction is held fixed by keeping the ice content
 $\mathrm{ice} = \mathrm{smc} - \mathrm{slc}$ constant and reconstructing `slc` after any
 `smc` edit. The workflow writes both an original and a perturbed copy of each file into
 `IC/perts`, so the unperturbed state is recoverable.
@@ -655,8 +752,11 @@ Constant fill, `constant_fill`, with $c$ from `fill_value`, or the field mean wh
 $$X' = c$$
 
 Climatological replacement, `climo_mean`, replaces valid points with the monthly
-climatological mean regridded to the cubed sphere. The month is selected from
-`init_datetime`.
+climatological mean regridded to the cubed sphere. The month is that of the start of the
+current segment. Climatology points outside the valid soil-moisture range are excluded when
+regridding, and model points left without a valid regridded value keep their own value.
+The climatology layers are matched to the model soil layers by index, so the climatology
+file must already be on the model soil layers (Noah: 0-10, 10-40, 40-100 and 100-200 cm).
 
 ### Cross-segment behavior
 
@@ -668,9 +768,10 @@ t / \tau$ clipped to $[0, 1]$:
 $$X' = (1 - \alpha)\,X + \alpha\,X_\mathrm{ref}$$
 
 Here $\Delta t$ is the length in hours of the previous segment and $\tau$ is `tau_hours`, default 24 hours. The reference
-is the previous perturbed segment, or the climatological mean when `use_climo: true`.
-Holding, `do_hold: true`, carries the perturbed state forward from the previous segment
-without recomputing.
+is the previous perturbed segment, or the climatological mean of `climo_file` (default
+`fix/era5/sm_monthly_1950_2025.nc`) when `use_climo: true`. Holding, `do_hold: true`,
+carries the perturbed `target_var` layers of the previous segment forward without
+recomputing; all other surface fields continue from the model restart.
 
 ### Optional keys
 
@@ -694,7 +795,10 @@ table indexed by resolution.
 | 3072 | 90 | 2 | 10 |
 
 Resolutions outside the table are estimated by a log-log fit of `dt_atmos` against `c_res`
-and snapped to a value that divides 3600 seconds. For nested runs the finest domain sets
+and snapped to a value that divides 3600 seconds. `dt_ocean` defaults to `dt_atmos`. Before
+the model is launched, `dt_ocean` is checked to be a multiple of `dt_atmos` and the segment
+length a multiple of `dt_ocean`, the checks the SHiELD coupler applies. For nested runs the
+finest domain sets
 `dt_atmos`, and each domain receives split counts sized to its resolution. The dynamics and
 acoustic time steps follow
 
@@ -712,8 +816,9 @@ refinement increases.
 ## 13. Process decomposition (PEs and layout)
 
 Process counts and domain layouts are computed automatically from the grid. For a uniform
-grid the total process count is the largest multiple of 6 not exceeding `n_cpus`,
-distributed equally across the six tiles. For nested runs the workflow distributes processes
+grid the total process count is the largest multiple of 6 not exceeding `n_cpus` whose
+per-tile count has a valid layout, distributed equally across the six tiles. A regional
+grid uses the largest valid count not exceeding `n_cpus`. For nested runs the workflow distributes processes
 across the global grid and each nest by minimizing the largest estimated per-domain time,
 
 $$T_g \sim \frac{w_g}{P_g}$$
@@ -724,24 +829,41 @@ where $T_g$ is the estimated time for domain $g$, $P_g$ is its process count, $w
 work weight, $N_g$ is the number of horizontal cells, and $k_{\mathrm{split},g}$ and
 $n_{\mathrm{split},g}$ are its split counts. Global process counts are multiples of 6. Nest
 process counts are drawn from a set that keeps subdomain aspect ratios no more elongated
-than 2 to 1. The per-domain layout is chosen to make local subdomains as close to square as
-possible. The I/O layout is set to one by one and the physics block size to 32.
+than 2 to 1. An allocation that uses all `n_cpus` is preferred; among those, the smallest
+bottleneck time, then the smallest spread. The per-domain layout requires at least 4 cells
+per subdomain edge (FV3 exchanges 3-point halos), then prefers a layout that divides the
+cells of the domain evenly in both directions, so every PE holds the same subdomain, then
+the most nearly square subdomains. The I/O layout is set to one by one and the physics
+block size to 32.
 
 To override the automatic allocation, place a case-local `input.nml` or `input.yaml` in the
-case directory that sets `grid_pes` under `fv_nest_nml`. The listed values become the
-per-domain process counts.
+case directory that sets `grid_pes` under `fv_nest_nml` (the first of `input.nml`,
+`input.yaml` and `input.yml` found is used, as for namelist overrides). The listed values
+become the per-domain process counts; there must be one per domain, the global count must
+be a multiple of 6, and their sum must not exceed `n_cpus`.
 
 ## 14. Diagnostics and regridded output
 
 Output frequency and the reported variable set are controlled by a `diag_table`. Place a
 case-local `diag_table` in the case directory to override the default in
-`configs/diag_table` (`configs/diag_table.monthly` for month and year segments). The
-default defines three streams: `grid_spec` and `atmos_static` written once, and `fv3_hist`
+`configs/diag_table` (`configs/diag_table.monthly` for month and year segments). Its first
+two entries, the title and the base date (literal or the `DESCRIPTION` and `DATETIME`
+placeholders), are replaced by the case description and the initialization time. A
+case-local `field_table.yaml`, or a legacy ASCII `field_table`, replaces
+`configs/field_table.yaml`; `field_manager_nml use_field_table_yaml` follows the format. A
+case-local `data_table` (`data_table.yaml` with `use_modern_diag: true`) is staged when
+present. The default defines three streams: `grid_spec` and `atmos_static` written once, and `fv3_hist`
 written hourly (monthly means in the monthly table). The variable reference list is in
-[configs/diag_field.csv](configs/diag_field.csv). After the model runs, `fregrid` remaps
-native cubed-sphere history to a latitude-longitude grid for global and nested output. Regridded files are named by domain, `global` for the
-global grid and `nest02`, `nest03`, and so on for nests, where nest tile 7 maps to `nest02`.
-The current regridder does not special-case standalone regional tile-7 history.
+[configs/diag_field.csv](configs/diag_field.csv). After the model runs, the regridding stage
+remaps native history to a latitude-longitude grid: the global grid at the resolution of
+`c_res`, each nest over its box (a box across 180 degrees gives longitudes above 180), and a
+regional domain over the bounding box of its compute domain, with missing values outside
+the domain. Regridded files are named by domain: `global`, `regional`, and `nest02`,
+`nest03`, and so on, where nest tile 7 maps to `nest02`. Conservative remapping averages
+only valid source values, so missing values (for example pressure levels below the
+surface) are neither filled nor counted as zero, and fields without horizontal dimensions
+(`average_T1`, `average_T2`, `average_DT`, `time_bnds`) are copied unchanged. Weights are
+computed once per grid and stream set.
 
 The `merge_freq` key controls how per-segment regridded files are combined.
 
@@ -783,11 +905,19 @@ do not interrupt the run.
 A run is divided into `resubmit + 1` segments, each `run_length` `run_length_units` long. The first
 segment is a cold start produced by the initial driver. Each later segment is a warm start
 produced by the restart driver, which resumes from the previous segment restart files.
-Restart segments load the persisted `state.yaml`; they do not re-read `run_config.yaml`.
-The checksum stored in `state.yaml` covers the grid geometry, vertical levels,
-initialization time and, when set, `tgrad_perturbations`. Forcing files in `FIXED/MODS`
+Restart segments load the persisted `state.yaml`; their settings come from it, not from
+`run_config.yaml`. The cold start records a checksum of the grid geometry, vertical
+levels, initialization time and, when set, `tgrad_perturbations` of `run_config.yaml`;
+each restart compares it with the current `run_config.yaml` before moving any directory
+and stops if these settings were edited. Other keys (for example `run_length` or
+`resubmit`) are not checked. Regional restart segments must start on multiples of 3 h, the
+interval of the boundary files, because the model reads the boundary file of its restart
+hour. Forcing files in `FIXED/MODS`
 and the cold-start namelists are reused by later segments; the case `diag_table` is
-restaged every segment. Segments are resubmitted automatically until the maximum index
+restaged every segment. When `RESTART` is promoted to `INPUT`, the static inputs of the
+cold-start `INPUT` (archived as `IC/INPUT`) that the model also reads at a warm start are
+linked back: `oro_data*`, grid and mosaic links, `gfs_ctrl.nc` and fix files. The initial
+conditions and boundary files are not. Segments are resubmitted automatically until the maximum index
 is reached.
 
 ## 16. Ensembles
@@ -838,13 +968,14 @@ a native `shield_exe`. Because the non-null repository default is restored when 
 ```bash
 git clone https://github.com/NOAA-GFDL/SHiELD_build.git
 cd SHiELD_build
-git checkout FV3-202411-public   # the profile this workflow is tested with (19.1)
+git checkout FV3-202604-public   # the default profile (19.1)
 git submodule update --init mkmf
 ./CHECKOUT_code
 ```
 
-Without the checkout, `CHECKOUT_code` on the current `SHiELD_build` main selects
-`FV3-202604-public` and FMS `2026.01` (Section 19.1).
+`FV3-202604-public` checks out FMS `2026.01`; `git checkout FV3-202411-public` selects the
+earlier profile (FMS `2024.03`). `case_submit.sh` stops when the configured `shield_exe`
+does not exist.
 
 On newer glibc systems, patch `SHiELD_SRC/FMS/affinity/affinity.c` so the local `gettid`
 helper does not conflict with the glibc definition. Remove the duplicate `static` qualifier
@@ -873,12 +1004,24 @@ shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
 
 ### 19.1 Build profiles
 
-| Component | Workflow default (tested) | `SHiELD_build` main (527c2d13e4c9) |
+| Component | Workflow default | Earlier profile |
 | --- | --- | --- |
-| Core, physics, drivers | `FV3-202411-public` | `FV3-202604-public` |
-| FMS / FMSCoupler | `2024.03` / `2024.03.01` (tag `FV3-202411-public`) | `2026.01` / `2026.01` |
+| Core, physics, drivers | `FV3-202604-public` | `FV3-202411-public` |
+| FMS / FMSCoupler | `2026.01` / `2026.01` | `2024.03` / `2024.03.01` |
 | `ice_param`, `*_null` | unpinned | unpinned |
-| Executable | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` | not validated |
+| Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` |
+
+Every namelist variable the workflow writes was checked against the `namelist`
+declarations of both profiles (GFDL_atmos_cubed_sphere, SHiELD_physics, atmos_drivers,
+FMS, FMSCoupler); a model run with the `FV3-202604-public` executable on Oscar has still to
+confirm the profile.
+
+The namelist templates use only variables declared in both profiles, except
+`interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
+SHiELD_build test cases also set. In particular they do not set `gfs_physics_nml
+sfc_coupled`: in `FV3-202411-public` it selects the ocean surface fluxes supplied by a
+coupled ocean (zero in this uncoupled configuration), and in `FV3-202604-public` it is no
+longer a namelist variable.
 
 Untagged `SHiELD_build` checkouts from 2025-04 to 2026-01 paired `FV3-202411-public` with
 FMS 2025.01. Record the commits in `SHiELD_SRC`, the executable checksum, the modules
@@ -888,11 +1031,19 @@ newer profile separately before use.
 ### 19.2 UFS_UTILS and containers
 
 `UFS_UTILS` provides the compiled preprocessing utilities (`chgres_cube`, `make_hgrid`,
-`orog`, `global_cycle`, ...). `ufs_py` is this workflow; its `ufs_utils` key names the
+`orog`, `global_cycle`, ...). `pyUFS` is this workflow; its `ufs_utils` key names the
 workflow checkout. Preprocessing runs the utilities from `/UFS_UTILS/exec` inside
-`preprocess_image` (built from untagged `docker://gfdlfv3/preprocessing` by
+`preprocess_image` (built from `docker://gfdlfv3/preprocessing:latest` by
 `configs/install_images.sh`). Building `UFS_UTILS` on the host does not change these
 binaries; rebuild the image or bind the host `exec` directory to `/UFS_UTILS/exec`.
+The image is built from the `gaea` branch of `kaiyuan-cheng/UFS_UTILS` (2024-10-18;
+Containerized_SHiELD_Workflow), and the workflow follows its program interfaces: the
+`orog` program reads the binary terrain inputs (`gmted2010.30sec.int`,
+`landcover30.fixed`, `thirty.second.antarctic.new.bin`) and a nine-number `INPS` line, and
+`lakefrac` takes four arguments with GLDB v2 data. Upstream UFS_UTILS releases of 2024 and
+later read NetCDF terrain (`topography.gmted2010.30s.nc`, ...) with a three-line `INPS`
+and a five- or seven-argument `lakefrac`, so an upstream `exec` directory is not a drop-in
+replacement.
 `build_all.sh` supports listed machines only; other sites configure dependencies and CMake
 themselves.
 
@@ -908,7 +1059,7 @@ Recommended case-local launcher:
 
 ```bash
 #!/bin/bash -l
-"/path/to/ufs_py/case_submit.sh"
+"/path/to/pyUFS/case_submit.sh"
 ```
 
 Deactivate any active conda environment and use a clean shell before submitting, so the

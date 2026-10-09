@@ -1,62 +1,44 @@
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log, tmp_cwd
+import xarray as xr
+from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import run_cmd
 
 
-def _run_add_lakefrac(
+def _require_var(path: Path, var: str, step: str) -> None:
+    """inland and lakefrac stop with exit status 0 on netCDF errors, so their
+    success is checked from the variable they add."""
+    with xr.open_dataset(path) as ds:
+        if var not in ds:
+            raise RuntimeError(f"{step} did not add {var} to {path.name}")
+
+
+def _run_lakefrac(
     workdir: Path,
     c_res: int,
     tile: int,
-    gtype: str,
-    orog_dir: Path,
-    grid_dir: Path,
     topo: Path,
     lake_cutoff: float,
     exec_dir: Path,
     log_file: Path,
-):
-
-    lakefrac = Path(exec_dir) / "lakefrac"
-    inland = Path(exec_dir) / "inland"
-
-    oro_file = Path(orog_dir) / f"oro.C{c_res}.tile{tile}.nc"
-    grid_file = Path(grid_dir) / f"C{c_res}_grid.tile{tile}.nc"
-    oro_symlink = Path(workdir / oro_file.name)
-    grid_symlink = Path(workdir / grid_file.name)
-    oro_symlink.symlink_to(oro_file)
-    grid_symlink.symlink_to(grid_file)
-
-    # 1. Create inland mask
-    cutoff = 0.99
-    rd = 7
-    mode = "g" if gtype == "uniform" else "r"
-    cmd1 = [str(inland), str(c_res), str(cutoff), str(rd), mode]
-
-    result, msgs = run_cmd(cmd1, stdout=log_file, stderr=log_file)
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError(f"Failed to generate inland mask for tile: [{tile}]")
-
-    # 2. Add lake fraction to orography files
-
-    oro_file = f"oro.C{c_res}.tile{tile}.nc"
-    cmd2 = [
-        f"{lakefrac}",
+) -> None:
+    """Add lake_frac and lake_depth to one tile's orography (lakefrac)."""
+    cmd = [
+        str(Path(exec_dir) / "lakefrac"),
         f"{tile}",
         f"{c_res}",
         f"{topo}",
         f"{lake_cutoff}",
     ]
-
-    result, msgs = run_cmd(cmd2, stdout=log_file, stderr=log_file)
+    result, msgs = run_cmd(cmd, cwd=workdir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
         raise RuntimeError(
             f"Failed to add lake fraction to orography for tile: [{tile}]"
         )
+    _require_var(workdir / f"oro.C{c_res}.tile{tile}.nc", "lake_frac", "lakefrac")
 
 
 def run_add_lakefrac(
@@ -107,28 +89,44 @@ def run_add_lakefrac(
     workdir = tmp / f"C{c_res}" / "orog" / "tiles"
     workdir.mkdir(parents=True, exist_ok=True)
 
-    with tmp_cwd(workdir):
-        # Link required orog + grid files
-        if gtype == "uniform":
-            tile_beg, tile_end = 1, 6
-        else:  # regional_gfdl
-            tile_beg = tile_end = 7
+    # As UFS_UTILS fv3gfs_make_lake.sh: link every tile, build the inland mask
+    # once (inland reads and writes all tiles of the mosaic), then add the lake
+    # fields tile by tile.
+    if gtype == "uniform":
+        tiles, mode = list(range(1, 7)), "g"
+    else:  # regional_gfdl
+        tiles, mode = [7], "r"
 
-        args = [
-            (
-                workdir,
-                c_res,
-                tile,
-                gtype,
-                orog_dir,
-                grid_dir,
-                topo,
-                lake_cutoff,
-                exec_dir,
-                state.logs / f"add_lakefrac_tile{tile}.log",
-            )
-            for tile in range(tile_beg, tile_end + 1)
-        ]
+    for tile in tiles:
+        for src in (
+            Path(orog_dir) / f"oro.C{c_res}.tile{tile}.nc",
+            Path(grid_dir) / f"C{c_res}_grid.tile{tile}.nc",
+        ):
+            link = workdir / src.name
+            link.unlink(missing_ok=True)
+            link.symlink_to(src)
 
-        with Pool(processes=len(args)) as pool:
-            pool.starmap(_run_add_lakefrac, args)
+    log_file = state.logs / "add_lakefrac_inland.log"
+    cmd = [str(Path(exec_dir) / "inland"), str(c_res), "0.99", "7", mode]
+    result, msgs = run_cmd(cmd, cwd=workdir, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate the inland mask")
+    for tile in tiles:
+        _require_var(workdir / f"oro.C{c_res}.tile{tile}.nc", "inland", "inland")
+
+    args = [
+        (
+            workdir,
+            c_res,
+            tile,
+            topo,
+            lake_cutoff,
+            exec_dir,
+            state.logs / f"add_lakefrac_tile{tile}.log",
+        )
+        for tile in tiles
+    ]
+    # Each lakefrac run writes only its own tile's file.
+    with Pool(processes=len(args)) as pool:
+        pool.starmap(_run_lakefrac, args)

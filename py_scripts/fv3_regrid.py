@@ -53,10 +53,11 @@ def parse_segment(path: Path, handle: str) -> tuple[int, str] | None:
     """Identify a per-restart regridded file.
 
     Returns (restart index, tile group) for names of the form
-    <handle>.seg<nn>.global.nc or <handle>.seg<nn>.tile<N>.nc, and None
-    for anything else, including merged files.
+    <handle>.seg<nn>.global.nc, <handle>.seg<nn>.regional.nc or
+    <handle>.seg<nn>.tile<N>.nc, and None for anything else, including
+    merged files.
     """
-    pattern = rf"^{re.escape(handle)}\.seg(\d+)\.(global|tile\d+)\.nc$"
+    pattern = rf"^{re.escape(handle)}\.seg(\d+)\.(global|regional|tile\d+)\.nc$"
     match = re.match(pattern, path.name)
     if match is None:
         return None
@@ -64,9 +65,9 @@ def parse_segment(path: Path, handle: str) -> tuple[int, str] | None:
 
 
 def group_alias(group: str, n_nests: int) -> str:
-    """Map a tile group onto its output name: global, nest02, nest03, ..."""
-    if group == "global":
-        return "global"
+    """Map a tile group onto its output name: global, regional, nest02, ..."""
+    if group in ("global", "regional"):
+        return group
     nest = int(group.removeprefix("tile")) - 6
     if 1 <= nest <= n_nests:
         return f"nest{nest + 1:02d}"
@@ -366,10 +367,41 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
         ds["time"].encoding["units"] = "seconds since 1970-01-01 00:00:00"
         ds["time"].encoding["dtype"] = "int64"
 
-    except Exception:
-        ...
+    except (AttributeError, KeyError, TypeError, ValueError):
+        # Keep the decoded time when it cannot be expressed as datetime64.
+        pass
 
     return ds
+
+
+def horizontal_fields(ds: xr.Dataset) -> tuple[list[str], list[str]]:
+    """Split data variables into fields on the model grid and the rest.
+
+    Time-mean streams also carry average_T1, average_T2, average_DT and
+    time_bnds, which have no horizontal dimensions; they are copied to the
+    regridded file unchanged.
+    """
+    on_grid, other = [], []
+    for name, da in ds.data_vars.items():
+        dims = set(da.dims)
+        horizontal = {"grid_xt", "grid_yt"} <= dims or {"xaxis_1", "yaxis_1"} <= dims
+        (on_grid if horizontal else other).append(name)
+    return on_grid, other
+
+
+def bounding_box(grid_file: Path) -> tuple[float, float, float, float]:
+    """Longitude and latitude range of a one-tile grid (cell corners).
+
+    Longitudes are measured from the domain centre, so a domain that crosses
+    0 or 180 degrees gives a continuous range (lon_end may exceed 180).
+    """
+    with xr.open_dataset(grid_file) as ds:
+        x, y = ds["x"].values, ds["y"].values
+    centre = float(x[x.shape[0] // 2, x.shape[1] // 2])
+    offset = (x - centre + 180.0) % 360.0 - 180.0
+    lon_begin = centre + float(offset.min())
+    lon_begin = (lon_begin + 180.0) % 360.0 - 180.0
+    return lon_begin, lon_begin + float(np.ptp(offset)), float(y.min()), float(y.max())
 
 
 def _run_fregrid(base_cmd: dict, data_vars: list, fregrid_out: Path):
@@ -411,16 +443,28 @@ def call_fregrid(
         input_file = stream_path.name
         hist_ds_file = state.hist / f"{input_file}.tile6.nc"
 
-    else:
+    else:  # NEST or REGIONAL: one tile, no tile suffix for a regional domain
         tiles_type = "nest"
         input_file = stream_path.stem  # removes .nc
         hist_ds_file = state.hist / f"{input_file}.nc"
 
     with xr.open_dataset(hist_ds_file) as ds:
-        data_vars = list(ds.data_vars)
+        data_vars, other_vars = horizontal_fields(ds)
+        extras = ds[other_vars].load() if other_vars else None
+
+    if not data_vars:
+        log.warning(f"{hist_ds_file.name}: no fields on the model grid; not regridded")
+        return
 
     fregrid_out = state.tmp / "fregrid" / "out"
+    shutil.rmtree(fregrid_out, ignore_errors=True)
     fregrid_out.mkdir(parents=True, exist_ok=True)
+
+    # Weights are computed once per source and target grid and reused by
+    # every chunk and stream (regrid() removes them at the end).
+    weights_dir = state.tmp / "regrid_weights"
+    weights_dir.mkdir(parents=True, exist_ok=True)
+    remap_file = weights_dir / f"{Path(input_mosaic).stem}.{nx}x{ny}.nc"
 
     cmd = {
         "input_mosaic": input_mosaic,
@@ -436,7 +480,14 @@ def call_fregrid(
         "latEnd": lat_end,
         "format": "netcdf4",
         "tiles_type": tiles_type,
+        "remap_file": remap_file,
+        # Missing values (pressure levels below the surface, points outside a
+        # nest or regional domain) stay missing instead of being filled from
+        # their neighbours.
+        "fill_missing": False,
     }
+    weight_cmd = {k: v for k, v in cmd.items() if k not in ("input_file", "input_dir")}
+    fregrid(**weight_cmd)  # weights only, before the parallel chunks read them
 
     chunk_size = 5  # number of variables to process in parallel
     tasks = []
@@ -454,6 +505,8 @@ def call_fregrid(
         combine="by_coords",
         compat="override",
     ) as ds:
+        if extras is not None:
+            ds = ds.merge(extras, compat="override", join="left")
         data_attrs = {var: {**ds[var].attrs} for var in ds.data_vars}
         dim_attrs = {dim: {**ds[dim].attrs} for dim in ds.dims}
 
@@ -530,13 +583,15 @@ def regrid_nest_tiles(streams: list, c_res: int):
         else:
             n_step = cres_to_deg(c_res * refine_ratio[i]).deg
 
+        # A box may cross 0 or 180 degrees (lon_max < lon_min); the target
+        # grid then runs east from lon_min past 180.
         lon_min = state.lon_min[i]
-        lon_max = state.lon_max[i]
+        lon_max = lon_min + (state.lon_max[i] - lon_min) % 360.0
         lat_min = state.lat_min[i]
         lat_max = state.lat_max[i]
 
-        nx = int(np.round(abs(lon_max - lon_min) / n_step))
-        ny = int(np.round(abs(lat_max - lat_min) / n_step))
+        nx = max(1, int(np.round((lon_max - lon_min) / n_step)))
+        ny = max(1, int(np.round((lat_max - lat_min) / n_step)))
 
         input_mosaic = (
             state.work_dir / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
@@ -571,13 +626,53 @@ def regrid_nest_tiles(streams: list, c_res: int):
             )
 
 
+def regrid_regional_tile(streams: list, c_res: int):
+    """Regrid a standalone regional domain onto its lat-lon bounding box.
+
+    The history is written on the compute domain, the halo-0 grid of
+    fv3_shave; points of the box outside the domain are missing.
+    """
+    grid_file = state.work_dir / "GRID" / f"C{c_res}_grid.tile7.halo0.nc"
+    if not grid_file.exists():
+        raise FileNotFoundError(f"Regional compute-domain grid not found: {grid_file}")
+
+    step = cres_to_deg(c_res).deg
+    lon_begin, lon_end, lat_begin, lat_end = bounding_box(grid_file)
+    nx = max(1, int(np.round((lon_end - lon_begin) / step)))
+    ny = max(1, int(np.round((lat_end - lat_begin) / step)))
+
+    for stream in streams:
+        output_file = (
+            state.output
+            / "seg"
+            / segment_name(stream_family(stream), segment_index(stream), "regional")
+        )
+        call_fregrid(
+            grid_file,
+            nx,
+            ny,
+            f"{stream}.nc",
+            output_file,
+            step,
+            lon_begin,
+            lon_end,
+            lat_begin,
+            lat_end,
+            "REGIONAL",
+        )
+
+
 def regrid():
     env_setup()
     streams = get_stream_handles()
     # remove spec and static files from streams
     streams = [s for s in streams if "spec" not in s and "static" not in s]
-    regrid_global_tiles(streams, state.c_res)
-    regrid_nest_tiles(streams, state.c_res)
+    if state.gtype in ("regional_gfdl", "regional_esg"):
+        regrid_regional_tile(streams, state.c_res)
+    else:
+        regrid_global_tiles(streams, state.c_res)
+        regrid_nest_tiles(streams, state.c_res)
+    shutil.rmtree(state.tmp / "regrid_weights", ignore_errors=True)
 
     merge_freq = get_merge_freq()
     merge_outputs(

@@ -152,7 +152,7 @@ def calc_evaporative_fraction(ds: xr.Dataset) -> xr.Dataset:
     required_vars = ("shtfl", "lhtfl")
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
-            f"Missing variables {required_vars} for Bowen ratio calculation. Skipping!"
+            f"Missing variables {required_vars} for evaporative fraction calculation. Skipping!"
         )
         return ds
     epsilon = 1e-6

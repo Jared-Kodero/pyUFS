@@ -2,8 +2,7 @@ import os
 from pathlib import Path
 
 import f90nml
-
-from fv3_runtime import get_launcher, log, report_missing_fixed_files
+from fv3_runtime import get_launcher, log, require_fix_files
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -73,7 +72,7 @@ def _run_single_sfc_climo(
         if not f.exists():
             missing_files.append(f)
     if missing_files:
-        report_missing_fixed_files(missing_files, sub_dir="sfc_climo")
+        require_fix_files(missing_files, sub_dir="sfc_climo")
 
     for f in [orog_dir_mdl / fn for fn in orog_files] + [mosaic_file_mdl]:
         if not f.exists():
@@ -235,7 +234,7 @@ def run_sfc_climo_gen(
     if not orog_dir:
         orog_dir = fix_dir / "fix_fv3_gmted2010" / f"C{c_res}"
         if not orog_dir.exists():
-            report_missing_fixed_files([orog_dir], sub_dir="fix_fv3_gmted2010")
+            require_fix_files([orog_dir], sub_dir="fix_fv3_gmted2010")
 
     local_cpus = len(os.sched_getaffinity(0))
 
@@ -244,7 +243,9 @@ def run_sfc_climo_gen(
 
     # --- Determine orography and mosaic files ---
     if grid_type in ["regional_gfdl", "regional_esg", "regional"]:
-        orog_files = [f"oro.C{c_res}.tile7.nc"]
+        # C{res}_oro_data.tile7.nc links to the halo{halo} file in
+        # fv3_driver_grid, as in UFS_UTILS fv3gfs_driver_grid.sh.
+        orog_files = [f"C{c_res}_oro_data.tile7.nc"]
         mosaic_file = mosaic_dir / f"C{c_res}_mosaic.nc"
 
         _run_single_sfc_climo(

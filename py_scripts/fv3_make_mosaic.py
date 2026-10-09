@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import get_newres, log, tmp_cwd
+from fv3_runtime import get_newres, log, staged_files, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -209,8 +209,8 @@ def run_make_mosaic(
 
     """
 
-    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
-        return
+    if staged_files(mod_dir):
+        return  # the mosaics were copied with the staged grid
 
     log.info("Generating grid mosaics")
 
