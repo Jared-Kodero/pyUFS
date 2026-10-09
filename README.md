@@ -83,10 +83,13 @@ container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
 dependencies used inside the preprocessing container are listed in `configs/env.yaml`
 and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
 `cartopy`, and `wgrib2`. The scheduler is SLURM. `drivers/sbatch.sh` submits
-`drivers/case_run.sh` and forwards the resolved environment. When `jobtmp` exists on the
-compute node, the case directory is copied there, the stages run there, and the results
-are synchronized back to the case directory after preprocessing and after a successful
-segment; on failure the logs are copied back. Otherwise the job runs in place inside the
+`drivers/case_run.sh` and forwards the resolved environment. Whenever the configured
+`jobtmp` directory exists on the compute node, the case runs there and the results are
+synchronized back after preprocessing and after a successful segment; on failure the
+logs are copied back. Only an absent `jobtmp` falls back to the case directory; node
+count does not change this preference. The fallback does not create `jobtmp` afterward.
+The driver logs the selected paths and the reason. When work and case directories
+coincide, no copy or deletion is performed for staging. The fallback runs inside the
 case tree. The run directory (`case_root/<parent>/<case>`) must not contain the submission
 directory, since it is mirrored with deletion and removed after archiving;
 `case_submit.sh` refuses such a layout. Every `container_bindpath` entry must exist on the
@@ -182,7 +185,7 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
 | Key | Meaning |
 | --- | --- |
 | `case_root` | Root of the persistent case tree. |
-| `jobtmp` | Node-local scratch root. When it exists on the compute node the job runs there and syncs back to `case_root`; otherwise it runs in place. |
+| `jobtmp` | Preferred work root whenever it exists on the compute node. Only an absent directory falls back to `case_root`; node count does not change this preference. |
 | `fix_src` | Source tree for static datasets (the `fix` directory). |
 | `ufs_utils` | Configured workflow path. The launcher ultimately derives the active repository from `drivers/case_submit.py`. |
 | `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for the model, regridding and preprocessing (Section 2). |
@@ -303,7 +306,7 @@ Regional ESG grids, active when `gtype: regional_esg`, additionally use:
 | Key | Meaning |
 | --- | --- |
 | `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
-| `dt_ocean` | Ocean coupling time step in seconds. Null uses `dt_atmos`. |
+| `dt_ocean` | Coupling time step in seconds. Null uses `dt_atmos`; written as `coupler_nml dt_cpld` for the FV3-202604 driver. |
 | `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
 | `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
 
@@ -1013,12 +1016,30 @@ shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
 | `ice_param`, `*_null` | unpinned | unpinned |
 | Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` |
 
-Every namelist variable the workflow writes was checked against the `namelist`
-declarations of both profiles (GFDL_atmos_cubed_sphere, SHiELD_physics, atmos_drivers,
-FMS, FMSCoupler); a model run with the `FV3-202604-public` executable on Oscar has still to
-confirm the profile.
+The two profiles compile different coupler drivers. The tagged `FV3-202411-public`
+`shield` build uses `FMSCoupler/SHiELD/coupler_main.F90`, which reads `dt_ocean`.
+The `FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld`
+and rejects `coupler_nml dt_ocean`. The current template and direct timestep
+assignment target this full driver.
+For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename
+alone does not identify its coupler interface. The workflow retains `dt_ocean`
+as the run configuration key and writes its value directly to `dt_cpld`.
+Case-local `input.nml` or `input.yaml` overrides are passed through normally;
+the model reports incompatible namelist keys.
 
-The namelist templates use only variables declared in both profiles, except
+In the full-driver template, `coupler_nml do_land = false` skips the separate
+land component linked from `land_null`. Noah still runs inside SHiELD physics
+with `gfs_physics_nml lsm = 1`; the standard `shield` build defines
+`_USE_LEGACY_LAND_`, and `atmos_model_nml fullcoupler_fluxes` defaults to 0.
+Likewise, `coupler_nml do_ocean = false` skips the external ocean component,
+while `gfs_physics_nml do_ocean = true` retains the internal slab ocean.
+`do_flux = false` skips the coupler's component-exchange flux calculation;
+surface fluxes are still calculated by the atmospheric physics. The `ice_npes`
+and `land_npes` settings follow the upstream SHiELD regression cases. A legacy
+driver requires its own namelist and timestep assignment. These defaults describe the standard
+`shield` build, not a coupled `shiemom_lm4` experiment.
+
+The remaining namelist templates use variables declared in both profiles, except
 `interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
 SHiELD_build test cases also set. In particular they do not set `gfs_physics_nml
 sfc_coupled`: in `FV3-202411-public` it selects the ocean surface fluxes supplied by a
