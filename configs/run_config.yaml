@@ -27,7 +27,7 @@
 # Environment variables such as $USER and $HOME are expanded.
 
 case_root: /oscar/scratch/$USER/models/gfdl_shield/runs
-jobtmp: /jobtmp/$USER/gfdl_shield # Preferred work root whenever it exists on the compute node. Only an absent directory falls back to case_root; node count does not change this preference.
+jobtmp: /jobtmp/$USER/gfdl_shield # Preferred work root. Created on the allocated node when its parent exists; absent scratch falls back to case_root. Node count does not change this preference.
 fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Static datasets (the fix directory). Missing files are fetched from the NOAA fix bucket into it, so it must be writable (README section 7).
 ufs_utils: /oscar/data/deeps/shared/gfdl_shield/pyUFS
 shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model image (README section 2)
