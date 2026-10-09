@@ -84,9 +84,8 @@ def copy_latest_versions(fix_raw: Path, fix_dir: Path) -> None:
 
 def remove_pre_generated(fix_root: Path) -> None:
     for path in fix_root.rglob("*"):
-        if path.is_dir() and path.name in PRE_GENERATED:
-            if not DRY_RUN:
-                shutil.rmtree(path)
+        if path.is_dir() and path.name in PRE_GENERATED and not DRY_RUN:
+            shutil.rmtree(path)
 
 
 def safe_recreate_symlink(src: Path, dest: Path) -> None:
@@ -119,9 +118,6 @@ def recreate_symlinks(fix_root: Path) -> None:
 # =============================
 # Main
 # =============================
-
-
-#!/usr/bin/env python3
 
 
 def download_cartopy_data(output_dir: Path) -> None:

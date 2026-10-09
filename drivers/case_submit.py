@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # case_submit.py
 import base64
@@ -108,14 +108,19 @@ def get_paths(cfg: dict):
         if value is None:  # unset or null in the case file
             value = DEFAULT_CFG[v]
 
-        if v == "container_bindpath" and isinstance(value, list):
-            value = ",".join(value)
+        if v == "container_bindpath":
+            # A list or a comma-separated string; variables are expanded in
+            # each entry. case_run.sh decodes the base64 form, which keeps the
+            # commas out of the sbatch --export list.
+            entries = value if isinstance(value, list) else str(value).split(",")
+            value = ",".join(os.path.expandvars(str(e).strip()) for e in entries)
             value = base64.b64encode(value.encode("utf-8")).decode("utf-8")
         else:
             value = str(Path(os.path.expandvars(value)))
 
-        if v in ("jobtmp", "case_root", "archive_root") and not Path(value).exists():
+        if v in ("case_root", "archive_root") and not Path(value).exists():
             Path(value).mkdir(parents=True, exist_ok=True)
+        # jobtmp is node-local; case_run.sh creates it on the compute node.
 
         paths[k] = value
 
@@ -169,34 +174,48 @@ def get_config():
     user_cfg = read_yaml(RUN_CFG_PATH)
     default_cfg = read_yaml(DEFAULT_CFG_PATH)
 
-    preprocess_grid_only = int(user_cfg.get("preprocess_grid_only", False))
-    preprocess_orog_only = int(user_cfg.get("preprocess_orog_only", False))
-    preprocess_only = int(user_cfg.get("preprocess_only", False))
+    # Unset or null case keys take the repository default, as in the init
+    # driver (fv3_init_driver._load_initial_state).
+    cfg = {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
+
+    preprocess_grid_only = int(bool(cfg["preprocess_grid_only"]))
+    preprocess_orog_only = int(bool(cfg["preprocess_orog_only"]))
+    preprocess_only = int(bool(cfg["preprocess_only"]))
 
     if preprocess_grid_only or preprocess_orog_only:
         preprocess_only = 1
 
-    constraint = user_cfg.get("constraint_node", None)
-    exclusive = int(user_cfg.get("exclusive_node", False))
-    walltime = int(user_cfg.get("walltime", default_cfg.get("walltime", 24)))
-    n_nodes = int(user_cfg.get("n_nodes", default_cfg.get("n_nodes", 4)))
-    n_tasks = int(user_cfg.get("n_cpus", default_cfg.get("n_cpus", 192)))
-    partition = user_cfg.get("partition", default_cfg.get("partition", "batch"))
+    constraint = cfg["constraint_node"]
+    exclusive = int(bool(cfg["exclusive_node"]))
+    walltime = int(cfg["walltime"])
+    n_nodes = int(cfg["n_nodes"])
+    n_tasks = int(cfg["n_cpus"])
+    partition = cfg["partition"]
 
-    logfile = user_cfg.get("logfile", default_cfg.get("logfile", "shield_driver"))
+    logfile = cfg["logfile"]
 
-    cpu_per_task = int(
-        user_cfg.get("n_cpus_per_task", default_cfg.get("n_cpus_per_task", 1))
-    )
-    mem = int(user_cfg.get("mem", default_cfg.get("mem", 0)))
+    cpu_per_task = int(cfg["n_cpus_per_task"])
+    mem = int(cfg["mem"])
 
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
 
-    sbatch_options = user_cfg.get("sbatch_options", "")
+    shield_exe = os.path.expandvars(cfg["shield_exe"] or "")
+    if shield_exe and not Path(shield_exe).is_file():
+        logger.error(
+            f"shield_exe not found: {shield_exe}. Build it from SHiELD_build "
+            + '(README section 19), or set shield_exe: "" to use the container '
+            + "image on a single node."
+        )
+        sys.exit(1)
+    if not shield_exe and n_nodes > 1:
+        logger.error("Multi-node runs need a native shield_exe (README section 19).")
+        sys.exit(1)
 
-    ensemble_run = user_cfg.get("ensemble_run", False)
-    n_ensembles = user_cfg.get("n_ensembles", 0)
+    sbatch_options = cfg["sbatch_options"] or ""
+
+    ensemble_run = bool(cfg["ensemble_run"])
+    n_ensembles = int(cfg["n_ensembles"])
 
     if ensemble_run and n_ensembles < 1:
         logger.error(
@@ -211,15 +230,16 @@ def get_config():
         sys.exit(1)
 
     walltime = f"{walltime}:00:00"
-    resubmit_max = user_cfg.get("resubmit", 0)
-    archive_data = int(user_cfg.get("archive_data", False))
+    resubmit_max = int(cfg["resubmit"])
+    archive_data = int(bool(cfg["archive_data"]))
 
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
-    case_name = user_cfg.get("case_name") or env_case_name
-    skip_ensembles = user_cfg.get("skip_ensembles", None)
+    case_name = cfg["case_name"] or env_case_name
+    skip_ensembles = cfg["skip_ensembles"]
 
     if not isinstance(skip_ensembles, list):
         skip_ensembles = [skip_ensembles] if skip_ensembles is not None else []
+    skip_ensembles = [int(m) for m in skip_ensembles]  # "2" and 2 name the same member
 
     paths = get_paths(user_cfg)
 
@@ -270,8 +290,26 @@ def run(script: Path, proc_env: dict, cwd: Path) -> str:
         sys.exit(result.returncode)
 
 
+def check_case_dirs(case_pwd: Path, case_root: Path, parent: str, name: str) -> None:
+    """Refuse a run directory that contains the submission directory.
+
+    case_run.sh mirrors the run directory (case_root/<parent>/<case_name>) with
+    rsync --delete and removes it after archiving, which would delete the case
+    files and the driver log if the submission directory were inside it.
+    """
+    run_dir = (case_root / parent / name).resolve()
+    pwd = case_pwd.resolve()
+    if pwd == run_dir or run_dir in pwd.parents:
+        logger.error(
+            f"The run directory {run_dir} contains the submission directory {pwd}. "
+            + "Submit from a directory outside case_root, or change case_root or case_name."
+        )
+        sys.exit(1)
+
+
 def main():
     env = get_config()
+
     case_pwd = Path.cwd()
     case_dir = case_pwd.name
     case_parent_dir = case_pwd.parent.name
@@ -282,6 +320,9 @@ def main():
     env["CASE_PARENT_DIR"] = case_parent_dir
     env["UFS_UTILS_DIR"] = str(ufs_utils_dir)
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir
+    check_case_dirs(
+        case_pwd, Path(env["CASE_ROOT_DIR"]), case_parent_dir, env["CASE_NAME"]
+    )
 
     n_ensembles = int(env["CASE_ENSEMBLES"])
     logfile = Path(env["CASE_OUTPUT"])

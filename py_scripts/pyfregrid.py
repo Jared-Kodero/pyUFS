@@ -78,8 +78,18 @@ def char_array_to_list(da: xr.DataArray) -> list[str]:
 
 
 def read_mosaic(path: Path) -> tuple[list[xr.Dataset], int]:
-    """One grid per mosaic tile (attrs: name, gca) and the mosaic contact count."""
+    """One grid per mosaic tile (attrs: name, gca) and the mosaic contact count.
+
+    A grid (supergrid) file is accepted in place of a mosaic and read as a
+    one-tile mosaic, for example the shaved compute-domain grid of a regional
+    run, for which no mosaic is written.
+    """
     with xr.open_dataset(path, decode_cf=False) as ds:
+        if "gridfiles" not in ds and "x" in ds and "y" in ds:
+            grid = supergrid_to_grid(
+                ds["x"].values, ds["y"].values, name="tile1", gca=0
+            )
+            return [grid], 0
         if "gridfiles" not in ds:
             raise ValueError(f"mosaic file {path} does not contain gridfiles")
         files = char_array_to_list(ds["gridfiles"])
@@ -229,27 +239,40 @@ def interp(
     fill_missing: bool,
     finer_step: int,
 ) -> list[xr.DataArray]:
-    """Remap per-tile source fields to every destination tile and merge the tiles."""
+    """Remap per-tile source fields to every destination tile and merge the tiles.
+
+    Conservative remapping is the ratio of two remapped sums over all source
+    tiles, R(w f) / R(w), where w is the weight (1 by default) on valid
+    source cells and 0 on missing ones. A destination cell therefore takes
+    the area-weighted mean of the valid source area that overlaps it: missing
+    values (for example pressure levels below the surface) are excluded
+    instead of counted as zero, and a cell shared by two tiles combines both.
+    """
     outputs = []
     for row in regridders:
-        pieces = []
-        for si, (da, regridder) in enumerate(zip(src, row)):
-            ydim, xdim = da.dims[-2:]
-            work = da.rename({ydim: "y", xdim: "x"})
-            if weights is None:
-                piece = regridder(work)
-            else:  # weighted mean: R(w f) / R(w)
-                w = weights[si].rename(dict(zip(weights[si].dims[-2:], ("y", "x"))))
-                w = xr.broadcast(w, work)[0]
-                den = regridder(w)
-                piece = regridder(work * w) / den.where(den > 0)
-            pieces.append(piece.rename({"y": ydim, "x": xdim}))
-
-        if len(pieces) == 1 or method == "bilinear":
+        if method != "bilinear":
+            num = den = None
+            for si, (da, regridder) in enumerate(zip(src, row)):
+                ydim, xdim = da.dims[-2:]
+                work = da.rename({ydim: "y", xdim: "x"})
+                w = 1.0
+                if weights is not None:
+                    w = weights[si].rename(dict(zip(weights[si].dims[-2:], ("y", "x"))))
+                    w = xr.broadcast(w, work)[0]
+                valid = work.notnull()
+                n_part = regridder(xr.where(valid, work * w, 0.0))
+                d_part = regridder(xr.where(valid, w, 0.0).astype(work.dtype))
+                num = n_part if num is None else num + n_part
+                den = d_part if den is None else den + d_part
+            out = (num / den.where(den > 0)).astype(src[0].dtype)
+            out = out.rename({"y": ydim, "x": xdim})
+        else:
+            pieces = []
+            for da, regridder in zip(src, row):
+                ydim, xdim = da.dims[-2:]
+                work = da.rename({ydim: "y", xdim: "x"})
+                pieces.append(regridder(work).rename({"y": ydim, "x": xdim}))
             out = reduce(xr.DataArray.combine_first, pieces)
-        else:  # conservative: each source tile adds a partial sum
-            stack = xr.concat(pieces, "piece")
-            out = stack.fillna(0).sum("piece").where(stack.notnull().any("piece"))
 
         ydim, xdim = out.dims[-2:]
         if finer_step > 0:
@@ -386,6 +409,7 @@ def fregrid(
             bilinear and output_mosaic
         ),
         "vector fields require interp_method bilinear": u_field and not bilinear,
+        "weight_field requires a conservative interp_method": weight_field and bilinear,
         "vector fields currently support grid_type AGRID only": (
             u_field and grid_type != "AGRID"
         ),

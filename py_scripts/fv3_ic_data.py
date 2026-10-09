@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -25,6 +26,9 @@ def wget(url: str, output_path: Path, attempts: int = 5) -> bool:
     within minutes rather than hours.
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Download to a temporary name and rename on success, so a job killed
+    # mid-download never leaves a truncated file that a rerun would reuse.
+    partial = output_path.with_name(f".{output_path.name}.part")
     cmd = [
         "/wget",
         "-q",
@@ -34,17 +38,19 @@ def wget(url: str, output_path: Path, attempts: int = 5) -> bool:
         "--timeout=60",
         url,
         "-O",
-        str(output_path),
+        str(partial),
     ]
 
     for attempt in range(attempts):
         result, _ = run_cmd(cmd, warn_on_error=False)
 
-        if result == 0 and output_path.exists() and output_path.stat().st_size > 0:
+        if result == 0 and partial.exists() and partial.stat().st_size > 0:
+            os.replace(partial, output_path)
             return True
 
-        output_path.unlink(missing_ok=True)
-        time.sleep(min(60.0, 10.0 * 2**attempt))
+        partial.unlink(missing_ok=True)
+        if attempt + 1 < attempts:
+            time.sleep(min(60.0, 10.0 * 2**attempt))
 
     return False
 

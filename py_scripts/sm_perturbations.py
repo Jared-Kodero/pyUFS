@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+import pandas as pd
 import xarray as xr
 import xesmf as xe
 from fv3_runtime import log
@@ -14,12 +15,54 @@ from fv3_utils import cp, segment_hours
 SM_MIN = 0.01
 SM_MAX = 0.99
 
+# Volumetric soil-moisture variables; stc (soil temperature, K) is not clipped
+# to these bounds.
+MOISTURE_VARS = ("smc", "slc")
+
+
+def _clip(v: str, da: xr.DataArray) -> xr.DataArray:
+    """Clip soil moisture to [SM_MIN, SM_MAX]; other variables pass through."""
+    return da.clip(SM_MIN, SM_MAX) if v in MOISTURE_VARS else da
+
+
+def _valid_mask(ds: xr.Dataset, v: str, z: int) -> xr.DataArray:
+    """Soil points of layer z: valid volumetric soil moisture.
+
+    Soil temperature is perturbed on the same points, identified from smc,
+    since it has no bounded range of its own over land.
+    """
+    ref = "smc" if "smc" in ds else v
+    layer = ds[ref].isel(zaxis_1=z)
+    return (layer >= SM_MIN) & (layer <= SM_MAX)
+
+
+def _sfc_filename(tile: int) -> Path:
+    """Surface file of a tile: global sfc_data.tileN.nc, nest
+    sfc_data.nestNN.tileN.nc, regional sfc_data.nc (single tile, no suffix)."""
+    if state.gtype in ("regional_gfdl", "regional_esg"):
+        return Path("sfc_data.nc")
+    nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
+    return Path(f"sfc_data.{nest_idx}tile{tile}.nc")
+
+
+def segment_start(restart_no: int) -> pd.Timestamp:
+    """Start time of segment `restart_no` (0 is the cold start)."""
+    hours = segment_hours(
+        state.init_datetime, state.run_length, state.run_length_units, restart_no
+    )
+    return state.init_datetime + pd.Timedelta(hours=sum(hours))
+
 
 def load_climo(path: Path, data_var: str) -> xr.Dataset:
+    """Climatology of the calendar month in which the current segment starts.
+
+    Points outside the valid soil-moisture range (ocean, missing) become NaN
+    and are skipped when regridding, so they do not bias coastal soil points.
+    """
     if not path.exists():
         raise FileNotFoundError(f"Climatology file not found: {path}")
 
-    cdate = state.init_datetime
+    cdate = segment_start(state.restart_no)
     ds = xr.open_dataset(path, engine="netcdf4")
 
     if data_var not in ds.data_vars:
@@ -32,7 +75,8 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
         raise ValueError(msg)
 
     ds = ds.sortby(["lat", "lon"])
-    ds = ds.where((ds[data_var] >= SM_MIN) & (ds[data_var] <= SM_MAX), other=1.0)
+    if data_var in MOISTURE_VARS:
+        ds = ds.where((ds[data_var] >= SM_MIN) & (ds[data_var] <= SM_MAX))
 
     return ds
 
@@ -70,7 +114,10 @@ def to_fv3_grid(
     # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
     # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
 
-    out = regridder(grid_in)
+    # skipna renormalizes the weights over valid source points; a target
+    # point with less than half of its weight on valid points becomes NaN and
+    # keeps its original value in the caller.
+    out = regridder(grid_in, skipna=True, na_thres=0.5)
 
     if "Time" not in out.coords:
         out = out.expand_dims("Time", axis=0)
@@ -112,49 +159,102 @@ def load_grid(filename: Path, tile: int) -> xr.Dataset:
     return ds
 
 
-def do_hold(p: dict, backup_dir: Path, restart_no: int):
+def _write_layers(
+    ds: xr.Dataset, p: dict, in_path: Path, backup_path: Path, ice: xr.DataArray | None
+) -> None:
+    """Rebuild slc after an smc edit, then write the backup and the input.
 
+    The frozen content (smc - slc) is held fixed. Variable attributes,
+    including the FMS restart checksums, are dropped, since the data no
+    longer match them (FMS2 verifies a checksum only when the attribute is
+    present).
+    """
+    if ice is not None and p["target_var"] == "smc":
+        smc_new = ds["smc"]
+        slc_new = smc_new - ice
+        slc_new = xr.where(slc_new < 0, 0, slc_new)
+        slc_new = xr.where(slc_new > smc_new, smc_new, slc_new)
+        ds["slc"] = slc_new
+    elif p["target_var"] == "slc" and "smc" in ds:
+        # Liquid water cannot exceed the total soil moisture.
+        ds["slc"] = xr.where(ds["slc"] > ds["smc"], ds["smc"], ds["slc"])
+
+    for v in ds.data_vars:
+        ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
+
+    ds.to_netcdf(backup_path)
+    ds.close()
+    in_path.unlink()
+    cp(backup_path, in_path)
+
+
+def _open_input(tile: int, backup_dir: Path, restart_no: int):
+    """Open a tile's surface input after saving an unmodified copy."""
+    filename = _sfc_filename(tile)
+    in_path = Path(state.input) / filename
+    backup_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.perturbed.nc"
+    orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
+
+    if not in_path.exists():
+        raise FileNotFoundError(f"Input file not found: {in_path}")
+
+    cp(in_path, orig_path)
+
+    ds = xr.open_dataset(in_path, decode_cf=False, engine="netcdf4").load()
+    ds.close()
+    ice = ds["smc"] - ds["slc"] if "smc" in ds and "slc" in ds else None
+    return filename, in_path, backup_path, ds, ice
+
+
+def do_hold(p: dict, backup_dir: Path, restart_no: int):
+    """Carry the perturbed target layers of the previous segment forward.
+
+    Only target_var in soil_layers is replaced; every other surface field
+    keeps the state the model wrote at the end of the previous segment.
+    """
     if restart_no == 0:
         return
 
     prev_restart = restart_no - 1
+    v = p["target_var"]
 
-    log.info(f"`do_hold` is set to true: using sm state from restart {prev_restart}")
+    log.info(f"`do_hold` is set to true: using {v} from restart {prev_restart}")
 
     for tile in p["tiles"]:
-        nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
-        filename = Path(f"sfc_data.{nest_idx}tile{tile}.nc")
-
-        in_path = Path(state.input) / filename
+        filename, in_path, backup_path, ds, ice = _open_input(
+            tile, backup_dir, restart_no
+        )
         prev_path = backup_dir / f"{filename.stem}.r{prev_restart:03d}.perturbed.nc"
-        orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
-
-        if not in_path.exists():
-            raise FileNotFoundError(f"Input file not found: {in_path}")
-
         if not prev_path.exists():
             raise FileNotFoundError(f"Previous perturbed file not found: {prev_path}")
 
-        cp(in_path, orig_path)
-        in_path.unlink()
+        with xr.open_dataset(prev_path, decode_cf=False, engine="netcdf4") as prev:
+            prev = prev.load()
 
-        with xr.open_dataset(prev_path, decode_cf=False, engine="netcdf4") as ds:
-            ds = ds.load()
-            for v in ds.data_vars:
-                ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
-            ds.to_netcdf(in_path)
+        for z in p["soil_layers"]:
+            if v not in ds.data_vars:
+                continue
+            is_valid = _valid_mask(ds, v, z)
+            held = prev[v].isel(zaxis_1=z).values
+            layer = ds[v].isel(zaxis_1=z)
+            coord_val = ds.zaxis_1.values[z]
+            ds[v].loc[{"zaxis_1": coord_val}] = xr.where(is_valid, held, layer)
+
+        _write_layers(ds, p, in_path, backup_path, ice)
 
 
 def do_nudge_soil_moisture(
     p: dict, backup_dir: Path, restart_no: int, sm_clim_path: Path
 ):
-
+    """Relax target_var toward the previous segment or the climatology."""
     tau_hours = p.get("tau_hours", 24)
     # Length of the segment that ended at this restart
     dt_hours = segment_hours(
         state.init_datetime, state.run_length, state.run_length_units, restart_no
     )[-1]
     use_climo = p.get("use_climo", False)
+    climo_path = Path(p["climo_file"]) if p.get("climo_file") else sm_clim_path
+    v = p["target_var"]
 
     alpha = dt_hours / tau_hours
     if alpha > 1.0:
@@ -164,33 +264,20 @@ def do_nudge_soil_moisture(
     alpha = min(max(alpha, 0.0), 1.0)
 
     for tile in p["tiles"]:
-        nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
-        filename = Path(f"sfc_data.{nest_idx}tile{tile}.nc")
-
-        in_path = Path(state.input) / filename
-        backup_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.perturbed.nc"
-        orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
-
-        if not in_path.exists():
-            raise FileNotFoundError(f"Input file not found: {in_path}")
-
-        cp(in_path, orig_path)
-
+        filename, in_path, backup_path, ds, ice = _open_input(
+            tile, backup_dir, restart_no
+        )
         grid = load_grid(filename, tile)
 
-        # Read fully into memory and release the handle before writing back.
-        ds = xr.open_dataset(in_path, decode_cf=False, engine="netcdf4")
-        ds = ds.load()
-
         if use_climo:
-            log.info("Nudging soil moisture towards climatological mean")
-            ds_ref = load_climo(sm_clim_path, p["target_var"])
+            log.info(f"Nudging {v} towards the climatological mean: {climo_path}")
+            ds_ref = load_climo(climo_path, v)
             ds_ref = ds_ref.mean(dim="time", skipna=True)
             ds_ref = ds_ref.squeeze(drop=True)
             ds_ref = to_fv3_grid(ds_ref, grid)
             ds_ref = ds_ref.load()
         else:
-            log.info("Nudging soil moisture towards state from last restart")
+            log.info(f"Nudging {v} towards the state of the last restart")
             ref_path = (
                 backup_dir / f"{filename.stem}.r{restart_no - 1:03d}.perturbed.nc"
             )
@@ -201,44 +288,22 @@ def do_nudge_soil_moisture(
             with xr.open_dataset(ref_path, decode_cf=False, engine="netcdf4") as ds_ref:
                 ds_ref = ds_ref.load()
 
-        ice = None
-        if "smc" in ds and "slc" in ds:
-            ice = ds["smc"] - ds["slc"]
-
         for z in p["soil_layers"]:
-            v = p["target_var"]
             if v not in ds.data_vars:
                 continue
 
             layer = ds[v].isel(zaxis_1=z)
             ref_layer = ds_ref[v].isel(zaxis_1=z)
+            is_valid = _valid_mask(ds, v, z) & ref_layer.notnull()
 
-            is_valid = (layer >= SM_MIN) & (layer <= SM_MAX)
-
-            updated = (1.0 - alpha) * layer + alpha * ref_layer
-            updated = updated.clip(min=SM_MIN, max=SM_MAX)
+            updated = _clip(v, (1.0 - alpha) * layer + alpha * ref_layer)
 
             coord_val = ds.zaxis_1.values[z]
             ds[v].loc[{"zaxis_1": coord_val}] = xr.where(is_valid, updated, layer)
 
-        # reconstruct slc from updated smc
-        if ice is not None and "smc" == p["target_var"]:
-            smc_new = ds["smc"]
-            slc_new = smc_new - ice
-            slc_new = xr.where(slc_new < 0, 0, slc_new)
-            slc_new = xr.where(slc_new > smc_new, smc_new, slc_new)
-
-            ds["slc"] = slc_new
-
-        for v in ds.data_vars:
-            ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
-
         # Persist the nudged state so that a subsequent restart can use it as
         # its reference, then overwrite the live input.
-        ds.to_netcdf(backup_path)
-        ds.close()
-        in_path.unlink()
-        cp(backup_path, in_path)
+        _write_layers(ds, p, in_path, backup_path, ice)
 
 
 def std_shift(
@@ -265,7 +330,7 @@ def std_shift(
         std = float(data.std(skipna=True))
 
     updated = layer + (std * n_sigma)
-    updated = updated.clip(SM_MIN, SM_MAX)
+    updated = _clip(v, updated)
     layer = xr.where(is_valid, updated, layer)
 
     pert_logs.append(f"Applied std_shift to {v} with n_sigma={n_sigma}")
@@ -320,7 +385,7 @@ def anom_shift(
     anomaly = layer - mu
 
     updated = mu + (1.0 + anom_scale) * anomaly
-    updated = updated.clip(SM_MIN, SM_MAX)
+    updated = _clip(v, updated)
 
     layer = xr.where(is_valid, updated, layer)
 
@@ -345,7 +410,7 @@ def mean_shift(
 
     data = layer.where(is_valid)
     updated = data * (1.0 + mean_scale)
-    updated = updated.clip(SM_MIN, SM_MAX)
+    updated = _clip(v, updated)
 
     layer = xr.where(is_valid, updated, layer)
 
@@ -410,35 +475,19 @@ def adjust_soil_moisture(
             climo_path = sm_clim_path
         log.info(f"Using reference climatology: {climo_path}")
 
+    v = p["target_var"]
     for tile in p["tiles"]:
-        nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
-        filename = Path(f"sfc_data.{nest_idx}tile{tile}.nc")
-
-        in_path = Path(state.input) / filename
-        backup_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.perturbed.nc"
-        orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
-
-        if not in_path.exists():
-            raise FileNotFoundError(f"Input file not found: {in_path}")
-
-        cp(in_path, orig_path)
-
+        filename, in_path, backup_path, ds, ice = _open_input(
+            tile, backup_dir, restart_no
+        )
         grid = load_grid(filename, tile)
 
-        ds = xr.open_dataset(in_path, decode_cf=False, engine="netcdf4")
-        ds = ds.load()
-
-        ice = None
-        if "smc" in ds and "slc" in ds:
-            ice = ds["smc"] - ds["slc"]
-
         for z in p["soil_layers"]:
-            v = p["target_var"]
             if v not in ds.data_vars:
                 continue
 
             layer = ds[v].isel(zaxis_1=z)
-            is_valid = (layer >= SM_MIN) & (layer <= SM_MAX)
+            is_valid = _valid_mask(ds, v, z)
 
             new_layer = layer.copy()
 
@@ -457,28 +506,14 @@ def adjust_soil_moisture(
                     pert_logs,
                 )
 
+            # Points without climatological data keep their value.
+            new_layer = xr.where(new_layer.notnull(), new_layer, layer)
+
             # Write the layer once, after all methods have been chained.
             coord_val = ds.zaxis_1.values[z]
             ds[v].loc[{"zaxis_1": coord_val}] = new_layer
 
-        # reconstruct slc from updated smc
-        if ice is not None and "smc" == p["target_var"]:
-            smc_new = ds["smc"]
-            slc_new = smc_new - ice
-            slc_new = xr.where(slc_new < 0, 0, slc_new)
-            slc_new = xr.where(slc_new > smc_new, smc_new, slc_new)
-
-            ds["slc"] = slc_new
-
-        for v in ds.data_vars:
-            ds[v] = ds[v].drop_attrs(deep=True).drop_encoding()
-
-        ds.to_netcdf(backup_path)
-
-        ds.close()
-
-        in_path.unlink()
-        cp(backup_path, in_path)
+        _write_layers(ds, p, in_path, backup_path, ice)
 
     for log_entry in dict.fromkeys(pert_logs):
         log.info(log_entry)
@@ -568,6 +603,7 @@ def apply_sm_perturbations():
     apply_on_restarts = p.get("apply_on_restarts", None)
 
     if apply_on_restarts is None:
+        log.warning("sm_perturbations has no apply_on_restarts; nothing is applied")
         return
     elif apply_on_restarts == "all":
         apply_on_restarts = list(range(restart_no, max_restart_index + 1))

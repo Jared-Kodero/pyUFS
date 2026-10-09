@@ -1,10 +1,19 @@
-# Ignore test_data
-tests
-.pytest_cache/
-.ruff_cache/
-*.ipynb
-*.nc
-__pycache__
+# Root-level directories: ignore all contents
+/bins/**
+/containers/**
+/fix/**
 
+# Preserve directories
+!/bins/.gitkeep
+!/containers/.gitkeep
+!/fix/.gitkeep
+!/fix/varmap_tables
 
-
+# Ignore recursively at any depth
+**/.ruff_cache/
+**/__pycache__/
+**/run
+**/*.ipynb
+**/*.nc
+**/*.log
+**/*.png

@@ -1,7 +1,7 @@
 from multiprocessing import Pool
 from pathlib import Path
 
-from fv3_runtime import log, report_missing_fixed_files, tmp_cwd
+from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
 from fv3_state import state
 from fv3_utils import cp, run_cmd
 
@@ -55,7 +55,7 @@ def _run_make_orog(
     }
     missing_files = [f for f in files if not f.exists()]
     if missing_files:
-        report_missing_fixed_files(missing_files, sub_dir="orog")
+        require_fix_files(missing_files, sub_dir="orog")
 
     # Prepare working directory
     with tmp_cwd(workdir):
@@ -155,12 +155,12 @@ def run_make_orog(
         skip the orography generation process.
     """
 
-    # check if mod_dir is presnt
-    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
+    reused = staged_files(mod_dir)
+    if reused:
         src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
         log.info(f"Using existing orography files from {src}")
-        files_to_copy = list(mod_dir.glob("*"))
-        for file in files_to_copy:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        for file in reused:
             cp(file, out_dir / file.name)
         return
 
@@ -176,7 +176,7 @@ def run_make_orog(
             latb,
             inputorog,
             tmp,
-            dict(state),
+            state.to_dict(),
         )
         for tile in tiles
     ]

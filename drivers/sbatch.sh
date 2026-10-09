@@ -1,44 +1,17 @@
+# shellcheck shell=bash
 
 # sbatch.sh - Script to submit a job to SLURM with the appropriate environment variables
 
-EXPORT_VARS="ALL,\
-CONTAINER_BINDPATH="$CONTAINER_BINDPATH",\
-CONTAINERS_DIR=${CONTAINERS_DIR},\
-UFS_UTILS_DIR=${UFS_UTILS_DIR},\
-SHIELD_ROOT_DIR=${SHIELD_ROOT_DIR},\
-JOBTMP_DIR=${JOBTMP_DIR},\
-FIX_SRC=${FIX_SRC},\
-ARCHIVE_ROOT_DIR=${ARCHIVE_ROOT_DIR},\
-SHIELD_SIF=${SHIELD_SIF},\
-PREPROCESS_SIF=${PREPROCESS_SIF},\
-FREGRID_SIF=${FREGRID_SIF},\
-TOTAL_WALLTIME_TIME=${TOTAL_WALLTIME_TIME},\
-CASE_SBATCH_OPTIONS=${CASE_SBATCH_OPTIONS},\
-CASE_TIME_LIMIT=${CASE_TIME_LIMIT},\
-CASE_PARTITION=${CASE_PARTITION},\
-CASE_NTASKS_PER_NODE=${CASE_NTASKS_PER_NODE},\
-CASE_NTASKS=${CASE_NTASKS},\
-CASE_NNODES=${CASE_NNODES},\
-CASE_MULTI_NODE_FLAG=${CASE_MULTI_NODE_FLAG},\
-CASE_MEMORY_FLAG=${CASE_MEMORY_FLAG},\
-CASE_NODE_EXCLUSIVE_FLAG=${CASE_NODE_EXCLUSIVE_FLAG},\
-CASE_NODE_CONSTRAINT_FLAG=${CASE_NODE_CONSTRAINT_FLAG},\
-CASE_CPUS_PER_TASK=${CASE_CPUS_PER_TASK},\
-CASE_PWD=${CASE_PWD},\
-CASE_LOG_FILE=${CASE_LOG_FILE},\
-CASE_ENSEMBLE_ID=${CASE_ENSEMBLE_ID},\
-CASE_DATA_SYMLINK=${CASE_DATA_SYMLINK},\
-CASE_RUN_START_TIME=${CASE_RUN_START_TIME},\
-CASE_ROOT_DIR=${CASE_ROOT_DIR},\
-CASE_PARENT_DIR=${CASE_PARENT_DIR},\
-CASE_NAME=${CASE_NAME},\
-CASE_PREPROCESS_ONLY=${CASE_PREPROCESS_ONLY},\
-CASE_RESUBMIT_INDEX=${CASE_RESUBMIT_INDEX},\
-CASE_RESUBMIT_MAX=${CASE_RESUBMIT_MAX},\
-CASE_ENSEMBLES=${CASE_ENSEMBLES},\
-CASE_ARCHIVE=${CASE_ARCHIVE}"
+# Every CASE_* and path variable is in the environment: set by case_submit.py
+# for the first segment and inherited, with updated values, by case_run.sh for
+# later ones. Exporting ALL forwards them without listing values in --export,
+# which splits on commas.
+EXPORT_VARS="ALL"
 
 
+EXIT_CODE=0
+# "|| EXIT_CODE=$?" keeps a failed sbatch from aborting a caller that runs
+# under set -e (case_run.sh) before the error below is reported.
 JOB_ID=$(sbatch --parsable \
 $CASE_NODE_EXCLUSIVE_FLAG \
 $CASE_NODE_CONSTRAINT_FLAG \
@@ -54,9 +27,7 @@ $CASE_SBATCH_OPTIONS \
 --output=/dev/null \
 --open-mode=$SLURM_OPEN_MODE \
 --export="$EXPORT_VARS" \
-"$UFS_UTILS_DIR/drivers/case_run.sh")
-
-EXIT_CODE=$?
+"$UFS_UTILS_DIR/drivers/case_run.sh") || EXIT_CODE=$?
 export EXIT_CODE
 export JOB_ID
 

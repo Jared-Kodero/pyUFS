@@ -1,223 +1,169 @@
+"""cpld_gridgen (UFS_UTILS): MOM6/CICE6 fix grids for this cubed sphere.
+
+Follows ush/cpld_gridgen.sh. From the MOM6 supergrid, mask, bathymetry and
+edits (fix/mom6/<res>), cpld_gridgen writes the tripole and CICE grids,
+SCRIP files and the ocean mask mapped to the atmosphere mosaic, which
+coupled UFS configurations (UFS-S2S) read. SHiELD does not read them.
+For any resolution but 025 the program needs Ct.mx025_SCRIP.nc in the same
+output directory (gen_fixgrid.F90), so the 025 grid is generated first.
+"""
+
+from __future__ import annotations
+
+import shutil
 from pathlib import Path
 
-from fv3_runtime import get_launcher, log
+import f90nml
+import xarray as xr
+from fv3_runtime import fix_file, get_launcher, log
 from fv3_state import state
-from fv3_utils import run_cmd
+from fv3_utils import find_tool, run_cmd
+
+# NI, NJ, bathymetry, edits and mask edit per resolution (cpld_gridgen.sh).
+RESOLUTIONS = {
+    "500": (72, 35, "ocean_topog.nc", "none", False),
+    "100": (360, 320, "topog.nc", "topo_edits_011818.nc", True),
+    "050": (720, 576, "ocean_topog.nc", "none", False),
+    "025": (1440, 1080, "ocean_topog.nc", "All_edits.nc", False),
+}
+# Destination rectilinear grids of the post weights, per resolution.
+RECTS = {
+    "5p0": "36,72",
+    "1p0": "181,360",
+    "0p5": "361,720",
+    "0p25": "721,1440",
+}
+POST_RECTS = {
+    "500": ["5p0"],
+    "100": ["5p0", "1p0"],
+    "050": ["5p0", "1p0", "0p5"],
+    "025": ["5p0", "1p0", "0p5", "0p25"],
+}
 
 
-def write_grid_nml(
-    template: Path,
-    tmp_ic_dir: Path,
-    ni: int,
-    NJ: int,
-    fix: Path,
-    out_dir: Path,
-    mosaic_dir: Path,
-    topo_file: str,
-    edits_file: str,
-    res_name: str,
-    mosaic_cres: str,
-    npx: int,
-    mask_edit: str = ".false.",
-    debug: str = ".false.",
-    do_postwgts: str = ".true.",
-):
+def gridgen_res(value: object) -> str:
+    """'100' from 100, '100' or 'mx100'; '025' from 25."""
+    res = f"{int(str(value).removeprefix('mx')):03d}"
+    if res not in RESOLUTIONS:
+        raise ValueError(
+            f"cpld_gridgen_res must be one of {sorted(RESOLUTIONS)}, got {value}"
+        )
+    return res
+
+
+def _atm_mosaic(fv3_dir: Path) -> str:
+    """fv3dir/C<res>/ as cpld_gridgen reads it: the six-tile mosaic and tiles.
+
+    A nested run's C<res>_mosaic.nc includes the nests; its six global tiles
+    are in C<res>_coarse_mosaic.nc (fv3_make_mosaic).
     """
-    Create grid.nml from a template with substitutions.
-    """
-    text = Path(template).read_text()
-    text = text.replace("NI_GLB", str(ni))
-    text = text.replace("NJ_GLB", str(NJ))
-    text = text.replace("FIXDIR", str(fix))
-    text = text.replace("OUTDIR", str(out_dir))
-    text = text.replace("MOSAICDIR", str(mosaic_dir))
-    text = text.replace("TOPOGFILE", topo_file)
-    text = text.replace("EDITSFILE", edits_file)
-    text = text.replace("RESNAME", res_name)
-    text = text.replace("MOSAICRES", mosaic_cres)
-    text = text.replace("NPX", str(npx))
-    text = text.replace("DO_MASKEDIT", mask_edit)
-    text = text.replace("DO_DEBUG", debug)
-    text = text.replace("DO_POSTWGTS", do_postwgts)
-
-    Path(tmp_ic_dir).write_text(text)
+    atmres = f"C{state.c_res}"
+    dest = fv3_dir / atmres
+    dest.mkdir(parents=True, exist_ok=True)
+    grid = Path(state.grid)
+    mosaic = "coarse_mosaic" if state.gtype == "nest" else "mosaic"
+    links = {f"{atmres}_mosaic.nc": grid / f"{atmres}_{mosaic}.nc"}
+    for t in range(1, 7):
+        links[f"{atmres}_grid.tile{t}.nc"] = grid / f"{atmres}_grid.tile{t}.nc"
+    for name, target in links.items():
+        if not target.exists():
+            raise FileNotFoundError(f"cpld_gridgen: missing {target}")
+        (dest / name).unlink(missing_ok=True)
+        (dest / name).symlink_to(target.resolve())
+    return atmres
 
 
-def run_gridgen(
-    resname: str,
-    mosaicres: str,
-    mom6_fixdir: Path,
-    outdir: Path,
-    mosaicdir: Path,
-    template: Path,
-    gridgen_exec: Path,
-    do_postwgts: bool = True,
-):
-    """
-    Run cpld_gridgen and post-process for MOM6/CICE.
+def _gridgen(
+    res: str, out_dir: Path, fv3_dir: Path, atmres: str, postwgts: bool
+) -> None:
+    ni, nj, topog, edits, maskedit = RESOLUTIONS[res]
+    src = fix_file(f"mom6/{res}/ocean_hgrid.nc").parent
+    for name in ("ocean_mask.nc", topog) + (() if edits == "none" else (edits,)):
+        fix_file(f"mom6/{res}/{name}")
 
-    Parameters
-    ----------
-    resname : str
-        Resolution identifier ("500", "100", "050", "025").
-    mosaicres : str
-        Mosaic resolution (e.g., "C768").
-    mom6_fixdir : Path
-        Path to MOM6 fixdir root.
-    outdir : Path
-        Output directory.
-    mosaicdir : Path
-        Mosaic fix/orog dir.
-    template : Path
-        Path to grid.nml.IN template.
-    gridgen_exec : Path
-        Path to `cpld_gridgen` executable.
-    do_postwgts : bool
-        If True, pre-generate SCRIP files.
-    """
-
-    log_file = state.logs / "gridgen.log"
-
-    outdir.mkdir(parents=True, exist_ok=True)
-
-    # Map resname to NI/NJ and files
-    if resname == "500":
-        NI, NJ = 72, 35
-        topog, edits = "ocean_topog.nc", "none"
-    elif resname == "100":
-        NI, NJ = 360, 320
-        topog, edits = "topog.nc", "topo_edits_011818.nc"
-    elif resname == "050":
-        NI, NJ = 720, 576
-        topog, edits = "ocean_topog.nc", "none"
-    elif resname == "025":
-        NI, NJ = 1440, 1080
-        topog, edits = "ocean_topog.nc", "All_edits.nc"
-    else:
-        raise ValueError(f"Unsupported RESNAME: {resname}")
-
-    # NPX by mosaicres
-    npx_map = {
-        "C3072": 3072,
-        "C1152": 1152,
-        "C768": 768,
-        "C384": 384,
-        "C192": 192,
-        "C096": 96,
-        "C048": 48,
-    }
-    NPX = npx_map.get(mosaicres, None)
-    if NPX is None:
-        raise ValueError(f"Unsupported MOSAICRES: {mosaicres}")
-
-    fixdir = mom6_fixdir / resname
-
-    # Generate grid.nml
-    write_grid_nml(
-        template,
-        outdir / "grid.nml",
-        NI,
-        NJ,
-        fixdir,
-        outdir,
-        mosaicdir,
-        topog,
-        edits,
-        resname,
-        mosaicres,
-        NPX,
-    )
-
-    # Run gridgen
-    cmd = [get_launcher(1), str(gridgen_exec)]
-    result, msgs = run_cmd(
-        cmd,
-        cwd=outdir,
-        stdout=log_file,
-        stderr=log_file,
-    )
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError("Failed to run gridgen")
-    # Generate SCRIP files if requested
-    if do_postwgts:
-        rects = {
-            "500": ["rect.5p0_SCRIP.nc"],
-            "100": ["rect.5p0_SCRIP.nc", "rect.1p0_SCRIP.nc"],
-            "050": ["rect.5p0_SCRIP.nc", "rect.1p0_SCRIP.nc", "rect.0p5_SCRIP.nc"],
-            "025": [
-                "rect.5p0_SCRIP.nc",
-                "rect.1p0_SCRIP.nc",
-                "rect.0p5_SCRIP.nc",
-                "rect.0p25_SCRIP.nc",
-            ],
-        }
-        for grid in rects[resname]:
-            if "5p0" in grid:
-                dims = "36,72"
-            elif "1p0" in grid:
-                dims = "181,360"
-            elif "0p5" in grid:
-                dims = "361,720"
-            elif "0p25" in grid:
-                dims = "721,1440"
-            else:
-                continue
-
+    log_file = state.logs / f"cpld_gridgen_mx{res}.log"
+    if postwgts:
+        ncremap = find_tool("ncremap")
+        for rect in POST_RECTS[res]:
             cmd = [
-                *get_launcher(1),
-                "ncremap",
+                ncremap,
                 "-g",
-                str(outdir / grid),
+                str(out_dir / f"rect.{rect}_SCRIP.nc"),
                 "-G",
-                f"latlon={dims}#lon_typ=grn_ctr#lat_typ=cap",
+                f"latlon={RECTS[rect]}#lon_typ=grn_ctr#lat_typ=cap",
             ]
-            result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+            result, msgs = run_cmd(cmd, cwd=out_dir, stdout=log_file, stderr=log_file)
             if result != 0:
                 log.error(msgs)
-                raise RuntimeError(f"Failed to generate scrip file for {grid}")
+                raise RuntimeError(f"ncremap failed for rect.{rect} (see {log_file})")
 
-        # Ice mesh
-        fs = outdir / f"Ct.mx{resname}_SCRIP_land.nc"
-        fd = outdir / f"mesh.mx{resname}.nc"
-        cmd = [*get_launcher(1), "ESMF_Scrip2Unstruct", str(fs), str(fd), "0"]
-        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
-        if result != 0:
-            log.error(msgs)
-            raise RuntimeError("Failed to generate ice mesh file")
+    # Directory names are character(256) and joined with file names in the
+    # program (charstrings.F90, gen_fixgrid.F90), so short links in out_dir,
+    # the working directory, stand in for them.
+    links = {f"mom6_{res}": src, "fv3": fv3_dir}
+    for name, target in links.items():
+        (out_dir / name).unlink(missing_ok=True)
+        (out_dir / name).symlink_to(Path(target).resolve())
+    nml = {
+        "grid_nml": {
+            "ni": ni,
+            "nj": nj,
+            "dirsrc": f"mom6_{res}",
+            "dirout": ".",
+            "fv3dir": "fv3",
+            "topofile": topog,
+            "editsfile": edits,
+            "res": res,
+            "atmres": atmres,
+            "npx": int(state.c_res),
+            "editmask": maskedit,
+            "debug": False,
+            "do_postwgts": postwgts,
+        }
+    }
+    f90nml.write(nml, out_dir / "grid.nml", force=True)
 
-        # kmt file
-        fs = outdir / f"grid_cice_NEMS_mx{resname}.nc"
-        fd = outdir / f"kmtu_cice_NEMS_mx{resname}.nc"
-        cmd = ["ncks", "-O", "-v", "kmt", str(fs), str(fd)]
-        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
-        if result != 0:
-            log.error(msgs)
-            raise RuntimeError("Failed to generate kmt file")
+    cmd = [*get_launcher(1), str(state.ufs_exe / "cpld_gridgen")]
+    result, msgs = run_cmd(cmd, cwd=out_dir, stdout=log_file, stderr=log_file)
+    # The program ends with a plain stop (exit 0) on some errors, so its
+    # outputs are checked as well.
+    for name in links:
+        (out_dir / name).unlink()
+    scrip = out_dir / f"Ct.mx{res}_SCRIP_land.nc"
+    cice = out_dir / f"grid_cice_NEMS_mx{res}.nc"
+    if result != 0 or not scrip.exists() or not cice.exists():
+        log.error(msgs)
+        raise RuntimeError(f"cpld_gridgen failed for mx{res} (see {log_file})")
 
-    log.info(f"Grid generation completed for: {resname}")
-    log.info(f"Outputs staged in: {outdir}")
+    mesh = out_dir / f"mesh.mx{res}.nc"
+    cmd = [
+        *get_launcher(1),
+        find_tool("ESMF_Scrip2Unstruct"),
+        str(scrip),
+        str(mesh),
+        "0",
+    ]
+    result, msgs = run_cmd(cmd, cwd=out_dir, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError(f"ESMF_Scrip2Unstruct failed for mx{res} (see {log_file})")
 
-    # coupled_grid = state.get("coupled_grid", None)
-    # if coupled_grid:
+    # ncks -O -v kmt
+    with xr.open_dataset(cice) as ds:
+        ds[["kmt"]].load().to_netcdf(out_dir / f"kmtu_cice_NEMS_mx{res}.nc")
+    log.info(f"cpld_gridgen wrote the mx{res} grids for {atmres} in {out_dir}")
 
-    #     write_grid_nml_inputs = get_func_signature(write_grid_nml)
-    #     write_grid_nml_inputs = {
-    #         k: v
-    #         if k in write_grid_nml_inputs and v is not None
-    #     }
 
-    #     grid_nml_path = write_grid_nml(
-    #         **write_grid_nml_inputs,
-    #     )
-
-    #     grid_gen_inputs = get_func_signature(run_gridgen)
-    #     grid_gen_inputs = {
-    #         k: v for k, v in state.items() if k in grid_gen_inputs and v is not None
-    #     }
-
-    #     print(f"Using grid_nml file at: {grid_nml_path}")
-
-    #     run_gridgen(
-    #         **grid_gen_inputs,
-    #     )
+def run_cpld_gridgen() -> None:
+    if not state.run_cpld_gridgen:
+        return
+    res = gridgen_res(state.cpld_gridgen_res)
+    postwgts = bool(state.cpld_gridgen_postwgts)
+    out_dir = Path(state.ic_data) / "cpld_gridgen"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    fv3_dir = Path(state.tmp) / "cpld_gridgen"
+    atmres = _atm_mosaic(fv3_dir)
+    if res != "025" and not (out_dir / "Ct.mx025_SCRIP.nc").exists():
+        _gridgen("025", out_dir, fv3_dir, atmres, postwgts)
+    _gridgen(res, out_dir, fv3_dir, atmres, postwgts)
+    shutil.rmtree(fv3_dir, ignore_errors=True)

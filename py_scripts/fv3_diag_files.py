@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 import yaml
 from fv3_runtime import get_stream_handles
@@ -6,11 +7,32 @@ from fv3_state import state
 from fv3_utils import cp
 
 
+def field_table_source() -> tuple[Path, bool]:
+    """Field table to stage and whether it is in YAML format.
+
+    A case-local field_table.yaml takes precedence over a case-local legacy
+    ASCII field_table; without either, configs/field_table.yaml is used. The
+    format sets field_manager_nml use_field_table_yaml.
+    """
+    for name, is_yaml in (("field_table.yaml", True), ("field_table", False)):
+        path = state.run_dir / name
+        if path.exists():
+            return path, is_yaml
+    return state.configs / "field_table.yaml", True
+
+
 def update_data_table():
-    """Stage the data_table.yaml if it exists in the run directory."""
-    (state.work_dir / "data_table.yaml").unlink(missing_ok=True)
-    if (state.run_dir / "data_table.yaml").exists():
-        cp(state.run_dir / "data_table.yaml", state.work_dir / "data_table.yaml")
+    """Stage a case-local data table in the format the namelist selects.
+
+    data_table.yaml is used with use_modern_diag (data_override_nml
+    use_data_table_yaml); otherwise a legacy data_table. Without a case-local
+    table no data override is applied.
+    """
+    for name in ("data_table", "data_table.yaml"):
+        (state.work_dir / name).unlink(missing_ok=True)
+    name = "data_table.yaml" if state.use_modern_diag else "data_table"
+    if (state.run_dir / name).exists():
+        cp(state.run_dir / name, state.work_dir / name)
 
 
 def update_yaml_diag(restart_no: int):
@@ -50,22 +72,18 @@ def update_legacy_diag(restart_no: int):
     streams = get_stream_handles()
 
     with open(diag_table_path) as f:
-        lines = f.readlines()
-        lines = [line for line in lines if line and not line.strip().startswith("#")]
+        lines = [
+            line for line in f if line.strip() and not line.strip().startswith("#")
+        ]
 
-        skipped_header = 0
-        if lines[0].strip().lower() == "DESCRIPTION".strip().lower():
-            lines = lines[1:]  # Skip the header line
-            skipped_header += 1
-        if lines[0].strip().lower() == "DATETIME".strip().lower():
-            lines = lines[1:]  # Skip the second header line
-            skipped_header += 1
-
-    out = []
-    if skipped_header == 2:
-        dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
-        desc_str = f"{state.description}\n"
-        out = [desc_str, dt_str]
+    # The first two entries of a legacy diag_table are the title and the base
+    # date (FMS diag_manager), given either literally or as the DESCRIPTION
+    # and DATETIME placeholders. Both are rewritten for this case.
+    if len(lines) < 2:
+        raise ValueError(f"{diag_file}: missing title and base date lines")
+    lines = lines[2:]
+    dt_str = f"{dt.year} {dt.month:02d} {dt.day:02d} {dt.hour:02d} 0 0\n"
+    out = [f"{state.description}\n", dt_str]
 
     for line in lines:
         names = [c.strip().strip("\"'") for c in line.split(",")]
@@ -91,8 +109,6 @@ def update_diag_table():
 
     if state.use_modern_diag:
         update_yaml_diag(restart_no)
-        if (state.run_dir / "data_table.yaml").exists():
-            cp(state.run_dir / "data_table.yaml", state.work_dir / "data_table.yaml")
     else:
         update_legacy_diag(restart_no)
 
@@ -100,14 +116,10 @@ def update_diag_table():
 def update_table_files():
     """Main orchestrator to update all FMS configuration tables."""
 
-    # Handle field_table staging
-    user_field = state.run_dir / "field_table"
-    template_field = state.configs / "field_table.yaml"
-    field_file = user_field if user_field.exists() else template_field
-    field_table_path = state.work_dir / "field_table.yaml"
-
-    (state.work_dir / "field_table.yaml").unlink(missing_ok=True)
-    cp(field_file, field_table_path)
+    field_file, is_yaml = field_table_source()
+    for name in ("field_table", "field_table.yaml"):
+        (state.work_dir / name).unlink(missing_ok=True)
+    cp(field_file, state.work_dir / ("field_table.yaml" if is_yaml else "field_table"))
 
     # Delegate to diagnostic and data table updaters
     update_diag_table()

@@ -1,16 +1,16 @@
-# Standalone regional ESG domain (~3 km).
+# Standalone regional ESG domain. delx and dely are supergrid spacings, so the
+# model grid spacing is 2 * 0.0585 deg, about 13 km; use 0.0135 for about 3 km.
+# The domain is centred on target_lon/target_lat and sized by idim x jdim.
+# c_res is replaced by the equivalent global resolution of the ESG grid
+# (global_equiv_resol); regional grids require halo: 3.
 description: Regional ESG domain
 init_datetime: "2026031200Z"
 run_length: 12
 run_length_units: hours
-c_res: 3072
+c_res: 768
 gtype: regional_esg
 target_lon: -96
 target_lat: 39
-lon_min: -102
-lon_max: -90
-lat_min: 33
-lat_max: 45
 idim: 200
 jdim: 200
 delx: 0.0585

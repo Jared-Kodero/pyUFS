@@ -2,15 +2,76 @@ import shutil
 from pathlib import Path
 
 import f90nml
-import numpy as np
-from fv3_nesting import (
-    gen_global_nest_parent,
-    get_nest_indices,
-    get_nest_tele_indices,
-)
-from fv3_runtime import log, tmp_cwd, to_list
+from fv3_nesting import gen_global_nest_parent, get_nest_indices
+from fv3_runtime import log, staged_files, tmp_cwd, to_list
 from fv3_state import save_fv3_state, state
-from fv3_utils import cp, rename, run_cmd
+from fv3_utils import cp, run_cmd
+
+
+def nest_parents(parent_tile: int | list, n_nests: int, nest_type: str) -> list[int]:
+    """Parent tile of each nest, as make_hgrid --parent_tile takes it.
+
+    Same-level nests sit on global tiles (one value applies to every nest).
+    In a telescoping chain the outermost nest sits on a global tile and nest
+    n on nest n-1 (tile 6 + n - 1).
+    """
+    parents = to_list(parent_tile)
+    if len(parents) != n_nests:
+        parents = [parents[0]] * n_nests
+    if nest_type == "telescoping":
+        return [parents[0]] + [7 + i for i in range(n_nests - 1)]
+    return [int(p) for p in parents]
+
+
+def _hgrid_nests_cmd(
+    make_hgrid: str,
+    nlon: int,
+    c_res: int,
+    stretch_factor: float,
+    parents: list[int],
+    refine_ratio: list[int],
+    halo: int,
+) -> list[str]:
+    """make_hgrid call for the global cube plus the first len(parents) nests,
+    using the nest indices recorded in state."""
+    n = len(parents)
+
+    def join(values: list) -> str:
+        return ",".join(str(v) for v in values[:n])
+
+    return [
+        f"{make_hgrid}",
+        "--grid_type",
+        "gnomonic_ed",
+        "--nlon",
+        f"{nlon}",
+        "--grid_name",
+        f"C{c_res}_grid",
+        "--do_schmidt",
+        "--stretch_factor",
+        f"{stretch_factor}",
+        "--target_lon",
+        f"{state.target_lon}",
+        "--target_lat",
+        f"{state.target_lat}",
+        "--nest_grids",
+        f"{n}",
+        "--parent_tile",
+        join(parents),
+        "--refine_ratio",
+        join(refine_ratio),
+        "--istart_nest",
+        join(state.istart_nest),
+        "--jstart_nest",
+        join(state.jstart_nest),
+        "--iend_nest",
+        join(state.iend_nest),
+        "--jend_nest",
+        join(state.jend_nest),
+        "--halo",
+        f"{halo}",
+        "--great_circle_algorithm",
+    ]
 
 
 def make_nested_grid(
@@ -23,161 +84,80 @@ def make_nested_grid(
     halo: int,
     gtype: str,
 ):
+    """Global cube and all nests from one make_hgrid --nest_grids call.
+
+    One call names the nest tiles tile7, tile8, ... inside the grid files,
+    which sfc_climo_gen and chgres_cube use to name their per-tile files;
+    copies of separate single-nest runs would all carry "tile7". Each nest is
+    bracketed on the final grid of its parent: a global tile, or for a
+    telescoping chain the previous nest, which is first generated with the
+    nests before it.
+    """
     log_file = state.logs / "make_nested_grid.log"
-
     n_nests = state.n_nests
-    nest_type = state.nest_type
-    refine_ratio = to_list(state.refine_ratio)
-    parent_tile = to_list(parent_tile)
+    refine_ratio = [int(r) for r in to_list(state.refine_ratio)]
+    parents = nest_parents(parent_tile, n_nests, state.nest_type)
 
-    if nest_type == "telescoping":
+    if state.nest_type == "telescoping":
         log.info("Generating telescoped nested grids")
     else:
         log.info("Generating same-level nested grids")
 
-    out_dir_tmp = out_dir / "tmp_nested"
-    out_dir_tmp.mkdir(parents=True, exist_ok=True)
+    work = out_dir / "tmp_nested"
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
 
-    # Generate global grid first (needed for offsets)
-    _ = gen_global_nest_parent(c_res, out_dir)
-
-    nest_tiles = [7 + i for i in range(n_nests)]
-
-    if len(parent_tile) != n_nests:
-        parent_tile = [parent_tile[0]] * n_nests
-
-    for i, tile in enumerate(nest_tiles):
-        i_parent_tile = parent_tile[i]
-        i_refine_ratio = refine_ratio[i]
-
-        if nest_type == "telescoping":
-            i_refine_ratio = np.prod(refine_ratio[: i + 1])
-
+    # Parent grids for the bracketing: the global cube, then for a nest whose
+    # parent is a nest, the grid with all nests before it.
+    (work / "level0").mkdir()
+    parent_dir = gen_global_nest_parent(c_res, work / "level0")
+    for i, parent in enumerate(parents):
+        if parent > 6:
+            parent_dir = work / f"level{i}"
+            parent_dir.mkdir()
+            cmd = _hgrid_nests_cmd(
+                make_hgrid, nlon, c_res, stretch_factor, parents[:i], refine_ratio, halo
+            )
+            result, msgs = run_cmd(
+                cmd, cwd=parent_dir, stdout=log_file, stderr=log_file
+            )
+            if result != 0:
+                log.error(msgs)
+                raise RuntimeError(
+                    f"Failed to generate the parent grid of nest {i + 2:02d}"
+                )
         get_nest_indices(
-            c_res=c_res,
-            tile_idx=i,
-            grid_dir=out_dir,
-            parent_tile=i_parent_tile,
-            i_refine_ratio=i_refine_ratio,
-            tile=tile,
+            c_res=c_res, tile_idx=i, grid_dir=parent_dir, parent_tile=parent
         )
 
-        istart_nest = ",".join(map(str, state.istart_nest))
-        iend_nest = ",".join(map(str, state.iend_nest))
-        jstart_nest = ",".join(map(str, state.jstart_nest))
-        jend_nest = ",".join(map(str, state.jend_nest))
+    final = work / "final"
+    final.mkdir()
+    cmd = _hgrid_nests_cmd(
+        make_hgrid, nlon, c_res, stretch_factor, parents, refine_ratio, halo
+    )
+    result, msgs = run_cmd(cmd, cwd=final, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate the nested grids")
 
-        cmd = [
-            f"{make_hgrid}",
-            "--grid_type",
-            "gnomonic_ed",
-            "--nlon",
-            f"{nlon}",
-            "--grid_name",
-            f"C{c_res}_grid",
-            "--do_schmidt",
-            "--stretch_factor",
-            f"{stretch_factor}",
-            "--target_lon",
-            f"{state.target_lon}",
-            "--target_lat",
-            f"{state.target_lat}",
-            "--nest_grid",
-            "--parent_tile",
-            f"{i_parent_tile}",
-            "--refine_ratio",
-            f"{i_refine_ratio}",
-            "--istart_nest",
-            f"{istart_nest}",
-            "--jstart_nest",
-            f"{jstart_nest}",
-            "--iend_nest",
-            f"{iend_nest}",
-            "--jend_nest",
-            f"{jend_nest}",
-            "--halo",
-            f"{halo}",
-            "--great_circle_algorithm",
-        ]
+    for f in out_dir.glob(f"C{c_res}_grid.tile*.nc"):
+        f.unlink()
+    for f in final.glob(f"C{c_res}_grid.tile*.nc"):
+        shutil.move(str(f), str(out_dir / f.name))
+    shutil.rmtree(work)
+    save_fv3_state()
 
-        result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file, cwd=out_dir_tmp)
 
-        if result != 0:
-            log.error(msgs)
-            raise RuntimeError(f"Failed to generate nested grid for tile: {tile}")
+def record_nest_indices(c_res: int, grid_dir: Path) -> None:
+    """Rebuild the nest indices of fv_nest_nml from existing grid files.
 
-        nest_tile = out_dir_tmp / f"C{c_res}_grid.tile7.nc"
-
-        if tile == 7:
-            cp(nest_tile, out_dir / f"C{c_res}_grid.tile7.nc")
-        elif tile > 7:
-            cp(nest_tile, out_dir / f"C{c_res}_grid.tile{tile}.nc")
-
-    shutil.rmtree(out_dir_tmp)
-
-    files = list(out_dir.glob("C*_grid.tile*.nc"))
-    for f in files:
-        parts = f.name.split("_")
-        res_part = str(parts[0])  # e.g., 'C96'
-        if res_part != f"C{c_res}":
-            new_name = f.name.replace(res_part, f"C{c_res}")
-            new_path = out_dir / new_name
-            rename(f, new_path)
-
-    if nest_type == "telescoping" and gtype == "nest":
-        get_nest_tele_indices(c_res, state.n_nests, refine_ratio, out_dir)
-
-        refine_ratios = ",".join(map(str, refine_ratio))
-        istart_nest = ",".join(map(str, state.istart_nest))
-        iend_nest = ",".join(map(str, state.iend_nest))
-        jstart_nest = ",".join(map(str, state.jstart_nest))
-        jend_nest = ",".join(map(str, state.jend_nest))
-        parent_tile = ",".join(map(str, state.parent_tile))
-
-        cmd = [
-            f"{make_hgrid}",
-            "--grid_type",
-            "gnomonic_ed",
-            "--nlon",
-            f"{nlon}",
-            "--grid_name",
-            f"C{c_res}_grid",
-            "--do_schmidt",
-            "--stretch_factor",
-            f"{stretch_factor}",
-            "--target_lon",
-            f"{state.target_lon}",
-            "--target_lat",
-            f"{state.target_lat}",
-            "--nest_grids",
-            f"{n_nests}",
-            "--parent_tile",
-            parent_tile,
-            "--refine_ratio",
-            refine_ratios,
-            "--istart_nest",
-            istart_nest,
-            "--iend_nest",
-            iend_nest,
-            "--jstart_nest",
-            jstart_nest,
-            "--jend_nest",
-            jend_nest,
-            "--halo",
-            f"{halo}",
-            "--great_circle_algorithm",
-        ]
-
-        telescope_dir = state.tmp / "telescoping"
-        telescope_dir.mkdir(parents=True, exist_ok=True)
-
-        result, msgs = run_cmd(cmd, cwd=telescope_dir, stdout=log_file, stderr=log_file)
-        if result != 0:
-            log.error(msgs)
-            raise RuntimeError("Failed to generate telescoped nested grids")
-
-        shutil.rmtree(out_dir, ignore_errors=True)
-        telescope_dir.rename(out_dir)
+    Grids reused from IC/grid skip make_nested_grid, which otherwise records
+    them. Each nest is bracketed on its parent tile in grid_dir, the same
+    final parent grid it was generated from.
+    """
+    parents = nest_parents(state.parent_tile, state.n_nests, state.nest_type)
+    for i, parent in enumerate(parents):
+        get_nest_indices(c_res=c_res, tile_idx=i, grid_dir=grid_dir, parent_tile=parent)
 
 
 def make_uniform_grid(make_hgrid: str, nlon: int, c_res: int):
@@ -441,13 +421,15 @@ def run_make_grid(
 
     """
 
-    if mod_dir is not None and mod_dir.exists() and any(mod_dir.iterdir()):
+    reused = staged_files(mod_dir)
+    if reused:
         src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
         log.info(f"Using existing grid files from {src}")
-
-        files_to_copy = list(mod_dir.glob("*"))
-        for file in files_to_copy:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for file in reused:
             cp(file, out_dir / file.name)
+        if gtype == "nest":
+            record_nest_indices(c_res, out_dir)
         save_fv3_state()
         return
 

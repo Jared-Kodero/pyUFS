@@ -2,11 +2,12 @@ from pathlib import Path
 
 import f90nml
 import numpy as np
-from fv3_diag_files import update_table_files
+from fv3_diag_files import field_table_source, update_table_files
 from fv3_fixed_files import update_fixed_files
-from fv3_runtime import log, read_namelist, report_missing_fixed_files
+from fv3_runtime import log, read_namelist, require_fix_files
 from fv3_state import state
 from fv3_timings import get_timings
+from fv3_update_fix import NAMSFC_FILES
 from fv3_utils import cp, cres_to_deg, env_setup
 from regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
 
@@ -25,11 +26,6 @@ def restart_config():
         nml["fv_core_nml"]["n_zs_filter"] = 0
         nml["fv_core_nml"]["na_init"] = 0
         nml["fv_core_nml"]["make_nh"] = False
-
-        nml["fms_io_nml"]["checksum_required"] = False
-        nml.setdefault("fms2_io_nml", {})["checksum_required"] = False
-        nml["fms_io_nml"]["restart_checksums_required"] = False
-        nml["fms2_io_nml"]["restart_checksums_required"] = False
 
         with open(f, "w") as nml_out:
             f90nml.write(nml, nml_out)
@@ -104,9 +100,22 @@ def disable_deep_convection(nml: dict, tile: int, name: str):
     return nml
 
 
+def domains_stack_size(npx: int, npy: int, layout: list, npz: int) -> int:
+    """fms_nml domains_stack_size [8-byte words] needed by one domain.
+
+    The mpp_domains buffer holds the halo-extended subdomain of every field
+    updated in one call; 32 three-dimensional fields with a 4-point halo are
+    allowed for. FMS allocates two buffers of this size, and stops with the
+    size it needs if the value is too small. SHiELD_build sets 3e6 (C48,
+    C384) to 2e7-9.6e7 (C3072).
+    """
+    nx = -(-(npx - 1) // layout[0]) + 8
+    ny = -(-(npy - 1) // layout[1]) + 8
+    return max(4_000_000, nx * ny * (npz + 1) * 32)
+
+
 # for all nests
 def common_configs(nml: dict):
-    nml["fms_nml"]["domains_stack_size"] = 2**30  # 1 GiB
     nml["fv_core_nml"]["npz"] = state.levels - 1
     nml["external_ic_nml"]["levp"] = state.levels
     nml["fv_core_nml"]["warm_start"] = False
@@ -118,6 +127,10 @@ def common_configs(nml: dict):
     if state.use_modern_diag:
         nml.setdefault("diag_manager_nml", {})["use_modern_diag"] = True
         nml.setdefault("data_override_nml", {})["use_data_table_yaml"] = True
+
+    # The staged field table decides the format FMS parses.
+    _, is_yaml = field_table_source()
+    nml.setdefault("field_manager_nml", {})["use_field_table_yaml"] = is_yaml
 
     return nml
 
@@ -170,6 +183,14 @@ def update_global_nml(
     nml["fv_core_nml"]["layout"] = state.layout[0]
     nml["fv_core_nml"]["io_layout"] = state.io_layout[0]
     nml["atmos_model_nml"]["blocksize"] = state.blocksize[0]
+    # fms_init reads fms_nml once, from input.nml, for every PE (nest PEs
+    # included), so the buffer is sized for the largest domain.
+    nml["fms_nml"]["domains_stack_size"] = max(
+        domains_stack_size(
+            state.npx[i], state.npy[i], state.layout[i], state.levels - 1
+        )
+        for i in range(len(state.npx))
+    )
 
     if n_nests > 0:
         nml["fv_nest_nml"]["grid_pes"] = state.grid_pes
@@ -192,6 +213,9 @@ def update_global_nml(
         # working UFS regional input.nml (Harris et al., 2021).
         nml["fv_core_nml"]["regional"] = True
         nml["fv_core_nml"]["ntiles"] = 1
+        # The regional grid is read from the mosaic, not generated in line
+        # (SHiELD_build Regional3km.csh; stage_data.stage_regional_inputs).
+        nml.setdefault("fv_grid_nml", {})["grid_file"] = "INPUT/grid_spec.nc"
         nml["fv_core_nml"]["bc_update_interval"] = BC_INTERVAL_HOURS
         nml["fv_core_nml"]["nrows_blend"] = HALO_BLEND
 
@@ -200,6 +224,7 @@ def update_global_nml(
 
     # check for nml overrides if user provided external nml
     nml = namelist_overrides(user_nml, nml, "global")
+    align_radiation(nml, "global", timings["dt_atmos"])
 
     with open(parent_save_path, "w") as f:
         f90nml.write(nml, f)
@@ -257,10 +282,18 @@ def update_nest_nml(
         nml["fv_core_nml"]["layout"] = state.layout[i]
         nml["fv_core_nml"]["io_layout"] = state.io_layout[i]
         nml["atmos_model_nml"]["blocksize"] = state.blocksize[i]
+        # Ignored by FMS (fms_nml is read from input.nml); kept consistent.
+        nml["fms_nml"]["domains_stack_size"] = max(
+            domains_stack_size(
+                state.npx[k], state.npy[k], state.layout[k], state.levels - 1
+            )
+            for k in range(len(state.npx))
+        )
 
         nml = update_namsfc(nml)
 
         nml = namelist_overrides(user_nml, nml, f"nest{i + 1:02d}")
+        align_radiation(nml, f"nest{i + 1:02d}", timings["dt_atmos"])
 
         with open(out_file, "w") as f:
             f90nml.write(nml, f)
@@ -294,6 +327,27 @@ def namelist_overrides(path: Path, nml: dict, name: str):
 
     check_fhzero(nml, name)
     return nml
+
+
+def align_radiation(nml: dict, name: str, dt_atmos: int) -> None:
+    """Make fhswr and fhlwr whole multiples of the physics step.
+
+    SHiELD calls radiation every nint(fhswr/dt_atmos) steps
+    (GFS_typedefs.F90 nsswr) but averages the solar zenith angle over fhswr,
+    so with fhswr = 1800 s and dt_atmos = 720 s radiation would run every
+    2160 s with an 1800 s average. The interval is rounded the same way.
+    """
+    phys = nml.get("gfs_physics_nml", {})
+    for key in ("fhswr", "fhlwr"):
+        value = phys.get(key)
+        if value is None or float(value) % dt_atmos == 0:
+            continue
+        aligned = float(dt_atmos * max(1, int(float(value) / dt_atmos + 0.5)))
+        log.warning(
+            f"{name}: {key} {value} s is not a multiple of dt_atmos {dt_atmos} s; "
+            + f"set to {aligned} s"
+        )
+        phys[key] = aligned
 
 
 def check_fhzero(nml: dict, name: str) -> None:
@@ -338,43 +392,26 @@ def update_namsfc(nml):
         "fsmcl": [99999, 99999, 99999],
     }
 
-    namsfc_files = {
-        "fnabsc": "global_mxsnoalb.uariz.t1534.3072.1536.rg.grb",
-        "fnaisc": "CFSR.SEAICE.1982.2012.monthly.clim.grb",
-        "fnalbc": "global_snowfree_albedo.bosu.t1534.3072.1536.rg.grb",
-        "fnalbc2": "global_albedo4.1x1.grb",
-        "fnglac": "global_glacier.2x2.grb",
-        "fnmldc": "mld_DR003_c1m_reg2.0.grb",
-        "fnmskh": "seaice_newland.grb",
-        "fnmxic": "global_maxice.2x2.grb",
-        "fnslpc": "global_slope.1x1.grb",
-        "fnsmcc": "global_soilmgldas.t1534.3072.1536.grb",
-        "fnsnoc": "global_snoclim.1.875.grb",
-        "fnsotc": "global_soiltype.statsgo.t1534.3072.1536.rg.grb",
-        "fntg3c": "global_tg3clim.2.6x1.5.grb",
-        "fntsfc": "RTGSST.1982.2012.monthly.clim.grb",
-        "fnvegc": "global_vegfrac.0.144.decpercent.grb",
-        "fnvetc": "global_vegtype.igbp.t1534.3072.1536.rg.grb",
-        "fnvmnc": "global_shdmin.0.144x0.144.grb",
-        "fnvmxc": "global_shdmax.0.144x0.144.grb",
-    }
-    missing_files = []
-    for key, fname in namsfc_files.items():
-        src = am_dir / fname
-        dst = state.fix / fname
+    namsfc_files = dict(NAMSFC_FILES)
+    # The mixed-layer depth climatology is read at each surface cycle when
+    # fnmldc is set (sfcsub.F) and used only by the slab ocean; it is not in
+    # the NOAA fix bucket. Without the ocean model it is left out when absent.
+    prescribed = bool(state.tgrad_perturbations) and (
+        state.tgrad_perturbations.get("ocean_mode", "prescribed") == "prescribed"
+    )
+    ocean = nml.get("gfs_physics_nml", {}).get("do_ocean", False) and not prescribed
+    if not ocean and not (am_dir / namsfc_files["fnmldc"]).exists():
+        del namsfc_files["fnmldc"]
 
-        if not src.exists():
-            missing_files.append(src)
-            continue
+    require_fix_files([am_dir / f for f in namsfc_files.values()])
+    for key, fname in namsfc_files.items():
+        dst = state.fix / fname
         if not dst.exists():
-            cp(src, dst)
+            cp(am_dir / fname, dst)
 
         namsfc[key] = f"FIXED/{fname}"
 
     nml["namsfc"] = namsfc
-
-    if missing_files:
-        report_missing_fixed_files(missing_files, sub_dir="am")
 
     if state.tgrad_perturbations:
         # SST and sea-ice climatologies are written to FIXED/MODS by
