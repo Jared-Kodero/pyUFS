@@ -327,7 +327,7 @@ def handle_errors(exc_type, value, tb):
     user_frames = [
         f
         for f in traceback.extract_tb(tb)
-        if "py_scripts" in _norm_path(f.filename) and f.filename.endswith(".py")
+        if "scripts" in _norm_path(f.filename) and f.filename.endswith(".py")
     ]
     sys_frames = [f for f in traceback.extract_tb(tb)]
 
