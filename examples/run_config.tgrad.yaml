@@ -1,6 +1,6 @@
 # Global C96 with a 4 K Arctic SST increment (0 K at 60N, 4 K poleward of 80N).
 # Methods and options: configs/run_config.yaml section 11,
-# py_scripts/tgrad_perturbations.py. Use method: none for the control.
+# scripts/tgrad_perturbations.py. Use method: none for the control.
 description: C96 Arctic SST +4 K
 init_datetime: "2020010100Z"
 run_length: 1

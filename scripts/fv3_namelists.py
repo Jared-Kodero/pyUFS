@@ -1,3 +1,4 @@
+import math
 from pathlib import Path
 
 import f90nml
@@ -203,7 +204,7 @@ def update_global_nml(
 
     # check for nml overrides if user provided external nml
     nml = namelist_overrides(user_nml, nml, "global")
-    align_radiation(nml, "global", timings["dt_atmos"])
+    nml = set_radiation(nml, "global", timings["dt_atmos"])
 
     with open(parent_save_path, "w") as f:
         f90nml.write(nml, f)
@@ -267,7 +268,7 @@ def update_nest_nml(
         nml = update_namsfc(nml)
 
         nml = namelist_overrides(user_nml, nml, f"nest{i + 1:02d}")
-        align_radiation(nml, f"nest{i + 1:02d}", timings["dt_atmos"])
+        nml = set_radiation(nml, f"nest{i + 1:02d}", timings["dt_atmos"])
 
         with open(out_file, "w") as f:
             f90nml.write(nml, f)
@@ -303,25 +304,21 @@ def namelist_overrides(path: Path, nml: dict, name: str):
     return nml
 
 
-def align_radiation(nml: dict, name: str, dt_atmos: int) -> None:
-    """Make fhswr and fhlwr whole multiples of the physics step.
+def set_radiation(nml: dict, name: str, dt_atmos: int) -> dict:
+    """Set fhswr and fhlwr to at least 30 min, rounded up to whole physics steps.
 
-    SHiELD calls radiation every nint(fhswr/dt_atmos) steps
-    (GFS_typedefs.F90 nsswr) but averages the solar zenith angle over fhswr,
-    so with fhswr = 1800 s and dt_atmos = 720 s radiation would run every
-    2160 s with an 1800 s average. The interval is rounded the same way.
+    SHiELD calls radiation every nint(fhswr/dt_atmos) steps (GFS_typedefs.F90
+    nsswr), so fhswr = 0 means every step, and it averages the solar zenith
+    angle over fhswr. Rounding up makes the call interval and the averaging
+    window coincide without calling radiation more often than requested.
+    Missing values are treated as 0.
     """
-    phys = nml.get("gfs_physics_nml", {})
+    phys = nml.setdefault("gfs_physics_nml", {})
     for key in ("fhswr", "fhlwr"):
-        value = phys.get(key)
-        if value is None or float(value) % dt_atmos == 0:
-            continue
-        aligned = float(dt_atmos * max(1, int(float(value) / dt_atmos + 0.5)))
-        log.warning(
-            f"{name}: {key} {value} s is not a multiple of dt_atmos {dt_atmos} s; "
-            + f"set to {aligned} s"
-        )
-        phys[key] = aligned
+        interval = max(float(phys.get(key) or 0), 1800.0)  # s, 30 min lower bound
+        phys[key] = float(dt_atmos * math.ceil(interval / dt_atmos))
+
+    return nml
 
 
 def check_fhzero(nml: dict, name: str) -> None:

@@ -61,7 +61,7 @@ fv_core_nml:
   hord_tr: -5 # 5
   hord_vt: 5
   hydrostatic: false
-  io_layout: [ 1, 1 ]
+  io_layout: [1, 1]
   k_split: null
   kord_mt: 9
   kord_tm: -9
@@ -98,7 +98,7 @@ gfdl_mp_nml: {}
 
 gfs_physics_nml:
   cal_pre: false
-  cdmbgwd: [ 3.5, 0.25 ]
+  cdmbgwd: [3.5, 0.25]
   cloud_gfdl: true
   cnvcld: false
   cnvgwd: false
