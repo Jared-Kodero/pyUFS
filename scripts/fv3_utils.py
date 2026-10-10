@@ -66,6 +66,28 @@ def redirect_streams(
             sys.stderr = original_stderr
 
 
+def run_parallel(
+    func,
+    args: list[tuple],
+    num_workers: int | None = None,
+    scheduler: str = "processes",
+) -> list:
+    """Run ``func(*a)`` for every ``a`` in ``args`` on dask's process scheduler.
+
+    Results are returned in the order of ``args`` and the first exception is
+    re-raised. dask starts its workers with the ``spawn`` context, so no
+    multiprocessing forkserver, and no ``pymp-*`` directory in ``$TMPDIR``, is
+    created. ``func`` and ``args`` are serialised with cloudpickle.
+    """
+    import dask
+
+    tasks = [dask.delayed(func)(*a) for a in args]
+    result = dask.compute(
+        *tasks, scheduler=scheduler, num_workers=num_workers or len(args)
+    )
+    return list(result)
+
+
 def run_cmd(
     cmd: list[str],
     *,

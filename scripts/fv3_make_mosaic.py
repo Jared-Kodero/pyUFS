@@ -1,9 +1,8 @@
-from multiprocessing import Pool
 from pathlib import Path
 
 from fv3_runtime import get_newres, log, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import cp, run_cmd, run_parallel
 
 
 def _mosaic_for_uniform_and_stretch(
@@ -114,8 +113,7 @@ def _mosaic_for_nest(c_res: int, out_dir: Path, make_solo_mosaic: str, log_file:
         )
         for tile, i in zip(nested_tiles, nest_indices)
     ]
-    with Pool(processes=len(args)) as pool:
-        pool.starmap(_mosaic_for_i_nest, args)
+    run_parallel(_mosaic_for_i_nest, args)
 
 
 def _mosaic_for_regionalgfdl(
