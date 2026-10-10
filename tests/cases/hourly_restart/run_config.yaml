@@ -1,6 +1,6 @@
-# Regression: global C96, hourly output, two 6 h segments (cold start + restart).
-# Check: both segments finish, OUTPUT/fv3_hist.global.nc holds hours 1-12 with
-# no gap or duplicate at hour 6.
+# Regression: global C96, hourly output, four 2 h segments (cold start + three
+# restarts). Check: every segment finishes, OUTPUT/fv3_hist.global.nc holds hours
+# 1-8 with no gap or duplicate at hours 2, 4 and 6.
 
 description: test hourly restart
 init_datetime: "2023071400Z"
@@ -8,12 +8,16 @@ run_length: 2
 run_length_units: hours
 resubmit: 3
 merge_freq: -1
-c_res: 96
+c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
 n_nodes: 1
 n_cpus: 48
 walltime: 2
-# k_split: [1] # Use the working ZIP's automatic C96 value: [2].
-# n_split: [3] # Use the working ZIP's automatic C96 value: [6].
+
+# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 60 s.
+dt_atmos: 720
+dt_ocean: 720
+k_split: [2]
+n_split: [6]
