@@ -1,10 +1,9 @@
-from multiprocessing import Pool
 from pathlib import Path
 
 import xarray as xr
 from fv3_runtime import log
 from fv3_state import state
-from fv3_utils import run_cmd
+from fv3_utils import run_cmd, run_parallel
 
 
 def _require_var(path: Path, var: str, step: str) -> None:
@@ -128,5 +127,4 @@ def run_add_lakefrac(
         for tile in tiles
     ]
     # Each lakefrac run writes only its own tile's file.
-    with Pool(processes=len(args)) as pool:
-        pool.starmap(_run_lakefrac, args)
+    run_parallel(_run_lakefrac, args)
