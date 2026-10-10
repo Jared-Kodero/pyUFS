@@ -35,7 +35,7 @@ fregrid_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/fregrid.sif
 preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing image
 shield_root: /oscar/data/deeps/shared/gfdl_shield
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bins/shield/FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x # Native executable built from SHiELD_build FV3-202411-public (README section 19). Required for multi-node runs; "" selects the container image for single-node runs.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bins/shield/FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x # Native executable built from SHiELD_build FV3-202411-public with configs/build_shield.py (README section 19; the default repro mode installs a repro-named file, so set this to the printed path or build with --comp prod). Required for multi-node runs; "" selects the container image for single-node runs.
 containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Where configs/install_images.sh writes {shield,fregrid,preprocess}.sif. When any image is missing, a job builds all three here, so the three image paths above must point into this directory.
 container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers (a list or a comma-separated string; variables are expanded). Must include every directory used by the workflow, and each must exist on the compute nodes.
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules loaded before a native shield_exe is launched (the libraries it was built with). Not used with the container image.
@@ -153,7 +153,7 @@ cpld_gridgen_postwgts: false # true: also write the rectilinear post-processing 
 #   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
 #   C768  ~ 13 km      C3072 ~ 3 km
 
-c_res: 96 # Cubed-sphere face resolution, an integer: 48, 96, 192, 384, 768, 1152 or 3072.
+c_res: C96 # Cubed-sphere face resolution, a string starting with C: C48, C96, C192, C384, C768, C1152 or C3072.
 gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
 target_lon: -96 # Grid centre longitude [degrees] for stretch and regional_esg. For nest and regional_gfdl it is replaced by the centre of the (first) box.
 target_lat: 35.0 # Grid centre latitude [degrees] for stretch and regional_esg. For nest and regional_gfdl it is replaced by the centre of the (first) box.

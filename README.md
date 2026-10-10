@@ -122,6 +122,7 @@ pyUFS/
 │   ├── diag_field.csv       # Diagnostic field reference
 │   ├── diag_table.monthly   # Default table for month or year segments
 │   ├── install_images.sh    # Container build helper
+│   ├── build_shield.py      # Native SHiELD executable build (Section 19)
 │   ├── update_fix.py        # Mirror of the NOAA fix tree (Section 7)
 │   ├── sync_noaa_fix.sh     # update_fix.py wrapper that loads awscli
 │   └── *.vars.csv           # GFS, HRRR, and ERA5 variable maps
@@ -201,7 +202,7 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
 | `container_bindpath` | Host paths bound into the containers: a list or a comma-separated string; variables are expanded. Each path must exist on the compute nodes. |
 | `shield_root` | Reserved configuration key; it is not consumed by the current launcher. |
 | `archive_root` | Root of the archive tree. |
-| `shield_exe` | Path to a native SHiELD executable. Required for any multi-node run; an empty value selects the container path for single-node runs. |
+| `shield_exe` | Path to a native SHiELD executable, built with `configs/build_shield.py` (Section 19). Required for any multi-node run; an empty value selects the container path for single-node runs. |
 | `modules` | Host modules loaded before a native `shield_exe` is launched; unused with the container image. |
 
 Environment variables such as `$USER` and `$HOME` are expanded.
@@ -245,7 +246,7 @@ per-job memory flag is derived.
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 
-`c_res` is an integer: 48, 96, 192, 384, 768, 1152 or 3072.
+`c_res` is a string starting with C: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`.
 
 ### 6.5 Initial conditions and preprocessing
 
@@ -971,49 +972,62 @@ case directory as `run_config.yaml`; unset keys come from the defaults.
 
 ## 19. Compiling a custom SHiELD executable
 
-If you need a custom binary, build it from the SHiELD source tree and point `shield_exe` at
+If you need a custom binary, build it with `configs/build_shield.py` and point `shield_exe` at
 the result. The workflow uses the native executable when the resolved `shield_exe` value is
 non-empty.
 An empty value selects the container image for a single-node run; all multi-node runs require
 a native `shield_exe`. Because the non-null repository default is restored when a case sets
 `shield_exe: null`, use `shield_exe: ""` to force the single-node container path.
+`case_submit.sh` stops when the configured `shield_exe` does not exist.
 
 ```bash
-git clone https://github.com/NOAA-GFDL/SHiELD_build.git
-cd SHiELD_build
-git checkout FV3-202411-public   # the profile of this branch (19.1)
-git submodule update --init mkmf
-./CHECKOUT_code
+python configs/build_shield.py                      # repro, 64bit, pic, cleanall
+python configs/build_shield.py --comp prod
+python configs/build_shield.py --comp debug --fflags "-fcheck=all"
+python configs/build_shield.py --no-compile         # checks only, no compilation
+python configs/build_shield.py --force              # replace an existing build tree
 ```
 
-`FV3-202411-public` checks out FMS `2024.03`; `git checkout FV3-202604-public` selects the
-`FV3-202604-public` profile (FMS `2026.01`, under development). `case_submit.sh` stops when the configured `shield_exe`
-does not exist.
+The script builds the release of the checked-out pyUFS branch: a branch named `202411` builds
+`FV3-202411-public` (profile in 19.1), and the branch name must be six digits. It reads
+`modules` and `shield_exe` from `configs/run_config.yaml` (the repository default file, not a
+case-local `run_config.yaml`), so edit them there first. It then:
 
-On newer glibc systems, patch `SHiELD_SRC/FMS/affinity/affinity.c` so the local `gettid`
-helper does not conflict with the glibc definition. Remove the duplicate `static` qualifier
-from the local declaration.
+1. Loads the listed host modules and clones `SHiELD_build` into
+   `/tmp/$USER/FV3-<release>-public`, checks out the release tag, runs `CHECKOUT_code`, and
+   initializes the `mkmf` submodule. The machine needs network access to GitHub, and the
+   build directory must not exist unless `--force` is given.
+2. Verifies that `GFDL_atmos_cubed_sphere`, `SHiELD_physics`, `atmos_drivers`, `FMS` and
+   `FMSCoupler` are at the tags that `CHECKOUT_code` selects.
+3. Removes the duplicate `static` qualifier from the local `gettid` in
+   `SHiELD_SRC/FMS/affinity/affinity.c` (newer glibc), in the temporary source only.
+4. Writes `site/environment.gnu.sh` from the `modules` list, checks the toolchain
+   (`gfortran` 10 or later, MPI compilers, NetCDF, `libyaml`, `cmake`), and runs
+   `./COMPILE shield nh <comp> <bit> gnu [pic] <clean>`.
+5. Copies the executable to the `shield_exe` path and writes `<executable>.manifest` next to
+   it, with the commits of all source repositories, the modules, the compile options, the
+   toolchain versions and the SHA-256 of the executable.
 
-Before compiling, update `SHiELD_build/site/environment.gnu.sh` so the GNU build loads the
-required modules:
+Options: `--comp` (`repro`, `prod`, `debug`; default `repro`), `--bit` (`64bit`, `32bit`),
+`--pic` or `--no-pic`, `--clean` (`cleanall`, `clean`, `noclean`), `--avx-level` (default
+`-march=native`) and `--fflags` for extra Fortran flags, which are appended after the
+optimization mode. The default `repro` mode uses the optimization of `prod` (`-O2`) plus
+`-ggdb`, so a crash backtrace names functions and lines.
 
-```bash
-module load hpcx-mpi
-module load netcdf-mpi
-module load libyaml
-```
-
-Then build:
-
-```bash
-cd Build && ./COMPILE 64bit gnu pic
-```
-
-Set the executable path in `run_config.yaml`:
+The installed file name carries the mode and the precision. The `shield_exe` default,
+`FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x`, is rewritten for the mode that was built, so
+the default `repro` build installs `FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x`. The script
+prints the final path; set it in `run_config.yaml`, or build with `--comp prod` to install
+under the default name:
 
 ```yaml
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+shield_exe: /path/to/FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x
 ```
+
+A `shield_exe` name that begins with another release tag, for example `FV3-202604-public_`,
+is refused. To build by hand instead, follow `SHiELD_build`: check out the release tag, run
+`./CHECKOUT_code`, apply the `gettid` change above, load the same modules in
+`site/environment.gnu.sh`, and run `cd Build && ./COMPILE shield nh prod 64bit gnu pic`.
 
 ### 19.1 Build profiles
 

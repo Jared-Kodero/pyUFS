@@ -222,21 +222,36 @@ def deg_to_cres(ddeg):
     return C
 
 
-def parse_resolution(c_res: int | None) -> int | None:
-    """Cubed-sphere face resolution as an integer, for example 96."""
+def parse_resolution(c_res: str | None) -> int | None:
+    """Cubed-sphere face resolution as an integer, from a C-prefixed string such
+    as "C96" (the run_config.yaml form)."""
 
     if c_res is None:
         return None
 
-    if isinstance(c_res, bool) or not isinstance(c_res, int):
-        raise TypeError(f"c_res must be an integer, e.g. 96; got {c_res!r}")
-
     valid_cres = (48, 96, 192, 384, 768, 1152, 3072)
+    expected = ", ".join(f"C{c}" for c in valid_cres)
 
-    if c_res not in valid_cres:
-        raise ValueError(f"c_res {c_res} not supported; use one of {valid_cres}")
+    if not isinstance(c_res, str):
+        raise TypeError(
+            f"c_res must be a string starting with C, e.g. C96; got {c_res!r}"
+        )
 
-    return c_res
+    text = "".join(c_res.split()).upper()
+    if not text.startswith("C"):
+        raise ValueError(
+            f"Invalid resolution format: {c_res!r}. Expected one of ({expected})"
+        )
+
+    try:
+        value = int(text[1:])
+    except ValueError:
+        raise ValueError(f"Invalid C-resolution format: {c_res!r}") from None
+
+    if value not in valid_cres:
+        raise ValueError(f"c_res {c_res!r} not supported; use one of ({expected})")
+
+    return value
 
 
 def format_forecast_length(nhours: int) -> str:

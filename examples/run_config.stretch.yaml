@@ -3,7 +3,7 @@ description: Stretched C96 over central North America
 init_datetime: "2026031200Z"
 run_length: 24
 run_length_units: hours
-c_res: 96
+c_res: C96
 gtype: stretch
 stretch_factor: 2.5
 target_lon: -96

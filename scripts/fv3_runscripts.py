@@ -13,8 +13,6 @@ def gen_shield_run_sh() -> None:
         "--mpi=pmix",
         "--distribution=block:block",
         "--cpu-bind=cores",
-        "--ntasks-per-core=1",
-        "--kill-on-bad-exit=1",
         "-n",
     ]
     mpi_launcher = ["mpirun", "-np"]
@@ -55,9 +53,6 @@ def gen_shield_container_scripts(
         (state.work_dir / "shield.native").touch()
 
     else:
-        # A marker left by an earlier native run would make case_run.sh launch
-        # the container executable outside the container.
-        (state.work_dir / "shield.native").unlink(missing_ok=True)
         cfg = {
             "log_file": log_file,
             "exe": "SHiELD_nh.prod.64bit.x",
