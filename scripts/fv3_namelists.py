@@ -159,7 +159,7 @@ def update_global_nml(
 
     # Use first-guess timings unless overridden by user
     nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
-    nml["coupler_nml"]["dt_cpld"] = timings["dt_ocean"]
+    nml["coupler_nml"]["dt_ocean"] = timings["dt_ocean"]
 
     # FIX: Pull explicitly from the global keys
     nml["fv_core_nml"]["n_split"] = timings["n_split"][0]
@@ -170,7 +170,7 @@ def update_global_nml(
     nml["fv_core_nml"]["layout"] = state.layout[0]
     nml["fv_core_nml"]["io_layout"] = state.io_layout[0]
     nml["atmos_model_nml"]["blocksize"] = state.blocksize[0]
-    nml["fms_nml"]["domains_stack_size"] = 536870912  # 5GB
+    nml["fms_nml"]["domains_stack_size"] = 2**30  # words; 8 GiB of 8-byte reals
 
     if n_nests > 0:
         nml["fv_nest_nml"]["grid_pes"] = state.grid_pes
@@ -263,7 +263,7 @@ def update_nest_nml(
         nml["fv_core_nml"]["io_layout"] = state.io_layout[i]
         nml["atmos_model_nml"]["blocksize"] = state.blocksize[i]
         # Ignored by FMS (fms_nml is read from input.nml); kept consistent.
-        nml["fms_nml"]["domains_stack_size"] = 536870912  # 5GB
+        nml["fms_nml"]["domains_stack_size"] = 2**30  # words; 8 GiB of 8-byte reals
 
         nml = update_namsfc(nml)
 
