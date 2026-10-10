@@ -17,20 +17,9 @@ coupler_nml:
   calendar: julian
   current_date: null
   days: null
-  # Full-coupler boundary arrays are absent with do_flux: false.
-  do_chksum: false
-  do_endpoint_chksum: false
-  # Separate full-coupler components. Noah remains active via lsm: 1 below.
-  do_flux: false
-  do_ice: false
-  do_land: false
-  do_ocean: false
   dt_atmos: null
-  # dt_ocean: null # Legacy SHiELD driver; FV3-202604 uses dt_cpld below.
-  dt_cpld: null
+  dt_ocean: null
   hours: null
-  ice_npes: -1
-  land_npes: -1
   minutes: 0
   months: 0
   seconds: 0
@@ -55,6 +44,11 @@ fms_affinity_nml:
   affinity: false
   debug_affinity: false
   debug_cpuset: false
+
+fms_io_nml:
+  checksum_required: false
+  max_files_r: 100
+  max_files_w: 100
 
 fms_nml:
   clock_grain: ROUTINE
@@ -185,6 +179,7 @@ gfs_physics_nml:
   ysupbl: true
   zhao_mic: false
   lsm: 1
+  sfc_coupled: false
 
 integ_phys_nml:
   do_inline_mp: true
