@@ -5,7 +5,7 @@ description: Nested SHiELD case
 init_datetime: "2026031200Z"
 run_length: 24
 run_length_units: hours
-c_res: 96
+c_res: C96
 gtype: nest
 levels: 64
 refine_ratio: [4, 2]
