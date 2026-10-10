@@ -35,7 +35,7 @@ fregrid_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/fregrid.sif
 preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing image
 shield_root: /oscar/data/deeps/shared/gfdl_shield
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bins/shield/FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x # Native executable built from SHiELD_build FV3-202411-public (README section 19). Required for multi-node runs; "" selects the container image for single-node runs.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bins/shield/FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x # Native executable built from SHiELD_build FV3-202604-public (README section 19). Required for multi-node runs; "" selects the container image for single-node runs.
 containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Where configs/install_images.sh writes {shield,fregrid,preprocess}.sif. When any image is missing, a job builds all three here, so the three image paths above must point into this directory.
 container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers (a list or a comma-separated string; variables are expanded). Must include every directory used by the workflow, and each must exist on the compute nodes.
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml", "netcdf"] # Host modules loaded before a native shield_exe is launched (the libraries it was built with). Not used with the container image.
@@ -212,7 +212,7 @@ do_deep: false # false: deep convection is switched off on domains with dx <= 4 
 #   resolution or refinement ratio.
 
 dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
-dt_ocean: null # Coupling timestep [s]; written as coupler_nml dt_ocean (FV3-202411). Null uses dt_atmos.
+dt_ocean: null # Coupling timestep [s]; written as coupler_nml dt_cpld for FV3-202604. Null uses dt_atmos.
 
 # When set, k_split and n_split must be lists of length n_nests + 1, with the
 # first value for the global grid and the remaining values for the nests in
