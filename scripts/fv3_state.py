@@ -111,6 +111,7 @@ class FV3State:
     ic_cycle: pd.Timestamp | None = None
     resubmit: int | None = None
     continue_run: bool | None = None
+    preprocess_dask_scheduler: str | None = None
     # 4. Ensembles
     ensemble_run: bool | None = None
     n_ensembles: int | None = None
