@@ -3,6 +3,7 @@
 # 1-8 with no gap or duplicate at hours 2, 4 and 6.
 
 description: test hourly restart
+archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
 run_length: 2
 run_length_units: hours
