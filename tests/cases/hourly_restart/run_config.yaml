@@ -15,5 +15,9 @@ generate_ic_data: true
 n_nodes: 1
 n_cpus: 48
 walltime: 2
-# k_split: [1] # Use the working ZIP's automatic C96 value: [2].
-# n_split: [3] # Use the working ZIP's automatic C96 value: [6].
+
+# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 60 s.
+dt_atmos: 720
+dt_ocean: 720
+k_split: [2]
+n_split: [6]

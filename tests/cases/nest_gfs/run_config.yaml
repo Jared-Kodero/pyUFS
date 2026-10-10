@@ -20,5 +20,10 @@ n_nodes: 2
 n_cpus: 96
 walltime: 4
 constraint_node: "48core"
+
+# Explicit time stepping: dt_atmos follows the finest nest (C768, 180 s); the
+# acoustic dt of each domain is dt_atmos / (k_split * n_split) = 60, 15 and 15 s.
+dt_atmos: 180
+dt_ocean: 180
 k_split: [1, 2, 2]
 n_split: [3, 6, 6]
