@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import dask
 from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd, run_parallel
+from fv3_utils import cp, run_cmd
 
 
 def _run_make_orog_gsl(
@@ -142,4 +143,12 @@ def run_make_orog_gsl(
         for tile in tiles
     ]
 
-    return run_parallel(_run_make_orog_gsl, args)
+    tasks = [dask.delayed(_run_make_orog_gsl)(*a) for a in args]
+    return list(
+        dask.compute(
+            *tasks,
+            scheduler=state.preprocess_dask_scheduler,
+            num_workers=len(args),
+            chunksize=1,
+        )
+    )

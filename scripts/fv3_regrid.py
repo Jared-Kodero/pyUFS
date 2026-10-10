@@ -9,12 +9,13 @@ import uuid
 import warnings
 from pathlib import Path
 
+import dask
 import numpy as np
 import xarray as xr
 from derived_vars import calc_derived_vars
 from fv3_runtime import get_stream_handles
 from fv3_state import load_fv3_state
-from fv3_utils import cres_to_deg, env_setup, exit_code, run_parallel
+from fv3_utils import cres_to_deg, env_setup, exit_code
 from pyfregrid import fregrid
 
 warnings.filterwarnings("ignore")
@@ -494,7 +495,13 @@ def call_fregrid(
         chunk = data_vars[i : i + chunk_size]
         tasks.append((cmd, chunk, fregrid_out))
 
-    run_parallel(_run_fregrid, tasks, num_workers=min(len(tasks), py_ncpus))
+    delayed = [dask.delayed(_run_fregrid)(*t) for t in tasks]
+    dask.compute(
+        *delayed,
+        scheduler=state.preprocess_dask_scheduler,
+        num_workers=min(len(tasks), py_ncpus),
+        chunksize=1,
+    )
 
     files = sorted(fregrid_out.glob("*.nc"))
 
