@@ -107,7 +107,7 @@ def ensemble_config():
             "k_split",
             "n_split",
             "dt_atmos",
-            "dt_ocean",
+            "dt_cpld",
         ],
     )
 

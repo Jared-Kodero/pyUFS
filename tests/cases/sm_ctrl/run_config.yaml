@@ -1,6 +1,6 @@
 # Experiment pair with sm_dry: identical except the soil moisture perturbation.
 description: test sm control
-init_datetime: "2024081400Z"
+init_datetime: "2023070100Z"
 run_length: 24
 run_length_units: hours
 c_res: C96
@@ -11,8 +11,8 @@ n_nodes: 1
 n_cpus: 48
 walltime: 4
 constraint_node: "48core"
-# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 60 s.
-dt_atmos: 720
-dt_ocean: 720
+# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 12.5 s.
+dt_atmos: 150
+dt_cpld: 150
 k_split: [2]
 n_split: [6]

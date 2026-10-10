@@ -6,23 +6,15 @@ shell wrapper hands off to Python, which validates the case configuration, assem
 launch environment, generates or stages the grid and initial conditions, runs SHiELD,
 regrids the output, and synchronizes results back to the case directory.
 
-## Branches and SHiELD profiles
+## Branch and SHiELD release
 
-The branch name selects the SHiELD profile this workflow is configured for. Clone the
-branch you need; there is no default `main` branch.
-
-| Branch | SHiELD profile | Status |
-| --- | --- | --- |
-| `202604` | `FV3-202604-public`, FMS `2026.01` | Under development. Expect changes and open errors. |
-| `202411` | `FV3-202411-public`, FMS `2024.03` | Restored 2024 configuration and namelist settings, with the current repository paths. |
+This branch (`202604`) is configured for `FV3-202604-public` (FMS `2026.01`, FMSCoupler
+`full` driver). The SHiELD 2024 release (`FV3-202411-public`) is maintained on the separate
+`202411` branch and is not supported here.
 
 ```bash
-git clone -b 202604 https://github.com/Jared-Kodero/pyUFS.git   # 2026 profile, under development
-git clone -b 202411 https://github.com/Jared-Kodero/pyUFS.git   # 2024 profile
+git clone -b 202604 https://github.com/Jared-Kodero/pyUFS.git
 ```
-
-This document describes the branch it is read on; Section 19.1 lists the differences
-between the two profiles.
 
 ## Contents
 
@@ -326,7 +318,7 @@ Regional ESG grids, active when `gtype: regional_esg`, additionally use:
 | Key | Meaning |
 | --- | --- |
 | `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
-| `dt_ocean` | Coupling time step in seconds. Null uses `dt_atmos`; written as `coupler_nml dt_cpld` for the FV3-202604 driver. |
+| `dt_cpld` | Coupling time step in seconds, written as `coupler_nml dt_cpld`. Null uses `dt_atmos`. |
 | `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
 | `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
 
@@ -820,9 +812,9 @@ table indexed by resolution.
 | 3072 | 90 | 2 | 10 |
 
 Resolutions outside the table are estimated by a log-log fit of `dt_atmos` against `c_res`
-and snapped to a value that divides 3600 seconds. `dt_ocean` defaults to `dt_atmos`. Before
-the model is launched, `dt_ocean` is checked to be a multiple of `dt_atmos` and the segment
-length a multiple of `dt_ocean`, the checks the SHiELD coupler applies. For nested runs the
+and snapped to a value that divides 3600 seconds. `dt_cpld` defaults to `dt_atmos`. Before
+the model is launched, `dt_cpld` is checked to be a multiple of `dt_atmos` and the segment
+length a multiple of `dt_cpld`, the checks the SHiELD coupler applies. For nested runs the
 finest domain sets
 `dt_atmos`, and each domain receives split counts sized to its resolution. The dynamics and
 acoustic time steps follow
@@ -993,11 +985,11 @@ a native `shield_exe`. Because the non-null repository default is restored when 
 Use `scripts/build_shield.py` rather than running `CHECKOUT_code` and `COMPILE` by hand:
 
 ```bash
-git checkout 202604        # or 202411; the branch selects the release
+git checkout 202604
 python scripts/build_shield.py --root /path/to/build_root
 ```
 
-The branch name selects `FV3-202604-public` or `FV3-202411-public`. The script reads
+The script builds `FV3-202604-public`. It reads
 `shield_exe` and `modules` from `configs/run_config.yaml` (the executable is built with the
 modules it is launched with), checks that every module exists on the host, clones
 `SHiELD_build` into `build_root/FV3-<profile>-public/`, runs `CHECKOUT_code`, verifies the
@@ -1018,9 +1010,9 @@ second release, which is why each release gets its own tree and a clean build:
   release, and the script still writes the new release name to `SHiELD_SRC/release`. Two
   `SHiELD_build` clones in the same parent directory share one `SHiELD_SRC`.
 - `COMPILE` reuses `Build/libFMS/gnu` and `Build/nceplibs/gnu` whenever the library files exist,
-  whichever FMS version made them (the 2024 and 2026 builds use the same directory names), and
+  whichever FMS version made them, and
   `make` does not rebuild an object when only a library module file changed. Switching
-  releases in one tree therefore links 2026 sources against FMS 2024.03 modules and objects.
+  releases in one tree therefore links new sources against the old FMS modules and objects.
   The `cleanall` option removes the libraries, the NCEP libraries and the objects first.
 - `COMPILE` tests the exit status of the `mv` that follows `make`, not of `make`. The script
   checks that a new, non-empty executable exists and otherwise reports the errors in
@@ -1044,25 +1036,19 @@ shield_exe: /path/to/FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x
 
 `case_submit.sh` stops when the configured `shield_exe` does not exist.
 
-### 19.1 Build profiles
+### 19.1 Build profile
 
-| Component | Workflow default | Earlier profile |
-| --- | --- | --- |
-| Core, physics, drivers | `FV3-202604-public` | `FV3-202411-public` |
-| FMS / FMSCoupler | `2026.01` / `2026.01` | `2024.03` / `2024.03.01` |
-| `ice_param`, `*_null` | as cloned (untagged) | not compiled |
-| Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` |
+| Component | Version |
+| --- | --- |
+| Core, physics, drivers | `FV3-202604-public` |
+| FMS / FMSCoupler | `2026.01` / `2026.01` |
+| `ice_param`, `*_null` | as cloned (untagged) |
+| Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` |
 
-The two profiles compile different coupler drivers. The tagged `FV3-202411-public`
-`shield` build uses `FMSCoupler/SHiELD/coupler_main.F90`, which reads `dt_ocean`.
-The `FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld`
-and rejects `coupler_nml dt_ocean`. The current template and direct timestep
-assignment target this full driver.
-For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename
-alone does not identify its coupler interface. The workflow retains `dt_ocean`
-as the run configuration key and writes its value directly to `dt_cpld`.
-Case-local `input.nml` or `input.yaml` overrides are passed through normally;
-the model reports incompatible namelist keys.
+The `shield` build uses `FMSCoupler/full`, which reads `coupler_nml dt_cpld` and rejects
+`dt_ocean`. The workflow key `dt_cpld` is written directly to that variable. For custom
+builds, check `Build/exec/*/pathnames_driver`. Case-local `input.nml` or `input.yaml`
+overrides are passed through normally; the model reports incompatible namelist keys.
 
 In the full-driver template, `coupler_nml do_land = false` skips the separate
 land component linked from `land_null`. Noah still runs inside SHiELD physics
@@ -1072,21 +1058,15 @@ Likewise, `coupler_nml do_ocean = false` skips the external ocean component,
 while `gfs_physics_nml do_ocean = true` retains the internal slab ocean.
 `do_flux = false` skips the coupler's component-exchange flux calculation;
 surface fluxes are still calculated by the atmospheric physics. The `ice_npes`
-and `land_npes` settings follow the upstream SHiELD regression cases. A legacy
-driver requires its own namelist and timestep assignment. These defaults describe the standard
+and `land_npes` settings follow the upstream SHiELD regression cases. These defaults describe the standard
 `shield` build, not a coupled `shiemom_lm4` experiment.
 
-The remaining namelist templates use variables declared in both profiles, except
+The namelist templates use variables declared in `FV3-202604-public`, except
 `interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
-SHiELD_build test cases also set. In particular they do not set `gfs_physics_nml
-sfc_coupled`: in `FV3-202411-public` it selects the ocean surface fluxes supplied by a
-coupled ocean (zero in this uncoupled configuration), and in `FV3-202604-public` it is no
-longer a namelist variable.
-
-Untagged `SHiELD_build` checkouts from 2025-04 to 2026-01 paired `FV3-202411-public` with
-FMS 2025.01. Record the commits in `SHiELD_SRC`, the executable checksum, the modules
-(`modules` key) and the container digests for each production profile, and validate a
-newer profile separately before use.
+SHiELD_build test cases also set. `gfs_physics_nml sfc_coupled` and `fms_io_nml` are not
+namelist variables in this release and are not set. Record the commits in `SHiELD_SRC`, the
+executable checksum, the modules (`modules` key) and the container digests, and validate any
+newer release separately before use.
 
 ### 19.2 UFS_UTILS and containers
 

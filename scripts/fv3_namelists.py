@@ -69,7 +69,7 @@ def update_nml_configs():
 
     # Update state with the calculated timings
     state.dt_atmos = timings["dt_atmos"]
-    state.dt_ocean = timings["dt_ocean"]
+    state.dt_cpld = timings["dt_cpld"]
     state.k_split = timings["k_split"]
     state.n_split = timings["n_split"]
 
@@ -159,7 +159,7 @@ def update_global_nml(
 
     # Use first-guess timings unless overridden by user
     nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
-    nml["coupler_nml"]["dt_cpld"] = timings["dt_ocean"]
+    nml["coupler_nml"]["dt_cpld"] = timings["dt_cpld"]
 
     # FIX: Pull explicitly from the global keys
     nml["fv_core_nml"]["n_split"] = timings["n_split"][0]

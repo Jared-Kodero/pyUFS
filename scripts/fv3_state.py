@@ -160,7 +160,7 @@ class FV3State:
     do_deep: bool | None = None
     # 8. Time stepping
     dt_atmos: int | None = None
-    dt_ocean: int | None = None
+    dt_cpld: int | None = None
     k_split: list[int] | None = None
     n_split: list[int] | None = None
     # 9. Surface and orography

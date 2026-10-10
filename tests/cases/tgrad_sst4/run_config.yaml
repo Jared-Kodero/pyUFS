@@ -1,7 +1,7 @@
 # Experiment pair with tgrad_ctrl: 4 K Arctic SST increment (0 K at 60N, 4 K
 # poleward of 80N). SST4 - CTRL in FIXED/MODS/RTGSST*.grb must match the pattern.
 description: test tgrad sst4
-init_datetime: "2020010100Z"
+init_datetime: "2023070100Z"
 run_length: 1
 run_length_units: months
 resubmit: 1
@@ -14,9 +14,9 @@ n_nodes: 1
 n_cpus: 48
 walltime: 12
 constraint_node: "48core"
-# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 60 s.
-dt_atmos: 720
-dt_ocean: 720
+# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 12.5 s.
+dt_atmos: 150
+dt_cpld: 150
 k_split: [2]
 n_split: [6]
 
