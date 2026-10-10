@@ -102,6 +102,7 @@ run_length_units: hours # hours | days | months | years. months and years are ca
 forecast_hour: 0 # Lead hour of the init_datetime forecast used for ICs (0: the analysis). The model starts at init_datetime + forecast_hour; regional boundaries use the same cycle from this lead on, so regional runs need a multiple of 3.
 resubmit: 0 # Number of sequential resubmissions. The run has resubmit + 1 segments, each run_length long.
 continue_run: false # Managed internally by the driver. Segment 0 is a cold start; later segments are warm starts driven by resubmit.
+preprocess_dask_scheduler: processes # Dask scheduler for the parallel per-tile preprocessing and regridding steps: processes | synchronous. processes runs spawned worker processes; synchronous runs the tasks one at a time in the driver process (debugging). threads is not supported because the tasks change the working directory.
 
 # -----------------------------------------------------------------------------
 # 4. ENSEMBLE CONFIGURATION

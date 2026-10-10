@@ -22,7 +22,8 @@ log = logging.getLogger("PREPROCESS")
 def log_release() -> None:
     """Log the pyUFS branch and the SHiELD build this case will execute.
 
-    Called before any other driver output. The branch is read from .git/HEAD of
+    Called before any other driver output of the initial run (not on restarts,
+    which would repeat it in every segment). The branch is read from .git/HEAD of
     the pyUFS checkout (no git binary is needed inside the containers) and the
     SHiELD build from shield_exe and its .manifest, or the container image when
     shield_exe is not set.
