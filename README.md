@@ -248,6 +248,7 @@ per-job memory flag is derived.
 | `forecast_hour` | Lead hour of the `init_datetime` forecast used for initial conditions; 0 selects the analysis. With a non-zero value the model clock (`coupler_nml`, diagnostics, climatologies, the `chgres_cube` date) starts at `init_datetime + forecast_hour`, and regional boundaries are taken from the same cycle at leads `forecast_hour`, `forecast_hour + 3`, ..., written as boundary hours 000, 003, ...; regional runs therefore need a multiple of 3, and the last lead must exist (GFS: hourly to f120, 3-hourly to f384). The state records the source cycle as `ic_cycle`. |
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
+| `preprocess_dask_scheduler` | Dask scheduler for the parallel per-tile preprocessing and regridding steps: `processes` (default, spawned worker processes) or `synchronous` (one task at a time in the driver process, for debugging). `threads` is not supported because the tasks change the working directory. |
 
 `c_res` is a string that starts with `C`: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`. A plain integer such as `96` is still read as the same resolution, and checksums and staged-grid records treat the two spellings alike.
 

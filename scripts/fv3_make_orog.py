@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import dask
 from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd, run_parallel
+from fv3_utils import cp, run_cmd
 
 
 def _run_make_orog(
@@ -180,4 +181,10 @@ def run_make_orog(
         for tile in tiles
     ]
 
-    run_parallel(_run_make_orog, args)
+    tasks = [dask.delayed(_run_make_orog)(*a) for a in args]
+    dask.compute(
+        *tasks,
+        scheduler=state.preprocess_dask_scheduler,
+        num_workers=len(args),
+        chunksize=1,
+    )
