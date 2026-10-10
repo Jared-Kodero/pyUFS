@@ -27,11 +27,6 @@ external_ic_nml:
 field_manager_nml:
   use_field_table_yaml: true
 
-fms_io_nml:
-  checksum_required: false
-  max_files_r: 100
-  max_files_w: 100
-
 fms_nml:
   clock_grain: ROUTINE
   domains_stack_size: null
@@ -147,7 +142,6 @@ gfs_physics_nml:
   ysupbl: true
   zhao_mic: false
   lsm: 1 #2
-  sfc_coupled: false
 
 integ_phys_nml:
   do_inline_mp: true

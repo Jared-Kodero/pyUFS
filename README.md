@@ -6,11 +6,23 @@ shell wrapper hands off to Python, which validates the case configuration, assem
 launch environment, generates or stages the grid and initial conditions, runs SHiELD,
 regrids the output, and synchronizes results back to the case directory.
 
-## SHiELD profile
+## Branches and SHiELD profiles
 
-The default branch is configured for SHiELD `FV3-202411-public` (FMS `2024.03`). Support
-for `FV3-202604-public` (FMS `2026.01`) is under development and is not validated here.
-Section 19.1 lists the differences between the two profiles.
+The branch name selects the SHiELD profile this workflow is configured for. Clone the
+branch you need; there is no default `main` branch.
+
+| Branch | SHiELD profile | Status |
+| --- | --- | --- |
+| `202604` | `FV3-202604-public`, FMS `2026.01` | Under development. Expect changes and open errors. |
+| `202411` | `FV3-202411-public`, FMS `2024.03` | Restored 2024 configuration and namelist settings, with the current repository paths. |
+
+```bash
+git clone -b 202604 https://github.com/Jared-Kodero/pyUFS.git   # 2026 profile, under development
+git clone -b 202411 https://github.com/Jared-Kodero/pyUFS.git   # 2024 profile
+```
+
+This document describes the branch it is read on; Section 19.1 lists the differences
+between the two profiles.
 
 ## Contents
 
@@ -314,7 +326,7 @@ Regional ESG grids, active when `gtype: regional_esg`, additionally use:
 | Key | Meaning |
 | --- | --- |
 | `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
-| `dt_ocean` | Coupling time step in seconds. Null uses `dt_atmos`; written as `coupler_nml dt_ocean` for the FV3-202411 driver. |
+| `dt_ocean` | Coupling time step in seconds. Null uses `dt_atmos`; written as `coupler_nml dt_cpld` for the FV3-202604 driver. |
 | `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
 | `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
 
@@ -981,13 +993,13 @@ a native `shield_exe`. Because the non-null repository default is restored when 
 ```bash
 git clone https://github.com/NOAA-GFDL/SHiELD_build.git
 cd SHiELD_build
-git checkout FV3-202411-public   # the profile of this branch (19.1)
+git checkout FV3-202604-public   # the default profile (19.1)
 git submodule update --init mkmf
 ./CHECKOUT_code
 ```
 
-`FV3-202411-public` checks out FMS `2024.03`; `git checkout FV3-202604-public` selects the
-`FV3-202604-public` profile (FMS `2026.01`, under development). `case_submit.sh` stops when the configured `shield_exe`
+`FV3-202604-public` checks out FMS `2026.01`; `git checkout FV3-202411-public` selects the
+earlier profile (FMS `2024.03`). `case_submit.sh` stops when the configured `shield_exe`
 does not exist.
 
 On newer glibc systems, patch `SHiELD_SRC/FMS/affinity/affinity.c` so the local `gettid`
@@ -1017,36 +1029,42 @@ shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
 
 ### 19.1 Build profiles
 
-| Component | This branch | `FV3-202604-public` (under development) |
+| Component | Workflow default | Earlier profile |
 | --- | --- | --- |
-| Core, physics, drivers | `FV3-202411-public` | `FV3-202604-public` |
-| FMS / FMSCoupler | `2024.03` / `2024.03.01` | `2026.01` / `2026.01` |
+| Core, physics, drivers | `FV3-202604-public` | `FV3-202411-public` |
+| FMS / FMSCoupler | `2026.01` / `2026.01` | `2024.03` / `2024.03.01` |
 | `ice_param`, `*_null` | unpinned | unpinned |
-| Executable (`shield_exe` default) | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` |
+| Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` |
 
 The two profiles compile different coupler drivers. The tagged `FV3-202411-public`
 `shield` build uses `FMSCoupler/SHiELD/coupler_main.F90`, which reads `dt_ocean`.
 The `FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld`
-and rejects `coupler_nml dt_ocean`. The templates and timestep assignment of this
-repository target the `FMSCoupler/SHiELD` driver.
+and rejects `coupler_nml dt_ocean`. The current template and direct timestep
+assignment target this full driver.
 For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename
 alone does not identify its coupler interface. The workflow retains `dt_ocean`
-as the run configuration key and writes its value directly to `dt_ocean`.
+as the run configuration key and writes its value directly to `dt_cpld`.
 Case-local `input.nml` or `input.yaml` overrides are passed through normally;
 the model reports incompatible namelist keys.
 
-The `coupler_nml` keys of the `FMSCoupler/full` driver (`do_flux`, `do_ice`, `do_land`,
-`do_ocean`, `do_chksum`, `do_endpoint_chksum`, `ice_npes`, `land_npes`) are not read by the
-`FMSCoupler/SHiELD` driver and are not set here. The templates set
-`fms_io_nml` (`checksum_required`, `max_files_r`, `max_files_w`), which FMS `2024.03`
-still reads.
+In the full-driver template, `coupler_nml do_land = false` skips the separate
+land component linked from `land_null`. Noah still runs inside SHiELD physics
+with `gfs_physics_nml lsm = 1`; the standard `shield` build defines
+`_USE_LEGACY_LAND_`, and `atmos_model_nml fullcoupler_fluxes` defaults to 0.
+Likewise, `coupler_nml do_ocean = false` skips the external ocean component,
+while `gfs_physics_nml do_ocean = true` retains the internal slab ocean.
+`do_flux = false` skips the coupler's component-exchange flux calculation;
+surface fluxes are still calculated by the atmospheric physics. The `ice_npes`
+and `land_npes` settings follow the upstream SHiELD regression cases. A legacy
+driver requires its own namelist and timestep assignment. These defaults describe the standard
+`shield` build, not a coupled `shiemom_lm4` experiment.
 
-The remaining namelist templates use variables declared in this profile, except
+The remaining namelist templates use variables declared in both profiles, except
 `interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
-SHiELD_build test cases also set. The templates set `gfs_physics_nml sfc_coupled = false`:
-in `FV3-202411-public` it selects the ocean surface fluxes supplied by a coupled ocean,
-which this uncoupled configuration does not use. In `FV3-202604-public` it is no longer a
-namelist variable and templates for that profile omit it.
+SHiELD_build test cases also set. In particular they do not set `gfs_physics_nml
+sfc_coupled`: in `FV3-202411-public` it selects the ocean surface fluxes supplied by a
+coupled ocean (zero in this uncoupled configuration), and in `FV3-202604-public` it is no
+longer a namelist variable.
 
 Untagged `SHiELD_build` checkouts from 2025-04 to 2026-01 paired `FV3-202411-public` with
 FMS 2025.01. Record the commits in `SHiELD_SRC`, the executable checksum, the modules
