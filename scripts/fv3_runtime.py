@@ -19,6 +19,46 @@ from fv3_utils import parse_resolution
 log = logging.getLogger("PREPROCESS")
 
 
+def log_release() -> None:
+    """Log the pyUFS branch and the SHiELD build this case will execute.
+
+    Called before any other driver output. The branch is read from .git/HEAD of
+    the pyUFS checkout (no git binary is needed inside the containers) and the
+    SHiELD build from shield_exe and its .manifest, or the container image when
+    shield_exe is not set.
+    """
+    branch = "unknown"
+    try:
+        head = (Path(paths["ufs_utils"]) / ".git" / "HEAD").read_text().strip()
+        if head.startswith("ref:"):
+            branch = head.removeprefix("ref: refs/heads/")
+        else:
+            branch = f"detached at {head[:12]}"
+    except OSError:
+        pass
+
+    config = merged_run_config()
+    shield_exe = config.get("shield_exe")
+    if shield_exe:
+        exe = Path(os.path.expandvars(str(shield_exe)))
+        version = exe.name
+        try:
+            manifest = exe.with_name(exe.name + ".manifest").read_text()
+            for line in manifest.splitlines():
+                if line.startswith("release:"):
+                    version = f"{exe.name} ({line.strip()})"
+                    break
+        except OSError:
+            pass
+    else:
+        image = config.get("shield_image")
+        name = Path(str(image)).name if image else "(SHiELD)"
+        version = f"container image {name}"
+
+    log.info("pyUFS branch: %s", branch)
+    log.info("SHiELD version: %s", version)
+
+
 def get_newres(gridfile: Path) -> int:
     """Return the global-equivalent cubed-sphere resolution of a regional grid.
 
