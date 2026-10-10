@@ -1,9 +1,10 @@
 from pathlib import Path
 
+import dask
 import xarray as xr
 from fv3_runtime import log
 from fv3_state import state
-from fv3_utils import run_cmd, run_parallel
+from fv3_utils import run_cmd
 
 
 def _require_var(path: Path, var: str, step: str) -> None:
@@ -127,4 +128,10 @@ def run_add_lakefrac(
         for tile in tiles
     ]
     # Each lakefrac run writes only its own tile's file.
-    run_parallel(_run_lakefrac, args)
+    tasks = [dask.delayed(_run_lakefrac)(*a) for a in args]
+    dask.compute(
+        *tasks,
+        scheduler=state.preprocess_dask_scheduler,
+        num_workers=len(args),
+        chunksize=1,
+    )
