@@ -21,11 +21,9 @@ export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 if  [ ! -d "$JOBTMP_DIR" ]; then 
     SYNC=0
     WORK_DIR="$CASE_DIR"
-    TMP_DIR="$CASE_ROOT_DIR/tmp"
     mkdir -p "$JOBTMP_DIR"
 else
     SYNC=1
-    TMP_DIR="$JOBTMP_DIR/tmp"
     rm -rf "$WORK_DIR"
 fi
 
@@ -37,7 +35,6 @@ if [ -z "$CASE_RUN_START_TIME" ]; then
     export CASE_RUN_START_TIME=$(date +%s)
 fi
 
-export TMP_DIR
 export SESSION_START_TIME=$(date +%s)
 
 
@@ -45,7 +42,6 @@ export SESSION_START_TIME=$(date +%s)
 # PREPARE DIRECTORIES
 mkdir -p "$WORK_DIR"
 mkdir -p "$CASE_DIR"
-mkdir -p "$TMP_DIR"
 
 
 # BUILD MISSING IMAGES (run as a child process so its module/env changes do not leak)
@@ -89,7 +85,7 @@ fi
 # run at the same time on a shared filesystem never share one.
 export TMPDIR="$WORK_DIR/.tmp"
 mkdir -p "$TMPDIR"
-export APPTAINER_CACHEDIR=$TMP_DIR
+export APPTAINER_CACHEDIR="$TMPDIR"
 export APPTAINER_HOME=$HOME
 export APPTAINER_BINDPATH=$(printf "%s" "$CONTAINER_BINDPATH" | base64 -d)
 

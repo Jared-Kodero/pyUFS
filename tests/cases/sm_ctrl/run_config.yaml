@@ -1,5 +1,6 @@
 # Experiment pair with sm_dry: identical except the soil moisture perturbation.
 description: test sm control
+archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
 run_length: 24
 run_length_units: hours

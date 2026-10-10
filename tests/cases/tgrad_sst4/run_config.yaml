@@ -1,6 +1,7 @@
 # Experiment pair with tgrad_ctrl: 4 K Arctic SST increment (0 K at 60N, 4 K
 # poleward of 80N). SST4 - CTRL in FIXED/MODS/RTGSST*.grb must match the pattern.
 description: test tgrad sst4
+archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
 run_length: 1
 run_length_units: months
