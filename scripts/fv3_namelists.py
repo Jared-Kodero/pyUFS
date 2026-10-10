@@ -28,6 +28,13 @@ def restart_config():
         nml["fv_core_nml"]["na_init"] = 0
         nml["fv_core_nml"]["make_nh"] = False
 
+        # Restart-read checksum overrides. The cold-start namelist does not
+        # carry them; the pre-refactor restart_config set the same four keys.
+        for group in ("fms_io_nml", "fms2_io_nml"):
+            nml.setdefault(group, {})
+            nml[group]["checksum_required"] = False
+            nml[group]["restart_checksums_required"] = False
+
         with open(f, "w") as nml_out:
             f90nml.write(nml, nml_out)
 
