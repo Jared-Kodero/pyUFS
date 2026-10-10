@@ -1,6 +1,7 @@
 # Experiment pair with sm_ctrl: top three soil layers dried by 20% at the initial
 # time. IC/perts holds the original and perturbed sfc_data for comparison.
 description: test sm dry
+archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
 run_length: 24
 run_length_units: hours

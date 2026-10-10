@@ -2,6 +2,7 @@
 # chgres_cube_nest03.yaml). Check that LOGS has one chgres_cube_nest0N_*.log per
 # nest (no HRRR run) and that state.yaml lists nest02/nest03_ic_source as GFS.
 description: test nest gfs
+archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
 run_length: 6
 run_length_units: hours
