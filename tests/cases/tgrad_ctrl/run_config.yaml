@@ -2,7 +2,7 @@
 # Two monthly segments; the driver log must show the FIXED/MODS writes once, at
 # the cold start, and namsfc fntsfc/fnaisc pointing to FIXED/MODS.
 description: test tgrad control
-init_datetime: "2024010100Z"
+init_datetime: "2023070100Z"
 run_length: 1
 run_length_units: months
 resubmit: 1
@@ -23,8 +23,8 @@ tgrad_perturbations:
   lat_start: 60.0
   lat_full: 80.0
 
-# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 60 s.
-dt_atmos: 720
-dt_ocean: 720
+# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 12.5 s.
+dt_atmos: 150
+dt_ocean: 150
 k_split: [2]
 n_split: [6]
