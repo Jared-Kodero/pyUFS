@@ -1,26 +1,19 @@
 #!/usr/bin/env python3
-"""Build the native SHiELD executable that matches the checked-out pyUFS branch.
+"""Build SHiELD for the current pyUFS release using the Oscar toolchain.
 
-    python scripts/build_shield.py                 # build for the current branch
-    python scripts/build_shield.py --no-compile    # stop after checkout, verification, environment
+    python configs/build_shield.py                    # repro, 64bit, pic, cleanall
+    python configs/build_shield.py --comp prod
+    python configs/build_shield.py --comp debug --fflags "-fcheck=all"
+    python configs/build_shield.py --no-compile
+    python configs/build_shield.py --force
 
-The pyUFS branch name selects the release (202604 -> FV3-202604-public, 202411 ->
-FV3-202411-public). The script
+Read modules and the final executable path from configs/run_config.yaml. Build in
+/tmp/$USER/FV3-<release>-public and install only the executable and its manifest.
 
-  1. reads ``shield_exe`` and ``modules`` from configs/run_config.yaml (the executable
-     must be built with the modules it is launched with),
-  2. checks that each module exists on this host (``module avail``),
-  3. clones SHiELD_build into its own tree for the release, runs CHECKOUT_code, and verifies
-     every tagged repository against the tags that CHECKOUT_code requests (the untagged
-     ice_param and *_null repositories stay at the commits that the clone provides),
-  4. writes SHiELD_build/site/environment.gnu.sh for this machine (module loads, MPI
-     wrappers, netCDF and HDF5 locations, FMS_CPPDEFS),
-  5. tests the loaded toolchain, then runs ``COMPILE shield nh prod 64bit gnu pic cleanall``
-     (fresh FMS, NCEP libraries and objects; see README section 19), and
-  6. copies the executable to ``shield_exe`` and writes ``<shield_exe>.manifest``.
-
-Each release is built in its own directory, so 2024 and 2026 builds never share sources,
-libraries or objects.
+The default compiler mode is repro: the optimization of prod (-O2) plus -ggdb, so a
+crash backtrace names functions and lines. The installed file name carries the mode
+(..._SHiELD_nh.repro.64bit.gnu.x); set shield_exe in run_config.yaml to the path that
+the script prints.
 """
 
 from __future__ import annotations
@@ -33,353 +26,333 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 import yaml
 
-REPO = Path(__file__).resolve().parents[1]
+COMP_MODES = ("repro", "prod", "debug")
+CONFIG_DIR = Path(__file__).resolve().parent
+REPO = CONFIG_DIR.parent
+BUILD_ROOT = Path("/tmp") / (os.environ.get("USER") or Path.home().name)
 SHIELD_BUILD_URL = "https://github.com/NOAA-GFDL/SHiELD_build.git"
-MODULE_INIT = (
-    "${MODULESHOME:+$MODULESHOME/init/bash}",
-    "/etc/profile.d/modules.sh",
-    "/etc/profile.d/lmod.sh",
-    "/usr/share/lmod/lmod/init/bash",
-    "/usr/share/Modules/init/bash",
-)
 
 
 class BuildError(RuntimeError):
-    pass
+    """An invalid build configuration or failed build step."""
 
 
-def run(cmd, cwd=None, env=None, check=True, log=None, quiet=False, **kw) -> subprocess.CompletedProcess:
-    """Run a command; stream output to ``log`` when given."""
-    shown = cmd if isinstance(cmd, str) else shlex.join(map(str, cmd))
+def step(message: str) -> None:
+    """Print a progress line."""
+    print(f">>> {message}", flush=True)
+
+
+def detail(message: str) -> None:
+    """Print an indented line under the current step."""
+    print(f"    {message}", flush=True)
+
+
+def run(
+    cmd: list[str],
+    *,
+    cwd: Path | None = None,
+    quiet: bool = False,
+    live: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Execute a command and raise BuildError on failure.
+
+    With `live` the command writes straight to the terminal, unformatted.
+    Otherwise its output is captured, for the git and toolchain queries.
+    """
     if not quiet:
-        print(f"    $ {shown}", flush=True)
-    if log is not None:
-        with open(log, "ab") as fh:
-            proc = subprocess.run(cmd, cwd=cwd, env=env, stdout=fh, stderr=subprocess.STDOUT, **kw)
-    else:
-        proc = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, **kw)
-    if check and proc.returncode != 0:
-        tail = ""
-        if log is not None:
-            tail = "\n".join(Path(log).read_text(errors="replace").splitlines()[-25:])
-        else:
-            tail = (proc.stdout or "") + (proc.stderr or "")
-        raise BuildError(f"command failed ({proc.returncode}): {shown}\n{tail}")
-    return proc
+        detail(f"$ {shlex.join(cmd)}")
+    if live:
+        result = subprocess.run(cmd, cwd=cwd, check=False)
+        if result.returncode:
+            raise BuildError(
+                f"{shlex.join(cmd)} failed ({result.returncode}); see the output above"
+            )
+        return result
+    result = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
+    if result.returncode:
+        raise BuildError(
+            f"{shlex.join(cmd)} failed ({result.returncode}):\n"
+            + (result.stdout + result.stderr)
+        )
+    return result
 
 
 def git(repo: Path, *args: str) -> str:
     return run(["git", "-C", str(repo), *args], quiet=True).stdout.strip()
 
 
-def bash(script: str, **kw) -> subprocess.CompletedProcess:
-    return subprocess.run(["bash", "-c", script], text=True, capture_output=True, **kw)
+def installed_path(dest: Path, comp: str, bit: str) -> Path:
+    """Name the installed file for the build mode.
+
+    shield_exe names such as ..._SHiELD_nh.prod.64bit.gnu.x carry the mode and the
+    precision; they are rewritten so the file name matches what was built.
+    """
+    name, count = re.subn(
+        r"\.(?:prod|repro|debug)\.(?:32|64)bit\.", f".{comp}.{bit}.", dest.name, count=1
+    )
+    return dest.with_name(name) if count else dest
 
 
-def module_prelude() -> str:
-    """Shell lines that define the ``module`` function, or fail if the host has none."""
-    lines = [f'for f in {" ".join(MODULE_INIT)}; do [ -f "$f" ] && . "$f" && break; done']
-    lines.append("type module >/dev/null 2>&1 || { echo 'no module command' >&2; exit 90; }")
-    return "\n".join(lines)
-
-
-# ----------------------------------------------------------------------------- inputs
-
-
-def read_run_config(path: Path) -> dict:
-    cfg = yaml.safe_load(path.read_text()) or {}
-    for key in ("shield_exe", "modules"):
-        if key not in cfg:
-            raise BuildError(f"{path}: missing key {key}")
-    return cfg
-
-
-def current_profile() -> str:
-    branch = git(REPO, "branch", "--show-current")
-    m = re.fullmatch(r"(\d{6})", branch)
-    if not m:
-        raise BuildError(
-            f"pyUFS branch '{branch}' is not a release branch such as 202604 or 202411; "
-            "check one out or pass --profile"
-        )
-    return m.group(1)
-
-
-def check_exe_name(exe: Path, tag: str) -> None:
-    m = re.match(r"(FV3-\d{6}-public)_", exe.name)
-    if m and m.group(1) != tag:
-        raise BuildError(
-            f"shield_exe is named for {m.group(1)} but the branch builds {tag}; "
-            "fix shield_exe or check out the matching branch"
-        )
-
-
-def check_modules(wanted: list[str]) -> list[str]:
-    """Return the module names; stop if the host has the module system but lacks one."""
-    probe = bash(module_prelude())
-    if probe.returncode == 90:
-        print("    no module command on this host; the environment is assumed to be set", flush=True)
-        return []
-    missing = []
-    for name in wanted:
-        out = bash(module_prelude() + f"\nmodule --terse avail {shlex.quote(name)} 2>&1")
-        listed = [ln.strip() for ln in (out.stdout + out.stderr).splitlines() if ln.strip()]
-        if not any(ln.split("/")[0].rstrip(":") == name.split("/")[0] for ln in listed):
-            missing.append(name)
-    if missing:
-        raise BuildError(
-            "modules not found on this host: " + ", ".join(missing)
-            + "\nrun 'module avail' and change the modules key of configs/run_config.yaml"
-        )
-    return wanted
-
-
-# ----------------------------------------------------------------------------- checkout
-
-
-def checkout(profile: str, base: Path, force: bool) -> tuple[Path, Path, str]:
-    tag = f"FV3-{profile}-public"
-    tree = base / tag
-    if tree.exists():
-        if not force:
-            raise BuildError(f"{tree} exists; pass --force to rebuild from scratch")
-        shutil.rmtree(tree)
-    tree.mkdir(parents=True)
-    build, src = tree / "SHiELD_build", tree / "SHiELD_SRC"
-
-    print(">>> SHiELD_build", tag, flush=True)
-    run(["git", "clone", "-q", SHIELD_BUILD_URL, str(build)])
-    git(build, "checkout", "-q", tag)
-    run(["git", "-C", str(build), "submodule", "update", "--init", "mkmf"])
-
-    print(">>> CHECKOUT_code", flush=True)
-    # CHECKOUT_code is a POSIX sh script that sources $MODULESHOME/init/sh and aborts when
-    # that file is missing; supply a stub on hosts without environment modules.
-    env = dict(os.environ)
-    stub = None
-    if not (env.get("MODULESHOME") and Path(env["MODULESHOME"], "init/sh").is_file()):
-        stub = tempfile.mkdtemp()
-        Path(stub, "init").mkdir()
-        Path(stub, "init/sh").write_text("module() { :; }\n")
-        env["MODULESHOME"] = stub
+def main(args: argparse.Namespace) -> int:
     try:
-        run(["./CHECKOUT_code"], cwd=build, env=env, log=tree / "checkout.log")
-    finally:
-        if stub:
-            shutil.rmtree(stub, ignore_errors=True)
-    return build, src, tag
+        config_path = CONFIG_DIR / "run_config.yaml"
+        config = yaml.safe_load(config_path.read_text()) or {}
+        modules = config.get("modules")
+        if (
+            not isinstance(modules, list)
+            or not modules
+            or not all(isinstance(name, str) and name.strip() for name in modules)
+        ):
+            raise BuildError(f"{config_path}: modules must be a nonempty list")
+        raw_dest = config.get("shield_exe")
+        if not isinstance(raw_dest, str) or not raw_dest.strip():
+            raise BuildError(f"{config_path}: shield_exe must be a nonempty path")
+        dest = Path(os.path.expandvars(raw_dest)).expanduser()
+        config_dest = dest
 
+        branch = git(REPO, "branch", "--show-current")
+        if not re.fullmatch(r"\d{6}", branch):
+            raise BuildError(f"pyUFS branch '{branch}' is not a six-digit release")
+        tag = f"FV3-{branch}-public"
+        named_release = re.match(r"(FV3-\d{6}-public)_", dest.name)
+        if named_release and named_release.group(1) != tag:
+            raise BuildError(
+                f"shield_exe is named for {named_release.group(1)}, not {tag}"
+            )
 
-def requested_tags(build: Path, tag: str) -> dict[str, str]:
-    text = (build / "CHECKOUT_code").read_text()
-
-    def var(name: str) -> str:
-        m = re.search(rf'^{name}="?([^"\s]+)"?', text, re.M)
-        if not m:
-            raise BuildError(f"CHECKOUT_code does not define {name}")
-        return m.group(1)
-
-    release = var("release")
-    if release != tag:
-        raise BuildError(f"CHECKOUT_code requests {release}, not {tag}")
-    return {
-        "GFDL_atmos_cubed_sphere": release,
-        "SHiELD_physics": release,
-        "atmos_drivers": release,
-        "FMS": var("fms_release"),
-        "FMSCoupler": var("fms_c_release"),
-    }
-
-
-def verify_and_record(build: Path, src: Path, tag: str) -> list[str]:
-    print(">>> verifying tagged repositories", flush=True)
-    bad = []
-    for repo, want in requested_tags(build, tag).items():
-        tags = git(src / repo, "tag", "--points-at", "HEAD").split()
-        ok = want in tags
-        print(f"    {repo:26s} {want if ok else 'tags at HEAD: ' + (' '.join(tags) or 'none')}")
-        if not ok:
-            bad.append(f"{repo}: expected {want}")
-    if bad:
-        raise BuildError("checkout does not match " + tag + ":\n  " + "\n  ".join(bad))
-
-    date = git(build, "log", "-1", "--format=%cI", tag)
-    lines = [f"profile: {tag} (SHiELD_build {git(build, 'rev-parse', 'HEAD')}, release date {date})"]
-    for repo in sorted(p for p in src.iterdir() if (p / ".git").exists()):
-        lines.append(f"{repo.name}: {git(repo, 'rev-parse', 'HEAD')} {git(repo, 'describe', '--tags', '--always')}")
-    return lines
-
-
-# ----------------------------------------------------------------------------- environment
-
-
-def glibc_has_gettid() -> bool:
-    """glibc 2.30 and later declares gettid(); FMS affinity.c then needs -DHAVE_GETTID."""
-    out = subprocess.run(["ldd", "--version"], text=True, capture_output=True).stdout
-    m = re.search(r"(\d+)\.(\d+)\s*$", out.splitlines()[0]) if out else None
-    return bool(m) and (int(m[1]), int(m[2])) >= (2, 30)
-
-
-def write_environment(build: Path, modules: list[str], march: str, cppdefs: str) -> Path:
-    """Replace site/environment.gnu.sh by a machine independent file (no hostname case)."""
-    loads = "\n".join(f"  module load {m}" for m in modules) or "  :"
-    text = f"""#!/bin/sh
-# Generated by scripts/build_shield.py for this machine. Do not edit; rerun the script.
-
-for f in "${{MODULESHOME}}/init/sh" /etc/profile.d/modules.sh /etc/profile.d/lmod.sh; do
-  if [ -f "$f" ]; then . "$f"; break; fi
-done
-if type module >/dev/null 2>&1; then
-{loads}
+        # Source the Oscar module system and load the exact modules specified in YAML.
+        loads = "\n".join(
+            f"module load {shlex.quote(name)} || exit 1" for name in modules
+        )
+        module_init = """if [[ -z ${MODULESHOME:-} || ! -f $MODULESHOME/init/sh ]]; then
+  echo 'Missing $MODULESHOME/init/sh' >&2; exit 1
 fi
+source "$MODULESHOME/init/sh"
+"""
+        step(f"{tag}; modules: {', '.join(modules)}")
+        run(["bash", "-c", module_init + loads], quiet=True)
 
-# Locations used by site/gnu.mk
-export NETCDF_DIR="$(nc-config --prefix 2>/dev/null)"
+        tree = BUILD_ROOT / tag
+        shutil.rmtree(tree, ignore_errors=True)
+        build = tree / "SHiELD_build"
+        src = tree / "SHiELD_SRC"
+        tree.mkdir(parents=True)
+
+        step("checking out SHiELD")
+        run(["git", "clone", SHIELD_BUILD_URL, str(build)], live=True)
+        git(build, "checkout", "-q", tag)
+        run(["./CHECKOUT_code"], cwd=build, live=True)
+        run(["git", "submodule", "update", "--init", "mkmf"], cwd=build, live=True)
+
+        # Verify the five tagged source repositories selected by CHECKOUT_code.
+        checkout_text = (build / "CHECKOUT_code").read_text()
+        variables = {}
+        for name in ("release", "fms_release", "fms_c_release"):
+            match = re.search(rf'^{name}="?([^"\s]+)"?', checkout_text, re.MULTILINE)
+            if match is None:
+                raise BuildError(f"CHECKOUT_code does not define {name}")
+            variables[name] = match.group(1)
+        if variables["release"] != tag:
+            raise BuildError(
+                f"CHECKOUT_code requests {variables['release']}, not {tag}"
+            )
+        expected = {
+            "GFDL_atmos_cubed_sphere": tag,
+            "SHiELD_physics": tag,
+            "atmos_drivers": tag,
+            "FMS": variables["fms_release"],
+            "FMSCoupler": variables["fms_c_release"],
+        }
+        step("verifying source tags")
+        for name, wanted in expected.items():
+            actual = git(src / name, "tag", "--points-at", "HEAD").splitlines()
+            if wanted not in actual:
+                raise BuildError(
+                    f"{name}: expected tag {wanted} at HEAD; found {actual}"
+                )
+            detail(f"{name}: {wanted}")
+
+        manifest = [
+            f"release: {tag}",
+            f"SHiELD_build: {git(build, 'rev-parse', 'HEAD')}",
+            f"modules: {', '.join(modules)}",
+            f"compile: shield nh {args.comp} {args.bit} gnu{' pic' if args.pic else ''} {args.clean}",
+            f"AVX_LEVEL: {args.avx_level}",
+            f"extra FFLAGS: {args.fflags}",
+        ]
+        for repo in sorted(path for path in src.iterdir() if (path / ".git").exists()):
+            manifest.append(
+                f"{repo.name}: {git(repo, 'rev-parse', 'HEAD')} "
+                + f"{git(repo, 'describe', '--tags', '--always')}"
+            )
+
+        # Apply the Oscar glibc gettid workaround only to the temporary FMS source.
+        affinity = src / "FMS" / "affinity" / "affinity.c"
+        content = affinity.read_text()
+        old = "static pid_t gettid(void)"
+        if content.count(old) == 1:
+            affinity.write_text(content.replace(old, "pid_t gettid(void)", 1))
+            step("patched FMS/affinity/affinity.c")
+        elif not re.search(r"(?m)^\s*pid_t gettid\(void\)", content):
+            raise BuildError(f"unrecognized gettid declaration in {affinity}")
+        affinity_sha = hashlib.sha256(affinity.read_bytes()).hexdigest()
+        manifest.append(f"FMS affinity.c sha256: {affinity_sha}")
+
+        if args.fflags.strip():
+            # Appended last, so it follows the prod/repro/debug selection; recipes
+            # expand FFLAGS when they run, which is after the whole file is read.
+            gnu_mk = build / "site" / "gnu.mk"
+            gnu_mk.write_text(
+                gnu_mk.read_text() + f"\nFFLAGS += {args.fflags.strip()}\n"
+            )
+            step(f"added to FFLAGS in {gnu_mk}: {args.fflags.strip()}")
+
+        # Generate the Oscar build environment; module names come from YAML.
+        env_file = build / "site" / "environment.gnu.sh"
+        env_file.write_text(
+            f"""#!/bin/bash
+# Generated by configs/build_shield.py for Oscar.
+{module_init}{loads}
+
+if [[ -z ${{NETCDF:-}} ]]; then
+  echo 'NETCDF is not defined by the loaded modules' >&2; exit 1
+fi
+export CPATH="${{NETCDF}}/include:${{CPATH:-}}"
+export NETCDF_DIR="${{NETCDF}}"
 export HDF5_DIR="${{HDF5_DIR:-${{HDF5_ROOT:-${{HDF5:-$NETCDF_DIR}}}}}}"
-export CPATH="${{NETCDF_DIR}}/include:${{CPATH}}"
-export LIBRARY_PATH="${{LIBRARY_PATH}}:${{NETCDF_DIR}}/lib:${{HDF5_DIR}}/lib"
-
-export FMS_CPPDEFS="{cppdefs}"
-
+export FMS_CPPDEFS=""
 export FC=mpif90
 export CC=mpicc
 export CXX=mpicxx
 export LD=mpif90
 export TEMPLATE=site/gnu.mk
-export LAUNCHER=srun
+export LAUNCHER="srun --mpi=pmix"
+export AVX_LEVEL={shlex.quote(args.avx_level)}
 
-# empty: generic x86-64 code that runs on every node; set with --march to tune
-export AVX_LEVEL="{march}"
-
-module list 2>&1 || true
+echo -e ' '
+module list
 """
-    path = build / "site" / "environment.gnu.sh"
-    path.write_text(text)
-    return path
+        )
+        step(f"wrote {env_file}")
 
-
-def preflight(env_file: Path) -> list[str]:
-    """Source the generated environment and test the tools the build needs."""
-    print(">>> testing the toolchain", flush=True)
-    script = f""". {shlex.quote(str(env_file))} >/dev/null 2>&1
-for t in gfortran gcc mpif90 mpicc nf-config nc-config cmake make git pkg-config; do
-  command -v $t >/dev/null || {{ echo "MISSING $t"; miss=1; }}
+        # Check the same environment that COMPILE will source.
+        preflight = f"""source {shlex.quote(str(env_file))} >/dev/null || exit 1
+for tool in gfortran gcc mpif90 mpicc nf-config nc-config cmake make git pkg-config; do
+  command -v "$tool" >/dev/null || {{ echo "MISSING $tool"; missing=1; }}
 done
-pkg-config --exists yaml-0.1 || {{ echo "MISSING libyaml (pkg-config yaml-0.1)"; miss=1; }}
-echo "gfortran: $(gfortran -dumpfullversion 2>/dev/null)"
-echo "mpif90:   $(command -v mpif90)"
-echo "netcdf:   $(nc-config --version 2>/dev/null) / fortran $(nf-config --version 2>/dev/null)"
-echo "prefix:   $NETCDF_DIR  hdf5: $HDF5_DIR"
-[ -z "$miss" ]
+pkg-config --exists yaml-0.1 || {{ echo 'MISSING libyaml'; missing=1; }}
+[ -z "$missing" ] || exit 1
+echo "gfortran: $(gfortran -dumpfullversion)"
+echo "mpif90: $(command -v mpif90)"
+echo "netcdf: $(nc-config --version) / fortran $(nf-config --version)"
+echo "prefix: $NETCDF_DIR  hdf5: $HDF5_DIR"
 """
-    proc = bash(script)
-    out = proc.stdout.strip().splitlines()
-    for line in out:
-        print("    " + line)
-    if proc.returncode != 0:
-        raise BuildError("the loaded environment is incomplete (lines marked MISSING above);\n"
-                         "load the modules that provide them (module avail) and add them to the "
-                         "modules key of configs/run_config.yaml")
-    ver = next((ln.split()[1] for ln in out if ln.startswith("gfortran:")), "")
-    if ver and int(ver.split(".")[0]) < 10:
-        raise BuildError(f"gfortran {ver} is too old; the build needs 10 or later (-fallow-argument-mismatch)")
-    return out
+        toolchain = (
+            run(["bash", "-c", preflight], quiet=True).stdout.strip().splitlines()
+        )
+        for line in toolchain:
+            detail(line)
+        match = re.search(r"^gfortran: (\d+)", "\n".join(toolchain), re.MULTILINE)
+        if match is None or int(match.group(1)) < 10:
+            raise BuildError("gfortran 10 or later is required")
 
+        compile_cmd = ["./COMPILE", "shield", "nh", args.comp, args.bit, "gnu"]
+        if args.pic:
+            compile_cmd.append("pic")
+        compile_cmd.append(args.clean)
+        dest = installed_path(dest, args.comp, args.bit)
 
-# ----------------------------------------------------------------------------- compile
-
-
-def compile_model(build: Path, tree: Path) -> Path:
-    print(">>> COMPILE shield nh prod 64bit gnu pic cleanall (this takes a while)", flush=True)
-    log = tree / "compile.log"
-    started = time.time()
-    run(["./COMPILE", "shield", "nh", "prod", "64bit", "gnu", "pic", "cleanall"],
-        cwd=build / "Build", log=log, check=False)
-    exe = build / "Build" / "bin" / "SHiELD_nh.prod.64bit.gnu.x"
-    # COMPILE tests the exit status of the final mv, not of make.
-    if not exe.is_file() or exe.stat().st_size == 0 or exe.stat().st_mtime < started:
-        detail = build / "Build" / "build_shield_nh.prod.64bit.gnu.out"
-        tail = ""
-        if detail.is_file():
-            errs = [ln for ln in detail.read_text(errors="replace").splitlines() if "Error" in ln]
-            tail = "\n".join(errs[:15])
-        raise BuildError(f"no new executable; see {detail} and {log}\n{tail}")
-    return exe
-
-
-def install(exe: Path, dest: Path, manifest: list[str], tree: Path, pre: list[str], cppdefs: str) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(exe, dest)
-    sha = hashlib.sha256(dest.read_bytes()).hexdigest()
-    manifest += [
-        f"executable: {dest}",
-        f"sha256: {sha}",
-        f"built: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} on {os.uname().nodename}",
-        f"FMS_CPPDEFS: {cppdefs}",
-        *[f"toolchain {ln}" for ln in pre],
-        f"build tree: {tree}",
-    ]
-    Path(str(dest) + ".manifest").write_text("\n".join(manifest) + "\n")
-    print(f">>> installed {dest}\n    sha256 {sha}")
-
-
-# ----------------------------------------------------------------------------- main
-
-
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--profile", help="release such as 202604 (default: the checked-out pyUFS branch)")
-    ap.add_argument("--config", type=Path, default=REPO / "configs" / "run_config.yaml")
-    ap.add_argument("--root", type=Path, default=Path.home() / "shield_build",
-                    help="directory that receives FV3-<profile>-public/ (default ~/shield_build)")
-    ap.add_argument("--exe", type=Path, help="install path (default: shield_exe of run_config.yaml)")
-    ap.add_argument("--modules", help="comma separated module list (default: modules of run_config.yaml)")
-    ap.add_argument("--march", default="", help="value of AVX_LEVEL, for example -march=x86-64-v3 (default none)")
-    ap.add_argument("--no-compile", action="store_true", help="stop after checkout, verification and environment")
-    ap.add_argument("--skip-preflight", action="store_true", help="do not test the toolchain")
-    ap.add_argument("--force", action="store_true", help="delete an existing build tree first")
-    args = ap.parse_args()
-
-    try:
-        cfg = read_run_config(args.config)
-        profile = args.profile or current_profile()
-        tag = f"FV3-{profile}-public"
-        exe_path = Path(os.path.expandvars(str(args.exe or cfg["shield_exe"])))
-        if not str(exe_path):
-            raise BuildError("shield_exe is empty (container mode); pass --exe")
-        check_exe_name(exe_path, tag)
-        wanted = [m.strip() for m in args.modules.split(",")] if args.modules else list(cfg["modules"])
-        print(f">>> pyUFS branch {git(REPO, 'branch', '--show-current')} -> {tag}; modules: {' '.join(wanted)}")
-        mods = check_modules(wanted)
-
-        build, src, tag = checkout(profile, args.root.expanduser().resolve(), args.force)
-        tree = build.parent
-        manifest = verify_and_record(build, src, tag)
-
-        cppdefs = "-DHAVE_GETTID" if glibc_has_gettid() else ""
-        env_file = write_environment(build, mods, args.march, cppdefs)
-        print(f">>> wrote {env_file}")
-        pre: list[str] = []
-        if not args.skip_preflight:
-            pre = preflight(env_file)
         if args.no_compile:
             (tree / "manifest.txt").write_text("\n".join(manifest) + "\n")
-            print(f">>> --no-compile: sources in {src}")
+            step(f"--no-compile: sources in {src}")
+            step(f"would run in {build / 'Build'}: {shlex.join(compile_cmd)}")
+            step(f"would install {dest}")
             return 0
 
-        exe = compile_model(build, tree)
-        install(exe, exe_path, manifest, tree, pre, cppdefs)
-    except BuildError as err:
-        print(f"\nERROR: {err}", file=sys.stderr)
+        step(f"compiling SHiELD ({args.comp})")
+        started = time.time()
+        run(compile_cmd, cwd=build / "Build", live=True)
+        exe = build / "Build" / "bin" / f"SHiELD_nh.{args.comp}.{args.bit}.gnu.x"
+        if (
+            not exe.is_file()
+            or exe.stat().st_size == 0
+            or exe.stat().st_mtime < started
+        ):
+            raise BuildError(f"no new executable at {exe}; see the output above")
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(exe, dest)
+        sha = hashlib.sha256(dest.read_bytes()).hexdigest()
+        manifest.extend(
+            [
+                f"executable: {dest}",
+                f"sha256: {sha}",
+                "built: "
+                + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                + f" on {os.uname().nodename}",
+                "FMS_CPPDEFS: ",
+                *[f"toolchain {line}" for line in toolchain],
+                f"build tree: {tree}",
+            ]
+        )
+        dest.with_name(dest.name + ".manifest").write_text("\n".join(manifest) + "\n")
+        step(f"installed {dest}")
+        detail(f"sha256 {sha}")
+        if config_dest != dest:
+            step(f"set shield_exe: {dest}")
+        return 0
+    except (BuildError, OSError, yaml.YAMLError) as error:
+        print(f"\nERROR: {error}", file=sys.stderr)
         return 1
-    return 0
+
+
+def parse_args():
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--no-compile", action="store_true", help="Stop after checks")
+    parser.add_argument(
+        "--comp",
+        choices=COMP_MODES,
+        default="repro",
+        help="Optimization mode (default: repro), options are prod, repro, debug",
+    )
+    parser.add_argument(
+        "--bit",
+        choices=("64bit", "32bit"),
+        default="64bit",
+        help="Precision (default: 64bit)",
+    )
+    parser.add_argument(
+        "--pic",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable/disable -fPIC",
+    )
+    parser.add_argument(
+        "--clean",
+        choices=("cleanall", "clean", "noclean"),
+        default="cleanall",
+        help="Clean scope (default: cleanall)",
+    )
+    parser.add_argument(
+        "--avx-level",
+        default="-march=native",
+        help="AVX instruction level",
+    )
+    parser.add_argument(
+        "--fflags",
+        default="",
+        help="Extra Fortran flags",
+    )
+    args = parser.parse_args()
+
+    return args
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main(parse_args())
