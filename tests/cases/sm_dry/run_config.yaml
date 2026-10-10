@@ -4,7 +4,7 @@ description: test sm dry
 init_datetime: "2024081400Z"
 run_length: 24
 run_length_units: hours
-c_res: 96
+c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true

@@ -257,7 +257,7 @@ per-job memory flag is derived.
 | `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 
-`c_res` is an integer: 48, 96, 192, 384, 768, 1152 or 3072.
+`c_res` is a string that starts with `C`: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`. A plain integer such as `96` is still read as the same resolution, and checksums and staged-grid records treat the two spellings alike.
 
 ### 6.5 Initial conditions and preprocessing
 

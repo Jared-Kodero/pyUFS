@@ -5,7 +5,7 @@ description: test nest gfs
 init_datetime: "2024081400Z"
 run_length: 6
 run_length_units: hours
-c_res: 96
+c_res: C96
 gtype: nest
 levels: 64
 refine_ratio: [4, 2]

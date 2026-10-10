@@ -4,7 +4,7 @@ run_length: 2
 run_length_units: months
 resubmit: 2
 merge_freq: -1
-c_res: 96
+c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true

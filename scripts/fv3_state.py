@@ -11,7 +11,7 @@ from typing import Any
 import pandas as pd
 import yaml
 from fv3_paths import case_paths, paths
-from fv3_utils import parse_datetime
+from fv3_utils import parse_datetime, parse_resolution
 
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -337,6 +337,11 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
         return value
 
     payload = {key: _normalize_for_hash(data.get(key, None)) for key in _hash_keys}
+    # "C96" and 96 are the same grid, and checksums of existing cases hold 96.
+    try:
+        payload["c_res"] = parse_resolution(payload["c_res"])
+    except (TypeError, ValueError):
+        pass
 
     hash_data_str = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(hash_data_str.encode("utf-8")).hexdigest()
