@@ -84,7 +84,11 @@ else
 fi
 
 
-export TMPDIR="$TMP_DIR"
+# Private temporary directory for each case, inside its work directory: Python
+# multiprocessing (3.14 forkserver) keeps its pymp-* directory here, so cases that
+# run at the same time on a shared filesystem never share one.
+export TMPDIR="$WORK_DIR/.tmp"
+mkdir -p "$TMPDIR"
 export APPTAINER_CACHEDIR=$TMP_DIR
 export APPTAINER_HOME=$HOME
 export APPTAINER_BINDPATH=$(printf "%s" "$CONTAINER_BINDPATH" | base64 -d)
@@ -94,7 +98,7 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
-SYNC_DIRS="rsync -a --delete "$WORK_DIR/" "$CASE_DIR/""
+SYNC_DIRS="rsync -a --delete --exclude=/.tmp "$WORK_DIR/" "$CASE_DIR/""
 
 
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
@@ -194,10 +198,9 @@ if (( EXIT_CODE == 0 && CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
 fi
 
 
-
+rm -rf "$TMPDIR"
 
 exit "$EXIT_CODE"
-
 
 
 

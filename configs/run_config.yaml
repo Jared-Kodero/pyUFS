@@ -84,7 +84,7 @@ use_modern_diag: false # true: use a case-local diag_table.yaml (required) and d
 # (optional) with diag_manager_nml use_modern_diag and data_override_nml use_data_table_yaml.
 # Write them yourself or convert legacy tables with fms_yaml_tools (diag-table-to-yaml,
 # data-table-to-yaml) in the format of the FMS version SHiELD is built with
-# (FV3-202604: FMS 2026.01; FV3-202411: FMS 2024.03). false keeps the legacy ASCII diag_table.
+# (FV3-202604: FMS 2026.01). false keeps the legacy ASCII diag_table.
 pack_output: false # Pack only the final output files as int16 with scale_factor/add_offset (ECMWF style).
 # Quantization error is (max - min) / 131066 of each variable over the file
 # (about 0.002 K for temperature).
@@ -212,7 +212,7 @@ do_deep: false # false: deep convection is switched off on domains with dx <= 4 
 #   resolution or refinement ratio.
 
 dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
-dt_ocean: null # Coupling timestep [s]; written as coupler_nml dt_cpld for FV3-202604. Null uses dt_atmos.
+dt_cpld: null # Coupling timestep [s]; written as coupler_nml dt_cpld. Must be a multiple of dt_atmos and divide the segment length. Null uses dt_atmos.
 
 # When set, k_split and n_split must be lists of length n_nests + 1, with the
 # first value for the global grid and the remaining values for the nests in

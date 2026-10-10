@@ -26,7 +26,6 @@ coupler_nml:
   do_land: false
   do_ocean: false
   dt_atmos: null
-  # dt_ocean: null # Legacy SHiELD driver; FV3-202604 uses dt_cpld below.
   dt_cpld: null
   hours: null
   ice_npes: -1

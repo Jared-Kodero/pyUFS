@@ -2,7 +2,7 @@
 # chgres_cube_nest03.yaml). Check that LOGS has one chgres_cube_nest0N_*.log per
 # nest (no HRRR run) and that state.yaml lists nest02/nest03_ic_source as GFS.
 description: test nest gfs
-init_datetime: "2024081400Z"
+init_datetime: "2023070100Z"
 run_length: 6
 run_length_units: hours
 c_res: C96
@@ -24,6 +24,6 @@ constraint_node: "48core"
 # Explicit time stepping: dt_atmos follows the finest nest (C768, 180 s); the
 # acoustic dt of each domain is dt_atmos / (k_split * n_split) = 60, 15 and 15 s.
 dt_atmos: 180
-dt_ocean: 180
+dt_cpld: 180
 k_split: [1, 2, 2]
 n_split: [3, 6, 6]
