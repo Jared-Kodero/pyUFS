@@ -990,42 +990,59 @@ An empty value selects the container image for a single-node run; all multi-node
 a native `shield_exe`. Because the non-null repository default is restored when a case sets
 `shield_exe: null`, use `shield_exe: ""` to force the single-node container path.
 
-```bash
-git clone https://github.com/NOAA-GFDL/SHiELD_build.git
-cd SHiELD_build
-git checkout FV3-202604-public   # the default profile (19.1)
-git submodule update --init mkmf
-./CHECKOUT_code
-```
-
-`FV3-202604-public` checks out FMS `2026.01`; `git checkout FV3-202411-public` selects the
-earlier profile (FMS `2024.03`). `case_submit.sh` stops when the configured `shield_exe`
-does not exist.
-
-On newer glibc systems, patch `SHiELD_SRC/FMS/affinity/affinity.c` so the local `gettid`
-helper does not conflict with the glibc definition. Remove the duplicate `static` qualifier
-from the local declaration.
-
-Before compiling, update `SHiELD_build/site/environment.gnu.sh` so the GNU build loads the
-required modules:
+Use `scripts/build_shield.py` rather than running `CHECKOUT_code` and `COMPILE` by hand:
 
 ```bash
-module load hpcx-mpi
-module load netcdf-mpi
-module load libyaml
+git checkout 202604        # or 202411; the branch selects the release
+python scripts/build_shield.py --root /path/to/build_root
 ```
 
-Then build:
+The branch name selects `FV3-202604-public` or `FV3-202411-public`. The script reads
+`shield_exe` and `modules` from `configs/run_config.yaml` (the executable is built with the
+modules it is launched with), checks that every module exists on the host, clones
+`SHiELD_build` into `build_root/FV3-<profile>-public/`, runs `CHECKOUT_code`, verifies the
+tagged sources, writes `site/environment.gnu.sh` for the machine (module loads, `mpif90`,
+`mpicc`, `mpicxx`, netCDF and HDF5 locations from `nc-config`, `FMS_CPPDEFS=-DHAVE_GETTID`
+when glibc is 2.30 or later), tests the toolchain (gfortran 10 or later, MPI wrappers,
+`nc-config`, `nf-config`, `cmake`, libyaml), runs
+`COMPILE shield nh prod 64bit gnu pic cleanall`, and copies the executable to `shield_exe`
+with `shield_exe.manifest`, which lists the commit of every component, the SHA-256, the
+toolchain and the build tree. `--no-compile` stops after the environment file, `--modules a,b`
+and `--march` override the module list and `AVX_LEVEL` (empty by default, so the code runs on
+every node), `--exe` overrides the install path and `--force` replaces an existing tree. The
+script does not change `run_config.yaml`. The upstream steps are not safe to repeat for a
+second release, which is why each release gets its own tree and a clean build:
 
-```bash
-cd Build && ./COMPILE 64bit gnu pic
-```
+- `SHiELD_build/CHECKOUT_code` clones into `../SHiELD_SRC` with `git clone`. When that
+  directory already holds another release the clones fail, the sources stay at the old
+  release, and the script still writes the new release name to `SHiELD_SRC/release`. Two
+  `SHiELD_build` clones in the same parent directory share one `SHiELD_SRC`.
+- `COMPILE` reuses `Build/libFMS/gnu` and `Build/nceplibs/gnu` whenever the library files exist,
+  whichever FMS version made them (the 2024 and 2026 builds use the same directory names), and
+  `make` does not rebuild an object when only a library module file changed. Switching
+  releases in one tree therefore links 2026 sources against FMS 2024.03 modules and objects.
+  The `cleanall` option removes the libraries, the NCEP libraries and the objects first.
+- `COMPILE` tests the exit status of the `mv` that follows `make`, not of `make`. The script
+  checks that a new, non-empty executable exists and otherwise reports the errors in
+  `Build/build_shield_nh.prod.64bit.gnu.out`.
+- The script compares every tagged repository with the tag that `CHECKOUT_code` requests and
+  stops on a difference.
+
+FMS `affinity.c` needs no source patch: `-DHAVE_GETTID` makes it use the `gettid` of glibc, as
+in the upstream Gaea environment. The compile options are the upstream ones for the production
+GNU build (`shield nh prod 64bit gnu`). The upstream regression tests use Intel with `repro`,
+so a GNU `prod` build is a different configuration from the one NOAA verifies. For a first run
+of a new profile, also build `repro` and `debug` (edit the `COMPILE` line in a copy of the
+script, or run it in `build_root/FV3-<profile>-public/SHiELD_build/Build`) and run the same
+case with each.
 
 Set the executable path in `run_config.yaml`:
 
 ```yaml
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+shield_exe: /path/to/FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x
 ```
+
+`case_submit.sh` stops when the configured `shield_exe` does not exist.
 
 ### 19.1 Build profiles
 
@@ -1033,7 +1050,7 @@ shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
 | --- | --- | --- |
 | Core, physics, drivers | `FV3-202604-public` | `FV3-202411-public` |
 | FMS / FMSCoupler | `2026.01` / `2026.01` | `2024.03` / `2024.03.01` |
-| `ice_param`, `*_null` | unpinned | unpinned |
+| `ice_param`, `*_null` | as cloned (untagged) | not compiled |
 | Executable (`shield_exe` default) | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` |
 
 The two profiles compile different coupler drivers. The tagged `FV3-202411-public`
