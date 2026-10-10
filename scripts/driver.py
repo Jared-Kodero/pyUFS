@@ -10,10 +10,10 @@ from fv3_utils import exit_code
 
 
 def main() -> None:
-    log_release()
     if int(os.environ.get("CASE_RESUBMIT_INDEX", "0")) > 0:
         restart_driver()
     else:
+        log_release()
         init_driver()
 
 
