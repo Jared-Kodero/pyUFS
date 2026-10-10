@@ -1,9 +1,8 @@
-from multiprocessing import Pool
 from pathlib import Path
 
 from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import cp, run_cmd, run_parallel
 
 
 def _run_make_orog(
@@ -181,5 +180,4 @@ def run_make_orog(
         for tile in tiles
     ]
 
-    with Pool(processes=len(args)) as pool:
-        pool.starmap(_run_make_orog, args)
+    run_parallel(_run_make_orog, args)
