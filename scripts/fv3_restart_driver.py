@@ -70,8 +70,6 @@ def _load_restart_state() -> None:
     state.update(configure_directories(state))
     state.checksum = current_checksum
 
-    log.info("Restart = %s", state.restart_no)
-
 
 def restart_driver() -> None:
     _load_restart_state()
