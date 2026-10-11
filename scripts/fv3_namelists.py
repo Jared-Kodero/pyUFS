@@ -107,6 +107,17 @@ def common_configs(nml: dict):
     nml["external_ic_nml"]["levp"] = state.levels
     nml["fv_core_nml"]["warm_start"] = False
 
+    # Month and year segments: 6 h physics output and bucket reset, hourly
+    # radiation, daily log (Ai2/GFDL SHiELD C96 climate runs, ai2cm/ace2-som-paper).
+    if state.run_length_units in ("months", "years"):
+        nml["atmos_model_nml"]["fdiag"] = 6.0
+        nml["atmos_model_nml"]["fprint"] = False
+        nml["gfs_physics_nml"]["fhzero"] = 6.0
+        nml["gfs_physics_nml"]["fhswr"] = 3600.0
+        nml["gfs_physics_nml"]["fhlwr"] = 3600.0
+        nml["gfs_physics_nml"]["ldiag3d"] = False
+        nml["fv_core_nml"]["print_freq"] = 24
+
     if state.fv3_debug:
         nml["fv_core_nml"]["fv_debug"] = True
         nml["fv_core_nml"]["print_freq"] = -1

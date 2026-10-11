@@ -1121,8 +1121,21 @@ is validated when the case starts. See `examples/run_config.tgrad.yaml`, the com
 Use one-month segments starting at 00 UTC on day 1 (`examples/run_config.monthly.yaml`):
 `resubmit: 119` gives 120 segments (ten years) and `merge_freq: 12` writes one file per
 year; merging only concatenates segments. When the case has no `diag_table`, month and
-year segments use `configs/diag_table.monthly`, which averages the hourly samples
-(`.true.`) over each month. `fhzero` and `fdiag` are both 1 h by default, so each sample
-of a bucket field such as `totprcpb_ave` covers one hour; keep them equal in any override.
+year segments use `configs/diag_table.monthly`, which averages the samples (`.true.`)
+over each month. Precipitation (`pr`, `prc`, `prsn`) is written as
+monthly mean rates (kg m-2 s-1). Runoff buckets are totals and are summed by FMS
+(`"sum"`) into `mrro_sum` and `mrros_sum` (kg m-2). Month and year segments also use a monthly namelist profile
+(`common_configs` in `scripts/fv3_namelists.py`): `fdiag = fhzero = 6` h, so each sample
+of a bucket field such as `totprcpb_ave` is a full 6 h mean; `fhswr = fhlwr = 3600` s;
+`ldiag3d` and `fprint` off; `print_freq = 24` h. The model step comes from `dt_atmos`,
+`k_split` and `n_split`; for C96 use 600 s, 2 and 6, which keeps `dt_atmos` at or below
+`fv_sg_adj` (600 s) as in the GFDL SHiELD_build RTS. Hour and day segments keep `fdiag = fhzero = 1` h. Keep
+`fdiag` and `fhzero` equal in any override and multiples of `dt_atmos`.
+A weekly `fhzero` would make each 6 h sample a running mean since the last weekly reset
+and misalign the buckets with month ends; keep `fhzero = fdiag`. Forecast templates print
+fv_diag summaries every hour (`print_freq = 1`), month and year segments once a day.
+The monthly test (`tests/cases/monthly`) has no case `diag_table`, so it exercises the
+template; it keeps the physics schemes of `configs/input_nml.yaml` and changes only the timing.
+The tgrad test cases (`tests/cases/tgrad_ctrl`, `tests/cases/tgrad_sst4`) run one-month segments.
 The diag tables write time in seconds for every output frequency; the regridded files
 keep the time handling of `post_process` unchanged. Fields without horizontal axes, such as `average_T1`, `average_T2` and `average_DT`, are copied to the regridded files.
