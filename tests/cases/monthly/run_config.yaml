@@ -9,12 +9,19 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
-n_nodes: 1
-n_cpus: 48
+n_nodes: 3
+n_cpus: 144
 walltime: 12
 
-# Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 12.5 s.
-dt_atmos: 150
-dt_ocean: 150
+# C96 month segments: dt_atmos 600 s, k_split 2, n_split 6 (remap 300 s,
+# acoustic 50 s). 600 s keeps dt_atmos <= fv_sg_adj (600 s), as in every GFDL
+# SHiELD_build RTS (fv_sg_SHiELD relaxes by dt_atmos/fv_sg_adj without a cap),
+# and divides the 6 h fdiag/fhzero and the 1 h radiation interval.
+dt_atmos: 600
+dt_ocean: 600
 k_split: [2]
 n_split: [6]
+
+# No case diag_table: configs/diag_table.monthly is selected automatically.
+# Physics schemes are those of configs/input_nml.yaml; only the timing differs
+# (time step above, monthly profile in scripts/fv3_namelists.py).

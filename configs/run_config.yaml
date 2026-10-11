@@ -78,8 +78,11 @@ merge_freq: -1 # Merge frequency for regridded output, in restart segments.
 # end, so each segment should hold whole intervals (for monthly means, use
 # run_length_units: months from 00Z on the 1st). Time means need .true. in the
 # time-sampling column (reduction: average in YAML); for averaged precipitation set
-# gfs_physics_nml fhzero = atmos_model_nml fdiag (both 1 h by default) so each sample
-# is a full fdiag mean.
+# gfs_physics_nml fhzero = atmos_model_nml fdiag so each sample is a full fdiag mean.
+# Hour and day segments use fdiag = fhzero = 1 h. Month and year segments use the
+# monthly profile: fdiag = fhzero = 6 h, fhswr = fhlwr = 3600 s, ldiag3d and fprint
+# off, print_freq 24 h. For C96 use dt_atmos 600 s, k_split 2, n_split 6. An input.yaml override replaces any of these;
+# fdiag and fhzero must be multiples of dt_atmos.
 use_modern_diag: false # true: use a case-local diag_table.yaml (required) and data_table.yaml
 # (optional) with diag_manager_nml use_modern_diag and data_override_nml use_data_table_yaml.
 # Write them yourself or convert legacy tables with fms_yaml_tools (diag-table-to-yaml,
