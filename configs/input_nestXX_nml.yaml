@@ -90,7 +90,7 @@ fv_core_nml:
   nwat: 6
   p_fac: 0.1
   phys_hydrostatic: false
-  print_freq: -6
+  print_freq: 1 # hours (>0); every 6 steps was 15 min at dt_atmos 150 s
   range_warn: true
   reset_eta: false
   rf_fast: false
