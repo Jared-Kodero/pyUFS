@@ -113,6 +113,7 @@ def common_configs(nml: dict):
     nml["fv_core_nml"]["npz"] = state.levels - 1
     nml["external_ic_nml"]["levp"] = state.levels
     nml["fv_core_nml"]["warm_start"] = False
+    nml["fv_core_nml"]["range_warn"] = False
 
     # Month and year segments: 6 h physics output and bucket reset, hourly
     # radiation, daily log (Ai2/GFDL SHiELD C96 climate runs, ai2cm/ace2-som-paper).
@@ -128,6 +129,7 @@ def common_configs(nml: dict):
     if state.fv3_debug:
         nml["fv_core_nml"]["fv_debug"] = True
         nml["fv_core_nml"]["print_freq"] = -1
+        nml["fv_core_nml"]["range_warn"] = True
 
     if state.use_modern_diag:
         nml.setdefault("diag_manager_nml", {})["use_modern_diag"] = True
