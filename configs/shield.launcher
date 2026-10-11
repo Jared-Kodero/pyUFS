@@ -5,7 +5,7 @@ __MODULES__
 export OMP_NUM_THREADS=1
 export OMP_DYNAMIC=FALSE
 
-cd __WORK_DIR__ 
+cd __WORK_DIR__
 
 
 
@@ -23,8 +23,8 @@ else
     end_time=$(date +%s)
     elapsed_hours=$(awk -v start="$start_time" -v end="$end_time" \
         'BEGIN {printf "%.2f", (end - start)/3600}')
-
-    echo "$(date '+%Y-%m-%d %H:%M') - GFDL SHIELD - INFO - Finished in: $elapsed_hours hours"
+        
+    echo "$(date '+%Y-%m-%d %H:%M') - GFDL SHIELD - INFO - __SEG_LABEL__ Finished in: $elapsed_hours hours"
 fi
 
 wait

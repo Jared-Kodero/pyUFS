@@ -86,6 +86,7 @@ def write_shield_sh(
     content = content.replace("__EXECUTABLE__", str(exe))
     content = content.replace("__LOG_FILE__", str(log_file))
     content = content.replace("__EXIT_CODE_FILE__", str(exit_code))
+    content = content.replace("__SEG_LABEL__", f"Segment {state.restart_no}")
 
     # write final script
     with open(output_path, "w") as f:
