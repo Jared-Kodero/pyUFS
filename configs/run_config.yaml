@@ -91,6 +91,12 @@ use_modern_diag: false # true: use a case-local diag_table.yaml (required) and d
 pack_output: false # Pack only the final output files as int16 with scale_factor/add_offset (ECMWF style).
 # Quantization error is (max - min) / 131066 of each variable over the file
 # (about 0.002 K for temperature).
+diagnostic_interval_hours: 1 # Interval (simulated hours) for reporting physics diagnostics (fdiag)
+#and resetting accumulated fields (fhzero). Both use the same value to ensure precipitation and other
+#accumulated diagnostics represent the same averaging period (e.g., 1 = hourly, 6 = six-hourly).
+
+fv3_print_freq: 0 # FV3 min/max and mass diagnostics: 0 disables; -1 every timestep;
+# positive values set the interval in simulated hours.
 
 # -----------------------------------------------------------------------------
 # 3. EXECUTION CONTROL
