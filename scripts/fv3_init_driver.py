@@ -326,4 +326,4 @@ def init_driver() -> None:
 
     save_fv3_state()
 
-    log.info("Starting initial run")
+    log.info("Preprocessing complete")
