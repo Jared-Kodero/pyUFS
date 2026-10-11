@@ -159,11 +159,13 @@ class FV3State:
     # 7. Vertical grid and physics
     levels: int | None = None
     do_deep: bool | None = None
-    # 8. Time stepping
+    # 8. Time stepping & Diagnostics
     dt_atmos: int | None = None
     dt_ocean: int | None = None
     k_split: list[int] | None = None
     n_split: list[int] | None = None
+    diagnostic_interval_hours: int | None = None
+    fv3_print_freq: int | None = None
     # 9. Surface and orography
     lake_cutoff: float | None = None
     add_lake: bool | None = None
