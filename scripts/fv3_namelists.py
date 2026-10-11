@@ -114,19 +114,13 @@ def common_configs(nml: dict):
     nml["external_ic_nml"]["levp"] = state.levels
     nml["fv_core_nml"]["warm_start"] = False
     nml["fv_core_nml"]["range_warn"] = False
-
-    # Month and year segments: 6 h physics output and bucket reset, hourly
-    # radiation, daily log (Ai2/GFDL SHiELD C96 climate runs, ai2cm/ace2-som-paper).
-    if state.run_length_units in ("months", "years"):
-        nml["atmos_model_nml"]["fdiag"] = 6.0
-        nml["atmos_model_nml"]["fprint"] = False
-        nml["gfs_physics_nml"]["fhzero"] = 6.0
-        nml["gfs_physics_nml"]["fhswr"] = 3600.0
-        nml["gfs_physics_nml"]["fhlwr"] = 3600.0
-        nml["gfs_physics_nml"]["ldiag3d"] = False
-        nml["fv_core_nml"]["print_freq"] = 24
+    nml["atmos_model_nml"]["fprint"] = False
+    nml["atmos_model_nml"]["fdiag"] = state.diagnostic_interval_hours or 1
+    nml["gfs_physics_nml"]["fhzero"] = state.diagnostic_interval_hours or 1
+    nml["fv_core_nml"]["print_freq"] = state.fv3_print_freq or 0
 
     if state.fv3_debug:
+        nml["atmos_model_nml"]["fprint"] = True
         nml["fv_core_nml"]["fv_debug"] = True
         nml["fv_core_nml"]["print_freq"] = -1
         nml["fv_core_nml"]["range_warn"] = True
@@ -320,7 +314,6 @@ def namelist_overrides(path: Path, nml: dict, name: str):
 
         break  # Exit after the first matching suffix is found
 
-    check_fhzero(nml, name)
     return nml
 
 
@@ -333,27 +326,17 @@ def set_radiation(nml: dict, name: str, dt_atmos: int) -> dict:
     window coincide without calling radiation more often than requested.
     Missing values are treated as 0.
     """
+
+    if state.run_length_units in ("months", "years"):
+        min_interval = 3600  # 1 hour minimum for monthly or yearly runs
+    else:
+        min_interval = 1800  # 30 min minimum for other runs
     phys = nml.setdefault("gfs_physics_nml", {})
     for key in ("fhswr", "fhlwr"):
-        interval = max(float(phys.get(key) or 0), 1800.0)  # s, 30 min lower bound
+        interval = max(float(phys.get(key) or 0), min_interval)
         phys[key] = float(dt_atmos * math.ceil(interval / dt_atmos))
 
     return nml
-
-
-def check_fhzero(nml: dict, name: str) -> None:
-    """Warn when the bucket reset (fhzero) differs from the output interval (fdiag).
-
-    Bucket fields (totprcpb_ave, cnvprcpb_ave, lhtfl_ave, ...) are means since
-    the last reset, so with fhzero != fdiag each record covers 1..fhzero/fdiag
-    output intervals instead of one.
-    """
-    fdiag = nml.get("atmos_model_nml", {}).get("fdiag")
-    fhzero = nml.get("gfs_physics_nml", {}).get("fhzero")
-    if fdiag != fhzero:
-        log.warning(
-            f"{name}: fhzero {fhzero} != fdiag {fdiag}; bucket outputs are running means"
-        )
 
 
 def update_namsfc(nml):

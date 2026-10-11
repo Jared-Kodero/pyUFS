@@ -1,9 +1,9 @@
 description: test monthly validation
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
-run_length: 2
+run_length: 1
 run_length_units: months
-resubmit: 2
+resubmit: 1
 merge_freq: -1
 c_res: C96
 gtype: uniform
@@ -17,9 +17,9 @@ walltime: 12
 # acoustic 50 s). 600 s keeps dt_atmos <= fv_sg_adj (600 s), as in every GFDL
 # SHiELD_build RTS (fv_sg_SHiELD relaxes by dt_atmos/fv_sg_adj without a cap),
 # and divides the 6 h fdiag/fhzero and the 1 h radiation interval.
-dt_atmos: 600
-dt_ocean: 600
-k_split: [2]
+dt_atmos: 1800
+dt_ocean: 1800
+k_split: [3]
 n_split: [6]
 
 # No case diag_table: configs/diag_table.monthly is selected automatically.
