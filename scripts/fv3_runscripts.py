@@ -76,6 +76,10 @@ def write_shield_sh(
     with open(template_path, "r") as f:
         content = f.read()
 
+    segment_label = "Run"
+    if state.resubmit > 0:
+        segment_label = f"Segment {state.restart_no}"
+
     # replace placeholders
     content = content.replace("__MODULES__", str(modules))
     content = content.replace("__WORK_DIR__", str(state.work_dir))
@@ -84,7 +88,7 @@ def write_shield_sh(
     content = content.replace("__EXECUTABLE__", str(exe))
     content = content.replace("__LOG_FILE__", str(log_file))
     content = content.replace("__EXIT_CODE_FILE__", str(exit_code))
-    content = content.replace("__SEG_LABEL__", f"Segment {state.restart_no}")
+    content = content.replace("__SEG_LABEL__", str(segment_label))
 
     # write final script
     with open(output_path, "w") as f:
