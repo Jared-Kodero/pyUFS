@@ -31,9 +31,9 @@ from fv3_utils import (
 from global_cycle_driver import GLOBAL_GTYPES, run_surface_cycle
 from regional_bc import BC_INTERVAL_HOURS
 from sm_perturbations import apply_sm_perturbations
-from tgrad_perturbations import (
-    apply_tgrad_perturbations,
-    validate_tgrad_perturbations,
+from pamip_experiment import (
+    apply_pamip_experiment,
+    validate_pamip_experiment,
 )
 
 
@@ -170,7 +170,7 @@ def _load_initial_state() -> None:
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
     # Fail before grid and IC generation; files are written after preprocessing.
-    validate_tgrad_perturbations(state.tgrad_perturbations)
+    validate_pamip_experiment(state.pamip_experiment)
     if state.generate_ic_data:
         validate_ufs_utils_options()
     state.continue_run = False
@@ -321,7 +321,7 @@ def init_driver() -> None:
     os.chdir(state.work_dir)
     calc_cpu_alloc(state.grid)
     apply_sm_perturbations()
-    apply_tgrad_perturbations()
+    apply_pamip_experiment()
     update_nml_configs()
     gen_shield_run_sh()
 

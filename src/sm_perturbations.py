@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 import pandas as pd
 import xarray as xr
-import xesmf as xe
 
 from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import cp, segment_hours
+from latlon_to_fv3 import load_grid, sfc_filename, to_fv3_grid
 
 # Physical bounds for valid volumetric soil moisture (m3 m-3). Used for both
 # the validity mask and the clip so the two are guaranteed consistent.
@@ -35,15 +34,6 @@ def _valid_mask(ds: xr.Dataset, v: str, z: int) -> xr.DataArray:
     ref = "smc" if "smc" in ds else v
     layer = ds[ref].isel(zaxis_1=z)
     return (layer >= SM_MIN) & (layer <= SM_MAX)
-
-
-def _sfc_filename(tile: int) -> Path:
-    """Surface file of a tile: global sfc_data.tileN.nc, nest
-    sfc_data.nestNN.tileN.nc, regional sfc_data.nc (single tile, no suffix)."""
-    if state.gtype in ("regional_gfdl", "regional_esg"):
-        return Path("sfc_data.nc")
-    nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
-    return Path(f"sfc_data.{nest_idx}tile{tile}.nc")
 
 
 def segment_start(restart_no: int) -> pd.Timestamp:
@@ -82,84 +72,6 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
     return ds
 
 
-def to_fv3_grid(
-    grid_in: xr.Dataset | xr.DataArray,
-    grid_out: xr.Dataset | xr.DataArray,
-    method: Literal["bilinear", "conservative"] = "bilinear",
-) -> xr.Dataset:
-    """
-    Remap ll grid to c-grid using xesmf
-    interpolation. Regridding weights are recomputed on every call.
-    """
-
-    ll_grid = xr.Dataset(
-        {
-            "lat": grid_in["lat"],
-            "lon": grid_in["lon"],
-        }
-    )
-
-    c_grid = xr.Dataset(
-        {
-            "lat": grid_out["geolat"],
-            "lon": grid_out["geolon"],
-        }
-    )
-
-    regridder = xe.Regridder(
-        ll_grid,
-        c_grid,
-        method=method,
-    )
-
-    # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
-    # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
-
-    # skipna renormalizes the weights over valid source points; a target
-    # point with less than half of its weight on valid points becomes NaN and
-    # keeps its original value in the caller.
-    out = regridder(grid_in, skipna=True, na_thres=0.5)
-
-    if "Time" not in out.coords:
-        out = out.expand_dims("Time", axis=0)
-
-    out.attrs = grid_out.attrs
-    out_coords = set(out.coords)
-    for c in out_coords:
-        if c in grid_out.coords:
-            out[c].attrs = grid_out[c].attrs
-        else:
-            out = out.drop_vars(c)
-
-    out["Time"] = grid_out["Time"]
-
-    new_dims = [d for d in grid_out.dims if d in out.dims]
-    out = out.transpose(*new_dims)
-
-    out.attrs = grid_out.attrs
-
-    return out
-
-
-def load_grid(filename: Path, tile: int) -> xr.Dataset:
-    grid_file = Path(state.ic_data) / "perts" / f"tile.{tile}.grid.nc"
-    if not grid_file.exists():
-        if state.restart_no == 0:
-            path = Path(state.input) / filename
-        else:
-            path = Path(state.ic_data) / "INPUT" / filename
-        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as ds:
-            # Select coordinate variables only. `ds.dims` returns dimension names,
-            # which are not necessarily variables and raise KeyError on selection.
-            keep = ["geolat", "geolon"] + list(ds.coords)
-            keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
-            ds = ds[keep].load()
-            ds.to_netcdf(grid_file, engine="netcdf4")
-
-    ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4").load()
-    return ds
-
-
 def _write_layers(
     ds: xr.Dataset, p: dict, in_path: Path, backup_path: Path, ice: xr.DataArray | None
 ) -> None:
@@ -191,7 +103,7 @@ def _write_layers(
 
 def _open_input(tile: int, backup_dir: Path, restart_no: int):
     """Open a tile's surface input after saving an unmodified copy."""
-    filename = _sfc_filename(tile)
+    filename = sfc_filename(tile)
     in_path = Path(state.input) / filename
     backup_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.perturbed.nc"
     orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
