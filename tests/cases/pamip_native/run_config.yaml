@@ -1,0 +1,21 @@
+# Native reference: no PAMIP boundary replacement, the stock RTGSST and CFSR.SEAICE climatologies.
+# Pair with pamip_ctrl (1.1) and pamip_futarcsic (1.6); the three differ only in pamip_experiment.
+# Unlike pamip_ctrl, it keeps the native surface-cycle settings (90-day SST relaxation,
+# GFS ice, mixed-layer ocean), so it is a baseline of the stock method, not a control for pamip_ctrl.
+# ICs come from GFS, so the date must lie in the GFS archive (the PAMIP climatologies are year independent).
+description: test PAMIP native (no boundary replacement)
+archive_data: false # Tests do not archive outputs
+init_datetime: "2024040100Z"
+run_length: 1
+run_length_units: months
+resubmit: 1
+merge_freq: -1
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+n_nodes: 3
+n_cpus: 144
+walltime: 12
+constraint_node: "48core"
+

@@ -1,0 +1,14 @@
+# Global C96 with the PAMIP experiment 1.6 boundary conditions (present-day SST,
+# future Arctic sea ice). Use experiment "1.1" for the control.
+# Options: config/run_config.yaml section 11, templates/pamip_experiments.yaml.
+description: C96 PAMIP 1.6 pdSST-futArcSIC
+init_datetime: "2024040100Z" # 1 April start as in the PAMIP protocol; ICs come from GFS, so the year must be available (NOAA S3 from 2021, NCAR GDEX from 2015)
+run_length: 1
+run_length_units: months
+resubmit: 13 # 14 monthly segments
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+
+pamip_experiment: "1.6"
