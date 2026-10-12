@@ -3,8 +3,8 @@
 description: test tgrad sst4
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
-run_length: 1
-run_length_units: months
+run_length: 24
+run_length_units: hours
 resubmit: 1
 merge_freq: -1
 c_res: C96
@@ -24,7 +24,7 @@ tgrad_perturbations:
   lat_full: 80.0
   polar_delta_t_k: 4.0
 
-dt_atmos: 1800
-dt_ocean: 1800
+dt_atmos: 1200
+dt_ocean: 1200
 k_split: [3]
 n_split: [6]
