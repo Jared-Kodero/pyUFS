@@ -1,0 +1,237 @@
+from pathlib import Path
+
+import dask
+
+from fv3_runtime import get_newres, log, staged_files, tmp_cwd
+from fv3_state import state
+from fv3_utils import cp, run_cmd
+
+
+def _mosaic_for_uniform_and_stretch(
+    c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+):
+    tiles = [f"C{c_res}_grid.tile{i}.nc" for i in range(1, 7)]
+    n_tiles = len(tiles)
+    tiles = ",".join(tiles)
+    cmd = [
+        f"{make_solo_mosaic}",
+        "--num_tiles",
+        f"{n_tiles}",
+        "--dir",
+        f"{out_dir}",
+        "--mosaic",
+        f"C{c_res}_mosaic",
+        "--tile_file",
+        tiles,
+    ]
+
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate mosaic")
+
+
+def _mosaic_for_i_nest(
+    make_solo_mosaic: str,
+    out_dir: Path,
+    c_res: int,
+    nest_idx: int,
+    tile: int,
+    log_file: Path,
+):
+    cmd = [
+        f"{make_solo_mosaic}",
+        "--num_tiles",
+        "1",
+        "--dir",
+        f"{out_dir}",
+        "--mosaic",
+        f"C{c_res}_nested{nest_idx}_mosaic",
+        "--tile_file",
+        f"C{c_res}_grid.tile{tile}.nc",
+    ]
+
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError(f"Failed to generate mosaic for nest tile: [{tile}]")
+
+
+def _mosaic_for_nest(c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path):
+    # 1. Global tiles
+    global_tiles = [f"C{c_res}_grid.tile{i}.nc" for i in range(1, 7)]
+    global_tiles = ",".join(global_tiles)
+
+    cmd = [
+        f"{make_solo_mosaic}",
+        "--num_tiles",
+        "6",
+        "--dir",
+        f"{out_dir}",
+        "--mosaic",
+        f"C{c_res}_coarse_mosaic",
+        "--tile_file",
+        global_tiles,
+    ]
+
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate coarse mosaic for global tiles")
+
+    # 2. For all tiles
+    n_tiles = 6 + state.n_nests
+    all_tiles = [f"C{c_res}_grid.tile{i}.nc" for i in range(1, n_tiles + 1)]
+    all_tiles = ",".join(all_tiles)
+
+    cmd = [
+        f"{make_solo_mosaic}",
+        "--num_tiles",
+        f"{n_tiles}",
+        "--dir",
+        f"{out_dir}",
+        "--mosaic",
+        f"C{c_res}_mosaic",
+        "--tile_file",
+        all_tiles,
+    ]
+
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate mosaic for global and nest tiles")
+
+    nested_tiles = [i + 7 for i in range(state.n_nests)]
+    nest_indices = [f"{i:02d}" for i in range(2, state.n_nests + 2)]
+
+    args = [
+        (
+            make_solo_mosaic,
+            out_dir,
+            c_res,
+            i,
+            tile,
+            Path(str(log_file).replace(".log", f"_tile{tile}.log")),
+        )
+        for tile, i in zip(nested_tiles, nest_indices)
+    ]
+    tasks = [dask.delayed(_mosaic_for_i_nest)(*a) for a in args]
+    dask.compute(
+        *tasks,
+        scheduler=state.preprocess_dask_scheduler,
+        num_workers=len(args),
+        chunksize=1,
+    )
+
+
+def _mosaic_for_regionalgfdl(
+    c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+):
+    grid_file = out_dir / f"C{c_res}_grid.tile7.nc"
+    new_res = get_newres(grid_file)
+
+    cp(out_dir / f"C{c_res}_grid.tile7.nc", out_dir / f"C{new_res}_grid.tile7.nc")
+
+    cmd = [
+        f"{make_solo_mosaic}",
+        "--num_tiles",
+        "1",
+        "--dir",
+        f"{out_dir}",
+        "--mosaic",
+        f"C{new_res}_mosaic",
+        "--tile_file",
+        f"C{new_res}_grid.tile7.nc",
+    ]
+
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate mosaic for regional GFDL grid")
+
+
+def _mosaic_for_regionalesg(
+    c_res: int, out_dir: Path, make_solo_mosaic: str, log_file: Path
+):
+    grid_file = out_dir / "regional_grid.nc"
+    new_res = get_newres(grid_file)
+
+    cp(out_dir / "regional_grid.nc", out_dir / f"C{new_res}_grid.tile7.nc")
+
+    cmd = [
+        f"{make_solo_mosaic}",
+        "--num_tiles",
+        "1",
+        "--dir",
+        f"{out_dir}",
+        "--mosaic",
+        f"C{new_res}_mosaic",
+        "--tile_file",
+        f"C{new_res}_grid.tile7.nc",
+    ]
+
+    result, msgs = run_cmd(cmd, stdout=log_file, stderr=log_file)
+    if result != 0:
+        log.error(msgs)
+        raise RuntimeError("Failed to generate mosaic for regional ESG grid")
+
+
+def run_make_mosaic(
+    c_res: int,
+    gtype: str,
+    exec_dir: Path,
+    out_dir: Path,
+    mod_dir: Path | None = None,
+):
+    """
+    Generate a cubed-sphere mosaic file for the FV3 dynamical core.
+
+    This function wraps the `make_solo_mosaic` utility, which assembles
+    individual grid tiles into a global or regional mosaic NetCDF file.
+    It supports uniform, stretched, nested, and regional grid types as
+    generated by `make_hgrid`.
+
+    Parameters
+    ----------
+    c_res : int
+        Base cubed-sphere resolution (e.g., 96 for C96). Used for file naming
+        and mosaic metadata.
+    gtype : str
+        Grid type. Must be one of:
+        - `'uniform'` : Global cubed-sphere with equal tile areas.
+        - `'stretch'` : Global grid with stretched tiles centered on a target.
+        - `'nest'` : Mosaic including one or more refined nests.
+        - `'regional_gfdl'` : GFDL-style regional mosaic.
+        - `'regional_esg'` : ESG-style regional mosaic.
+    exec_dir : Path
+        Path to directory containing the grid generation executables,
+        typically including `make_solo_mosaic`.
+    out_dir : Path
+        Directory where the mosaic NetCDF file will be written. The expected
+        output is usually named `C{c_res}_mosaic.nc` or similar.
+
+    mod_dir : Path, optional
+        Directory containing the model files. If provided and not empty, the function will return early without generating new mosaics.
+
+    """
+
+    if staged_files(mod_dir):
+        return  # the mosaics were copied with the staged grid
+
+    log.info("Generating grid mosaics")
+
+    log_file = state.logs / "make_mosaic.log"
+    make_solo_mosaic = exec_dir / "make_solo_mosaic"
+
+    with tmp_cwd(out_dir):
+        if gtype in ["uniform", "stretch"]:
+            _mosaic_for_uniform_and_stretch(c_res, out_dir, make_solo_mosaic, log_file)
+
+        elif gtype == "nest":
+            _mosaic_for_nest(c_res, out_dir, make_solo_mosaic, log_file)
+
+        elif gtype == "regional_gfdl":
+            _mosaic_for_regionalgfdl(c_res, out_dir, make_solo_mosaic, log_file)
+
+        elif gtype == "regional_esg":
+            _mosaic_for_regionalesg(c_res, out_dir, make_solo_mosaic, log_file)
