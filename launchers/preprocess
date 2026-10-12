@@ -1,0 +1,11 @@
+#!/bin/sh
+
+cd "$WORK_DIR" || exit 1
+
+set +e
+/preprocess "$UFS_UTILS_DIR/src/driver.py"
+exit_code=$?
+set -e
+
+echo "$exit_code" > "$WORK_DIR/exit_code"
+exit "$exit_code"
