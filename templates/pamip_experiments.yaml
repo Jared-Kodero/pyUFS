@@ -1,0 +1,73 @@
+# PAMIP Tier 1 and 2 SST and sea-ice boundary conditions (input4MIPs, target_mip PAMIP).
+#
+# Read by src/pamip_experiment.py and tools/download_pamip_amip.py; this file is
+# the only place that ties an experiment number to its forcing files. Every
+# experiment, the control 1.1 included, is a pair of absolute monthly climatologies
+# (twelve months on a 1 degree grid), and the pair already holds the ice-edge SST
+# adjustment of the protocol (pre-industrial or future SST is imposed where the
+# SIC differs from present day by more than 10 %, Appendix A), so nothing is added.
+#
+# Basis: Smith, D. M. et al. (2019), Geosci. Model Dev. 12, 1139-1164,
+# doi:10.5194/gmd-12-1139-2019 (Table 1 experiments, Table A1 forcing files,
+# Appendix A construction of the fields; present day is the HadISST 1979-2008
+# climatology). Known issues of the data set:
+# https://www.cesm.ucar.edu/projects/cmip6/pamip/known_issues
+#
+# File name of a dataset (as indexed on ESGF, checked against Table A1):
+#   <variable_id>_input4MIPs_SSTsAndSeaIce_PAMIP_<source_id>_gn_<period>.nc
+# Downloaded to <fix_src>/PAMIP/<source_id>/<variable_id>/ by tools/download_pamip_amip.py.
+# source_id UCI-present-1-0 also holds other siconc files (1979-2014); the period
+# selects the 1979-2008 climatology.
+#
+# The experiment names and their SHiELD namelist settings are PAMIP_EXPERIMENTS in src/pamip_experiment.py.
+#
+# Protocol of Smith et al. (2019), Appendix B, for experiments 1 to 4 (not read by the code):
+#   tier             1: 1.1, 1.3, 1.5, 1.6, 1.7, 1.8; 2: 1.2, 1.4, 2.x; 3: the others (protocol page)
+#   start            1 April 2000
+#   length           14 months, the first 2 months are spin-up and ignored (Appendix B); Table 1 lists
+#                    12 years for 1.1 and 1 year for the other experiments of sets 1 to 4
+#   members          minimum 100 (Table 1), from perturbed initial conditions
+#   radiative forcing present day, taken as the year 2000, for all but set 5, which uses time-varying forcing;
+#                    here only the CO2 table of 2000 is selected (ictm = 20000 in PAMIP_EXPERIMENTS)
+#   boundary data  processed with the standard AMIP II protocol before use, so that monthly means of the model
+#                    agree with the files; SHiELD does not do this, it interpolates linearly between mid-month
+#                    values at each surface cycle (every 24 h)
+# Set 5 runs 1 January 1979 to 31 December 2014 and set 6 runs 100 years from 1 April 2000.
+#
+# Keys per experiment
+#   family       data family: directory below FIXED and fix_src, tag of the generated file names
+#   sst, sic     source_id, variable_id and period of the input4MIPs file; the files hold
+#                filled values over land, which the code masks with seaice_newland.grb
+#
+# The files carry source_id and source_version attributes; the source_id is checked on reading.
+# The SST of 1.3 must come from ...-1-1 (source_version 1.1), which replaces the file of Table A1
+# (known issues page of the PAMIP protocol, version 20191002).
+
+experiments:
+  "1.1":
+    family: PAMIP
+    description: Present-day SST and SIC, HadISST 1979-2008 climatology (control).
+    sst: {source_id: UCI-present-1-0, variable_id: tos, period: 197901-200812-clim}
+    sic: {source_id: UCI-present-1-0, variable_id: siconc, period: 197901-200812-clim}
+  "1.3":
+    family: PAMIP
+    description: Preindustrial SST with present-day SIC.
+    # Table A1 lists ...-1-0; the known issues page reports a correction of the 1.3 SST (version
+    # 20191002), published as ...-1-1, which is used here.
+    sst: {source_id: UCI-pi-prArctic-prAntarctic-1-1, variable_id: tos, period: 187001-188012-clim}
+    sic: {source_id: UCI-present-1-0, variable_id: siconc, period: 197901-200812-clim}
+  "1.4":
+    family: PAMIP
+    description: Future SST (2 K global warming) with present-day SIC (Tier 2).
+    sst: {source_id: UCI-fu-prArctic-prAntarctic-1-0, variable_id: tos, period: clim}
+    sic: {source_id: UCI-present-1-0, variable_id: siconc, period: 197901-200812-clim}
+  "1.5":
+    family: PAMIP
+    description: Present-day SST with preindustrial Arctic SIC.
+    sst: {source_id: UCI-piArctic-1-0, variable_id: tos, period: 187001-188012-clim}
+    sic: {source_id: UCI-piArctic-1-0, variable_id: siconc, period: 187001-188012-clim}
+  "1.6":
+    family: PAMIP
+    description: Present-day SST with future (2 K) Arctic SIC.
+    sst: {source_id: UCI-fut2CArctic-1-0, variable_id: tos, period: clim}
+    sic: {source_id: UCI-fut2CArctic-1-0, variable_id: siconc, period: clim}

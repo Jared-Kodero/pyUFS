@@ -38,7 +38,7 @@ git clone -b 202604 https://github.com/Jared-Kodero/pyUFS.git
 18. Example cases
 19. Compiling a custom SHiELD executable
 20. Quick start and submission notes
-21. SST and sea-ice perturbations (`tgrad_perturbations`)
+21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
 22. Monthly runs
 
 ## 1. Reference documentation
@@ -624,7 +624,7 @@ rather than mutating the default files directly.
 
 The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
 `src/fv3_external_ic.py`); all other settings, including segment settings and
-`tgrad_perturbations`, come from the case `run_config.yaml`. The case model start
+`pamip_experiment`, come from the case `run_config.yaml`. The case model start
 (`init_datetime` plus `forecast_hour`), `gtype` and `levels` must match the bundle.
 
 ### 8.9 Surface analysis update and coupled grids (UFS_UTILS)
@@ -909,12 +909,12 @@ segment is a cold start produced by the initial driver. Each later segment is a 
 produced by the restart driver, which resumes from the previous segment restart files.
 Restart segments load the persisted `state.yaml`; their settings come from it, not from
 `run_config.yaml`. The cold start records a checksum of the grid geometry, vertical
-levels, initialization time and, when set, `tgrad_perturbations` of `run_config.yaml`;
+levels, initialization time and, when set, `pamip_experiment` of `run_config.yaml`;
 each restart compares it with the current `run_config.yaml` before moving any directory
 and stops if these settings were edited. Other keys (for example `run_length` or
 `resubmit`) are not checked. Regional restart segments must start on multiples of 3 h, the
 interval of the boundary files, because the model reads the boundary file of its restart
-hour. Forcing files in `FIXED/MODS`
+hour. Forcing files in `FIXED/PAMIP`
 and the cold-start namelists are reused by later segments; the case `diag_table` is
 restaged every segment. When `RESTART` is promoted to `INPUT`, the static inputs of the
 cold-start `INPUT` (archived as `IC/INPUT`) that the model also reads at a warm start are
@@ -930,7 +930,7 @@ as an independent job with its own working directory `memNN` and its own log. Us
 moisture perturbations to build spread.
 
 Member 1 is unperturbed; other members get temperature noise seeded from the case
-checksum (`src/fv3_ensemble_driver.py`), which includes `tgrad_perturbations`
+checksum (`src/fv3_ensemble_driver.py`), which includes `pamip_experiment`
 when set. Perturbations are generated only when ICs are generated; to pair members
 across experiments, stage the same member bundle through `external_ic_dir`.
 
@@ -956,7 +956,7 @@ from the defaults.
 | `run_config.regional.yaml` | Regional ESG domain |
 | `run_config.external_ic.yaml` | Start from a staged grid and IC bundle |
 | `run_config.sm_perturbations.yaml` | Soil moisture perturbation (Section 11) |
-| `run_config.tgrad.yaml` | SST and sea-ice perturbation (Section 21) |
+| `run_config.pamip.yaml` | PAMIP SST and sea-ice experiment (Section 21) |
 | `run_config.monthly.yaml` | Ten years of monthly segments, yearly files (Section 22) |
 
 ## 19. Compiling a custom SHiELD executable
@@ -1076,14 +1076,43 @@ Deactivate any active conda environment and use a clean shell before submitting,
 workflow starts from a predictable environment. Place the launcher in the case directory and
 run it there so the workflow reads the local `run_config.yaml` and any case-local files.
 
-## 21. SST and sea-ice perturbations (`tgrad_perturbations`)
+## 21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
 
-`src/tgrad_perturbations.py` writes perturbed copies of the monthly SST and sea-ice
-climatologies to `FIXED/MODS` once, at the cold start, and points `namsfc` at them. Restart
-segments keep these files; `preprocess_only` exits before they are written. Any block,
-including `method: none`, also prescribes SST and sea ice from the climatologies. The block
-is validated when the case starts. See `config/examples/run_config.tgrad.yaml`, the comments in
-`config/run_config.yaml` (its section 11) and the module for methods and limits.
+`pamip_experiment` selects a PAMIP experiment (Smith et al., 2019, GMD 12, 1139) by its number as
+quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arctic sea ice), or is
+`null` for the native climatologies. The names of all PAMIP experiments are `PAMIP_EXPERIMENTS` in
+`src/pamip_experiment.py`; those with SST and sea-ice boundary files are 1.1
+(control), 1.6, 1.5, 1.3 and 1.4, and their input4MIPs dataset identifiers are in
+`templates/pamip_experiments.yaml`. At the cold start `src/pamip_experiment.py` regrids the
+PAMIP monthly climatologies from `fix_src/PAMIP` (`python tools/download_pamip_amip.py --needed --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
+of the native SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
+`RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
+headers, packing, month stamps and land flags of the native files. The paths are stored in
+`state.fntsfc` and `state.fnaisc`, which `update_namsfc` writes to `namsfc`. With the option set,
+`update_namsfc` also sets `ftsfs = faiss = fsics = fsicl = 0` (the surface cycle replaces SST and
+ice by the climatology at each cycle) and `do_ocean = false` (no mixed-layer ocean), `use_ext_sst = false` and `nstf_name = [0, 0, 1, 0, 5]` (NSST off, the model default). The surface cycle runs every `fhcyc` = 24 h, so the climatology is applied at the first step and then daily, interpolated linearly between mid-month values. The AMIP II processing that the protocol asks for (monthly means of the model equal to the means of the files) is not applied. At the cold start
+the same fields, interpolated to the start date with the mid-month weights of the surface cycle, are
+also regridded onto every tile with `to_fv3_grid` of `src/latlon_to_fv3.py` (shared with `sm_perturbations`, xESMF). The PAMIP grid is regridded onto
+the native GRIB grids with `ll_regrid` of the same module (bilinear `xarray` interpolation with NaN-renormalised
+weights; xESMF runs out of memory on the 0.083 degree SST grid of 9.3 million points) and written to `slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
+so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, the reset that `sfcsub.F` applies to snow, soil temperature and roughness at points changing between ice and open water does not happen, so these keep the GFS values at such points.
+Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
+`preprocess_only` exits before they are written. The option is validated when the case
+starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.
+
+Run 1.1 and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing), then 1.5 and 1.3; 1.4 is a Tier 2
+experiment. A run of days only checks that the files are read. The PAMIP protocol is a 14-month
+run from 1 April 2000 with the first two months discarded, analysed over at least 100 members,
+because the circulation response builds over autumn and winter and is small relative to internal
+variability. Only the SST and sea-ice files are replaced. Initial conditions come from GFS, which is
+not available for the year 2000, so start on 1 April of an available year (the PAMIP climatologies
+do not depend on the year). The radiative forcing is that of the protocol year 2000: `ictm` is set to
+20000, so the model reads `co2historicaldata_2000.txt` (staged by `fv3_fixed_files`) for the CO2 of every
+model year. Volcanic aerosol and solar constant are not changed. The SHiELD namelist settings of
+each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
+`templates/pamip_experiments.yaml`.
+
+Three test cases differ only in `pamip_experiment` and run two one-month segments from 1 April 2024: `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method), `tests/cases/pamip_ctrl` (1.1) and `tests/cases/pamip_futarcsic` (1.6). The last two need the PAMIP files in `fix_src/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
 
 ## 22. Monthly runs
 
@@ -1105,6 +1134,5 @@ and misalign the buckets with month ends; keep `fhzero = fdiag`. Forecast templa
 fv_diag summaries every hour (`print_freq = 1`), month and year segments once a day.
 The monthly test (`tests/cases/monthly`) has no case `diag_table`, so it exercises the
 template; it keeps the physics schemes of `templates/input_nml.yaml` and changes only the timing.
-The tgrad test cases (`tests/cases/tgrad_ctrl`, `tests/cases/tgrad_sst4`) run one-month segments.
 The diag tables write time in seconds for every output frequency; the regridded files
 keep the time handling of `post_process` unchanged. Fields without horizontal axes, such as `average_T1`, `average_T2` and `average_DT`, are copied to the regridded files.

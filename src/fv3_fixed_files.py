@@ -61,11 +61,26 @@ def update_fixed_files():
         fix_file(f"am/{name}")
         link_fixed_file(fix_dir / name)
 
-    for year in run_years():
-        path = co2_file(year)
+    from pamip_experiment import pamip_namelist
+
+    ictm = pamip_namelist().get("gfs_physics_nml", {}).get("ictm")
+    if ictm is not None:
+        forcing_year = ictm // 10
+        # ictm = yyyy0: the model stops if the table of exactly this year is missing
+        path = fix_file(f"am/co2historicaldata_{forcing_year}.txt", required=False)
         if path is None:
-            raise FileNotFoundError(f"No CO2 table for {year} or earlier in {fix_dir}")
+            raise FileNotFoundError(
+                f"co2historicaldata_{forcing_year}.txt not found in {fix_dir}"
+            )
         link_fixed_file(fix_dir / path.name)
+    else:
+        for year in run_years():
+            path = co2_file(year)
+            if path is None:
+                raise FileNotFoundError(
+                    f"No CO2 table for {year} or earlier in {fix_dir}"
+                )
+            link_fixed_file(fix_dir / path.name)
 
     # Volcanic tables exist for 1850-1999; later years use the lowest value.
     for name in volcanic_files(run_years()):
