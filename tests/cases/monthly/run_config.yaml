@@ -17,6 +17,6 @@ dt_ocean: 1800
 k_split: [3]
 n_split: [6]
 
-# No case diag_table: configs/diag_table.monthly is selected automatically.
-# Physics schemes are those of configs/input_nml.yaml; only the timing differs
-# (time step above, monthly profile in scripts/fv3_namelists.py).
+# No case diag_table: templates/diag_table.monthly is selected automatically.
+# Physics schemes are those of templates/input_nml.yaml; only the timing differs
+# (time step above, monthly profile in src/fv3_namelists.py).
