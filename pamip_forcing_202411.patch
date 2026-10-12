@@ -1,0 +1,2636 @@
+diff --git a/README.md b/README.md
+index 6509bfb..59c1a35 100644
+--- a/README.md
++++ b/README.md
+@@ -34,7 +34,7 @@ Section 19.1 lists the differences between the two profiles.
+ 18. Example cases
+ 19. Compiling a custom SHiELD executable
+ 20. Quick start and submission notes
+-21. SST and sea-ice perturbations (`tgrad_perturbations`)
++21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
+ 22. Monthly runs
+ 
+ ## 1. Reference documentation
+@@ -622,7 +622,7 @@ rather than mutating the default files directly.
+ 
+ The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
+ `src/fv3_external_ic.py`); all other settings, including segment settings and
+-`tgrad_perturbations`, come from the case `run_config.yaml`. The case model start
++`pamip_experiment`, come from the case `run_config.yaml`. The case model start
+ (`init_datetime` plus `forecast_hour`), `gtype` and `levels` must match the bundle.
+ 
+ ### 8.9 Surface analysis update and coupled grids (UFS_UTILS)
+@@ -907,12 +907,12 @@ segment is a cold start produced by the initial driver. Each later segment is a
+ produced by the restart driver, which resumes from the previous segment restart files.
+ Restart segments load the persisted `state.yaml`; their settings come from it, not from
+ `run_config.yaml`. The cold start records a checksum of the grid geometry, vertical
+-levels, initialization time and, when set, `tgrad_perturbations` of `run_config.yaml`;
++levels, initialization time and, when set, `pamip_experiment` of `run_config.yaml`;
+ each restart compares it with the current `run_config.yaml` before moving any directory
+ and stops if these settings were edited. Other keys (for example `run_length` or
+ `resubmit`) are not checked. Regional restart segments must start on multiples of 3 h, the
+ interval of the boundary files, because the model reads the boundary file of its restart
+-hour. Forcing files in `FIXED/MODS`
++hour. Forcing files in `FIXED/PAMIP`
+ and the cold-start namelists are reused by later segments; the case `diag_table` is
+ restaged every segment. When `RESTART` is promoted to `INPUT`, the static inputs of the
+ cold-start `INPUT` (archived as `IC/INPUT`) that the model also reads at a warm start are
+@@ -928,7 +928,7 @@ as an independent job with its own working directory `memNN` and its own log. Us
+ moisture perturbations to build spread.
+ 
+ Member 1 is unperturbed; other members get temperature noise seeded from the case
+-checksum (`src/fv3_ensemble_driver.py`), which includes `tgrad_perturbations`
++checksum (`src/fv3_ensemble_driver.py`), which includes `pamip_experiment`
+ when set. Perturbations are generated only when ICs are generated; to pair members
+ across experiments, stage the same member bundle through `external_ic_dir`.
+ 
+@@ -953,7 +953,7 @@ case directory as `run_config.yaml`; unset keys come from the defaults.
+ | `run_config.regional.yaml` | Regional ESG domain |
+ | `run_config.external_ic.yaml` | Start from a staged grid and IC bundle |
+ | `run_config.sm_perturbations.yaml` | Soil moisture perturbation (Section 11) |
+-| `run_config.tgrad.yaml` | SST and sea-ice perturbation (Section 21) |
++| `run_config.pamip.yaml` | PAMIP SST and sea-ice experiment (Section 21) |
+ | `run_config.monthly.yaml` | Ten years of monthly segments, yearly files (Section 22) |
+ 
+ ## 19. Compiling a custom SHiELD executable
+@@ -1091,14 +1091,43 @@ Deactivate any active conda environment and use a clean shell before submitting,
+ workflow starts from a predictable environment. Place the launcher in the case directory and
+ run it there so the workflow reads the local `run_config.yaml` and any case-local files.
+ 
+-## 21. SST and sea-ice perturbations (`tgrad_perturbations`)
+-
+-`src/tgrad_perturbations.py` writes perturbed copies of the monthly SST and sea-ice
+-climatologies to `FIXED/MODS` once, at the cold start, and points `namsfc` at them. Restart
+-segments keep these files; `preprocess_only` exits before they are written. Any block,
+-including `method: none`, also prescribes SST and sea ice from the climatologies. The block
+-is validated when the case starts. See `config/examples/run_config.tgrad.yaml`, the comments in
+-`config/run_config.yaml` (its section 11) and the module for methods and limits.
++## 21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
++
++`pamip_experiment` selects a PAMIP experiment (Smith et al., 2019, GMD 12, 1139) by its number as
++quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arctic sea ice), or is
++`null` for the native climatologies. The names of all PAMIP experiments are `PAMIP_EXPERIMENTS` in
++`src/pamip_experiment.py`; those with SST and sea-ice boundary files are 1.1
++(control), 1.6, 1.5, 1.3 and 1.4, and their input4MIPs dataset identifiers are in
++`templates/pamip_experiments.yaml`. At the cold start `src/pamip_experiment.py` regrids the
++PAMIP monthly climatologies from `fix_src/PAMIP` (`python tools/download_pamip_amip.py --needed --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
++of the native SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
++`RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
++headers, packing, month stamps and land flags of the native files. The paths are stored in
++`state.fntsfc` and `state.fnaisc`, which `update_namsfc` writes to `namsfc`. With the option set,
++`update_namsfc` also sets `ftsfs = faiss = fsics = fsicl = 0` (the surface cycle replaces SST and
++ice by the climatology at each cycle) and `do_ocean = false` (no mixed-layer ocean), `use_ext_sst = false` and `nstf_name = [0, 0, 1, 0, 5]` (NSST off, the model default). The surface cycle runs every `fhcyc` = 24 h, so the climatology is applied at the first step and then daily, interpolated linearly between mid-month values. The AMIP II processing that the protocol asks for (monthly means of the model equal to the means of the files) is not applied. At the cold start
++the same fields, interpolated to the start date with the mid-month weights of the surface cycle, are
++also regridded onto every tile with `to_fv3_grid` of `src/latlon_to_fv3.py` (shared with `sm_perturbations`, xESMF). The PAMIP grid is regridded onto
++the native GRIB grids with `ll_regrid` of the same module (bilinear `xarray` interpolation with NaN-renormalised
++weights; xESMF runs out of memory on the 0.083 degree SST grid of 9.3 million points) and written to `slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
++so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, the reset that `sfcsub.F` applies to snow, soil temperature and roughness at points changing between ice and open water does not happen, so these keep the GFS values at such points.
++Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
++`preprocess_only` exits before they are written. The option is validated when the case
++starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.
++
++Run 1.1 and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing), then 1.5 and 1.3; 1.4 is a Tier 2
++experiment. A run of days only checks that the files are read. The PAMIP protocol is a 14-month
++run from 1 April 2000 with the first two months discarded, analysed over at least 100 members,
++because the circulation response builds over autumn and winter and is small relative to internal
++variability. Only the SST and sea-ice files are replaced. Initial conditions come from GFS, which is
++not available for the year 2000, so start on 1 April of an available year (the PAMIP climatologies
++do not depend on the year). The radiative forcing is that of the protocol year 2000: `ictm` is set to
++20000, so the model reads `co2historicaldata_2000.txt` (staged by `fv3_fixed_files`) for the CO2 of every
++model year. Volcanic aerosol and solar constant are not changed. The SHiELD namelist settings of
++each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
++`templates/pamip_experiments.yaml`.
++
++Three test cases differ only in `pamip_experiment` and run two one-month segments from 1 April 2024: `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method), `tests/cases/pamip_ctrl` (1.1) and `tests/cases/pamip_futarcsic` (1.6). The last two need the PAMIP files in `fix_src/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
+ 
+ ## 22. Monthly runs
+ 
+@@ -1120,6 +1149,5 @@ and misalign the buckets with month ends; keep `fhzero = fdiag`. Forecast templa
+ fv_diag summaries every hour (`print_freq = 1`), month and year segments once a day.
+ The monthly test (`tests/cases/monthly`) has no case `diag_table`, so it exercises the
+ template; it keeps the physics schemes of `templates/input_nml.yaml` and changes only the timing.
+-The tgrad test cases (`tests/cases/tgrad_ctrl`, `tests/cases/tgrad_sst4`) run one-month segments.
+ The diag tables write time in seconds for every output frequency; the regridded files
+ keep the time handling of `post_process` unchanged. Fields without horizontal axes, such as `average_T1`, `average_T2` and `average_DT`, are copied to the regridded files.
+diff --git a/config/examples/run_config.tgrad.yaml b/config/examples/run_config.tgrad.yaml
+deleted file mode 100644
+index a10f486..0000000
+--- a/config/examples/run_config.tgrad.yaml
++++ /dev/null
+@@ -1,21 +0,0 @@
+-# Global C96 with a 4 K Arctic SST increment (0 K at 60N, 4 K poleward of 80N).
+-# Methods and options: config/run_config.yaml section 11,
+-# src/tgrad_perturbations.py. Use method: none for the control.
+-description: C96 Arctic SST +4 K
+-init_datetime: "2020010100Z"
+-run_length: 1
+-run_length_units: months
+-resubmit: 11 # 12 monthly segments
+-c_res: C96
+-gtype: uniform
+-levels: 64
+-generate_ic_data: true
+-
+-tgrad_perturbations:
+-  method: polar_shift # none | polar_shift | uniform_shift | ice_loss, or a list
+-  ocean_mode: prescribed
+-  poles: north
+-  lat_start: 60.0
+-  lat_full: 80.0
+-  polar_delta_t_k: 4.0
+-  monthly_scale: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+diff --git a/config/run_config.yaml b/config/run_config.yaml
+index cd27ecf..8d396f6 100755
+--- a/config/run_config.yaml
++++ b/config/run_config.yaml
+@@ -18,7 +18,7 @@
+ #   8. Time stepping
+ #   9. Surface and orography
+ #  10. Land surface perturbations
+-#  11. Meridional temperature-gradient (SST and sea-ice) perturbations
++#  11. PAMIP SST and sea-ice boundary conditions
+ # =============================================================================
+ 
+ # -----------------------------------------------------------------------------
+@@ -307,116 +307,48 @@ make_gsl_orog: false # Generate GSL drag-suite orography files (oro_data_ls/ss);
+ sm_perturbations: null
+ 
+ # -----------------------------------------------------------------------------
+-# 11. MERIDIONAL TEMPERATURE-GRADIENT PERTURBATIONS (SST AND SEA ICE)
++# 11. PAMIP SST AND SEA-ICE BOUNDARY CONDITIONS (pamip_experiment)
+ # -----------------------------------------------------------------------------
+-# Change the lower boundary through the monthly SST and sea-ice climatologies
+-# read by the surface cycle (namsfc FNTSFC, FNAISC). tgrad_perturbations is a
+-# single mapping, not a list. Both files are always rewritten from fix_src/am
+-# (only read) to FIXED/MODS/ under the original names at cold start, after
+-# preprocessing; every write is logged. preprocess_only exits before this step,
+-# so no forcing file is written in a preprocess-only run. Restart segments
+-# reload state.yaml, do not reread this block, and keep the FIXED/MODS files;
+-# the block is part of the restart checksum when set.
++# Replaces the monthly SST and sea-ice climatologies read by the surface cycle
++# (namsfc FNTSFC, FNAISC) with the official PAMIP pair of one experiment (Smith et
++# al., 2019, Geosci. Model Dev. 12, 1139). The option only selects the experiment;
++# nothing is added to the PAMIP fields, whose pair already holds the ice-edge SST
++# adjustment. At cold start the PAMIP NetCDF files in <fix_src>/PAMIP (downloaded
++# with tools/download_pamip_amip.py --needed --root <fix_src>) are regridded onto the grids of
++# fix_src/am/RTGSST.* and CFSR.SEAICE.* and written to FIXED/PAMIP/ as
++# RTGSST.PAMIP_<exp>.monthly.clim.grb and CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb,
++# keeping the headers, packing, month stamps and land flags of the native files.
++# Their paths are stored in state.fntsfc and state.fnaisc, which update_namsfc
++# writes to namsfc when set. fix_src is only read. The option is validated when the
++# case starts, before grid and IC generation; restart segments keep the FIXED/PAMIP
++# files and the option is part of the restart checksum when set. With the option set,
++# SST and ice follow the climatologies (namsfc ftsfs = faiss = fsics = fsicl = 0,
++# do_ocean = false, use_ext_sst = false, NSST off). The surface cycle runs every fhcyc = 24 h, with
++# linear interpolation between mid-month values; the AMIP II processing of the protocol is not
++# applied. The same fields, interpolated to the start date, are also
++# regridded onto the tiles (to_fv3_grid in latlon_to_fv3.py, as sm_perturbations) and written to
++# slmsk, tsea, fice, hice and tisfc of sfc_data over non-land points at the cold start.
++# Leave it null to keep the native climatologies.
+ #
+-# The block is validated when the case starts, before grid and IC generation:
+-# every numeric value must be finite, method must not be empty (use none for a
+-# control), 0 <= lat_start < lat_full <= 90, and monthly_scale, when given,
+-# must hold exactly 12 finite values.
++# pamip_experiment: "1.6"   # null, or the experiment number as quoted text
+ #
+-# Schema (flat mapping)
+-# ---------------------
+-# tgrad_perturbations:
+-#   method: <str | list[str]>  # one method or a list
+-#
+-# Methods and the required key for each
+-# -------------------------------------
+-#   none           no change (CTRL; still applies the surface settings below)
+-#   polar_shift    SST = SST + polar_delta_t_k * W(lat)       requires polar_delta_t_k
+-#   uniform_shift  SST = SST + ocean-area mean of the
+-#                  polar_shift pattern (same mean warming)    requires polar_delta_t_k
+-#   ice_loss       SIC = SIC * (1 - sic_reduction * W(lat))   requires sic_reduction
+-#     W = x^2 (3 - 2x), x = clip((|lat| - lat_start) / (lat_full - lat_start), 0, 1)
+-#     for each selected pole: 0 equatorward of lat_start, 1 poleward of lat_full.
+-#
+-# Optional controls
+-# -----------------
+-#   polar_delta_t_k: float | {north: float, south: float}  # SST change at the pole [K]
+-#   sic_reduction:   float | {north: float, south: float}  # fraction of ice removed at the pole
+-#   poles:           str    # north | south | both (default north); a scalar
+-#                           # amplitude applies to each selected pole, a mapping
+-#                           # sets each pole explicitly
+-#   lat_start:       float  # default 60 (same distance from each pole)
+-#   lat_full:        float  # default 80
+-#   ocean_mode:      str    # prescribed (default) | mlo (restored mixed-layer
+-#                           # ocean; timescale and latitude limits from ocean_nml)
+-#   uniform_warming_k:      float  # extra uniform SST change, applied only with
+-#                                  # polar_shift or uniform_shift (default 0)
+-#   opened_water_delta_t_k: float  # SST change where ice_loss opens water, applied
+-#                                  # only with ice_loss (default 0)
+-#   monthly_scale:   list[float]   # 12 factors, Jan..Dec, scaling the polar or
+-#                                  # uniform shift pattern and ice_loss. They do not
+-#                                  # scale uniform_warming_k or opened_water_delta_t_k.
+-#
+-# Magnitudes (literature)
+-# -----------------------
+-#   polar_delta_t_k: 2 and 4 K are the standard sensitivity amplitudes; above 4 K
+-#     and up to 8 K is accepted as a strong-forcing experiment (logged); |dT| > 8 K
+-#     is rejected. The 8 K check applies to the base polar_delta_t_k, before
+-#     monthly_scale: 4 K with factors of 10 passes and gives a nominal 40 K
+-#     pattern, which is logged as a warning. Whether the limit should apply to
+-#     the effective monthly anomaly is an experiment-policy decision.
+-#     Basis: CMIP6 central-Arctic Aug-Sep SST warming by 2100 spans about 0.7-8 K
+-#     under SSP2-4.5, about 3 K in moderately ice-free models; observed Arctic
+-#     amplification 1979-2021 is 3.8. Negative values cool the pole (stronger
+-#     gradient). Southern Ocean warming is projected to be delayed and weaker, so a
+-#     southern warming is an idealized test (logged).
+-#   sic_reduction: 0..1, a relative reduction (0.5 halves SIC where W = 1; it does
+-#     not subtract 50 percentage points). Projected ice loss is largest in late
+-#     summer; an effective reduction above 0.5 in every month is logged as
+-#     idealized. Use monthly_scale to concentrate the loss in summer and autumn.
+-#   These amplitudes set the boundary forcing, not the atmospheric response;
+-#   diagnose the resulting temperature-gradient change separately.
+-#
+-# Applied automatically (all methods, including none)
+-# ---------------------------------------------------
+-#   namsfc: ftsfs = faiss = fsics = fsicl = 0  # SST and ice follow the climatologies
+-#   ocean_mode prescribed: do_ocean = use_ext_sst = false, NSST off
+-#   ocean_mode mlo:        do_ocean = true, restore_method = 1
+-#
+-# Constraints
+-# -----------
+-#   SST is not changed under perennial ice (SIC >= 0.15 all year) and is not
+-#   cooled below 271.2 K. With ice_loss, the perennial-ice mask is evaluated on
+-#   the reduced SIC. Land flags in the ice file (1.57) are left unchanged.
+-#   uniform_shift uses seaice_newland.grb (1 = land) for the ocean-area mean,
+-#   with land and perennial ice excluded; its applied mean is close to, not
+-#   guaranteed equal to, that of polar_shift after masking.
+-#   Use the same ocean_mode, poles, lat_start and lat_full in every arm.
+-#   User namelist overrides are applied after these settings; check the
+-#   generated input*.nml for conflicts and FIXED/MODS paths in namsfc.
+-#   The radiative background (CO2, solar, aerosol, ozone) is not set here; see
+-#   gfs_physics_nml ico2, ictm, isol and iaer (set through an input.yaml override).
+-#
+-# Examples
+-# --------
+-# CTRL:
+-# tgrad_perturbations:
+-#   method: none
+-#
+-# Arctic SST warming of 4 K (use uniform_shift for the mean-matched arm):
+-# tgrad_perturbations:
+-#   method: polar_shift
+-#   polar_delta_t_k: 4.0
+-#
+-# Arctic sea-ice loss:
+-# tgrad_perturbations:
+-#   method: ice_loss
+-#   sic_reduction: 0.5
++#   experiment  name             SST                    SIC
++#   "1.1"       pdSST-pdSIC      present day (control)  present day
++#   "1.6"       pdSST-futArcSIC  present day            future Arctic
++#   "1.5"       pdSST-piArcSIC   present day            preindustrial Arctic
++#   "1.3"       piSST-pdSIC      preindustrial          present day
++#   "1.4"       futSST-pdSIC     future                 present day (Tier 2)
+ #
+-# Both, at both poles with different amplitudes:
+-# tgrad_perturbations:
+-#   method: [polar_shift, ice_loss]
+-#   polar_delta_t_k: {north: 4.0, south: 2.0}
+-#   sic_reduction: {north: 0.5, south: 0.3}
++# Dataset identifiers and versions are in templates/pamip_experiments.yaml. Run 1.1
++# and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing). The PAMIP protocol is a
++# 14-month run from 1 April 2000 with the first two months discarded and at least 100
++# members (Table 1); a run of days only tests that the files are read. Only the SST and sea-ice
++# files are replaced. The initial conditions come from GFS (section 5), which is not
++# available for 2000 (NOAA S3 holds GFS from 2021, NCAR GDEX from 2015), so use a
++# 1 April of an available year. The PAMIP files are climatologies and do not depend on
++# the year. The radiative forcing is that of the protocol year 2000 (Appendix B; set 5
++# excepted): namelist ictm = 20000 and the CO2 table of 2000 is staged. Volcanic aerosol and
++# the solar constant are not changed. The SHiELD settings of each experiment are
++# PAMIP_EXPERIMENTS in src/pamip_experiment.py; the protocol is in templates/pamip_experiments.yaml.
+ 
+-tgrad_perturbations: null
++pamip_experiment: null
+diff --git a/src/fv3_fixed_files.py b/src/fv3_fixed_files.py
+index 9400323..51cc765 100644
+--- a/src/fv3_fixed_files.py
++++ b/src/fv3_fixed_files.py
+@@ -61,11 +61,26 @@ def update_fixed_files():
+         fix_file(f"am/{name}")
+         link_fixed_file(fix_dir / name)
+ 
+-    for year in run_years():
+-        path = co2_file(year)
++    from pamip_experiment import pamip_namelist
++
++    ictm = pamip_namelist().get("gfs_physics_nml", {}).get("ictm")
++    if ictm is not None:
++        forcing_year = ictm // 10
++        # ictm = yyyy0: the model stops if the table of exactly this year is missing
++        path = fix_file(f"am/co2historicaldata_{forcing_year}.txt", required=False)
+         if path is None:
+-            raise FileNotFoundError(f"No CO2 table for {year} or earlier in {fix_dir}")
++            raise FileNotFoundError(
++                f"co2historicaldata_{forcing_year}.txt not found in {fix_dir}"
++            )
+         link_fixed_file(fix_dir / path.name)
++    else:
++        for year in run_years():
++            path = co2_file(year)
++            if path is None:
++                raise FileNotFoundError(
++                    f"No CO2 table for {year} or earlier in {fix_dir}"
++                )
++            link_fixed_file(fix_dir / path.name)
+ 
+     # Volcanic tables exist for 1850-1999; later years use the lowest value.
+     for name in volcanic_files(run_years()):
+diff --git a/src/fv3_init_driver.py b/src/fv3_init_driver.py
+index 4fa2f9e..0cae351 100644
+--- a/src/fv3_init_driver.py
++++ b/src/fv3_init_driver.py
+@@ -31,9 +31,9 @@ from fv3_utils import (
+ from global_cycle_driver import GLOBAL_GTYPES, run_surface_cycle
+ from regional_bc import BC_INTERVAL_HOURS
+ from sm_perturbations import apply_sm_perturbations
+-from tgrad_perturbations import (
+-    apply_tgrad_perturbations,
+-    validate_tgrad_perturbations,
++from pamip_experiment import (
++    apply_pamip_experiment,
++    validate_pamip_experiment,
+ )
+ 
+ 
+@@ -170,7 +170,7 @@ def _load_initial_state() -> None:
+     state.run_config = runtime_config_path
+     state.c_res = parse_resolution(state.c_res)
+     # Fail before grid and IC generation; files are written after preprocessing.
+-    validate_tgrad_perturbations(state.tgrad_perturbations)
++    validate_pamip_experiment(state.pamip_experiment)
+     if state.generate_ic_data:
+         validate_ufs_utils_options()
+     state.continue_run = False
+@@ -321,7 +321,7 @@ def init_driver() -> None:
+     os.chdir(state.work_dir)
+     calc_cpu_alloc(state.grid)
+     apply_sm_perturbations()
+-    apply_tgrad_perturbations()
++    apply_pamip_experiment()
+     update_nml_configs()
+     gen_shield_run_sh()
+ 
+diff --git a/src/fv3_namelists.py b/src/fv3_namelists.py
+index d95fc7b..652835a 100644
+--- a/src/fv3_namelists.py
++++ b/src/fv3_namelists.py
+@@ -371,9 +371,7 @@ def update_namsfc(nml):
+     # The mixed-layer depth climatology is read at each surface cycle when
+     # fnmldc is set (sfcsub.F) and used only by the slab ocean; it is not in
+     # the NOAA fix bucket. Without the ocean model it is left out when absent.
+-    prescribed = bool(state.tgrad_perturbations) and (
+-        state.tgrad_perturbations.get("ocean_mode", "prescribed") == "prescribed"
+-    )
++    prescribed = bool(state.pamip_experiment)
+     ocean = nml.get("gfs_physics_nml", {}).get("do_ocean", False) and not prescribed
+     if not ocean and not (am_dir / namsfc_files["fnmldc"]).exists():
+         del namsfc_files["fnmldc"]
+@@ -388,13 +386,15 @@ def update_namsfc(nml):
+ 
+     nml["namsfc"] = namsfc
+ 
+-    if state.tgrad_perturbations:
+-        # SST and sea-ice climatologies are written to FIXED/MODS by
+-        # apply_tgrad_perturbations(), either perturbed or as clean copies.
+-        nml["namsfc"]["fntsfc"] = f"FIXED/MODS/{namsfc_files['fntsfc']}"
+-        nml["namsfc"]["fnaisc"] = f"FIXED/MODS/{namsfc_files['fnaisc']}"
++    if state.pamip_experiment:
++        # state.fntsfc and state.fnaisc are set by apply_pamip_experiment()
++        # to the PAMIP SST and sea-ice files; otherwise the native ones stay.
++        if state.fntsfc:
++            nml["namsfc"]["fntsfc"] = state.fntsfc
++        if state.fnaisc:
++            nml["namsfc"]["fnaisc"] = state.fnaisc
+ 
+-        # SST, ice mask and ice concentration follow the (perturbed) FIXED
++        # SST, ice mask and ice concentration follow the PAMIP FIXED
+         # climatologies at every surface cycle; fsicl covers points already
+         # classified as ice (non-open-ocean branch of the sfcsub merge).
+         nml["namsfc"].update({"ftsfs": 0, "faiss": 0, "fsics": 0, "fsicl": 0})
+@@ -402,11 +402,13 @@ def update_namsfc(nml):
+         phys = nml.setdefault("gfs_physics_nml", {})
+         phys["use_ext_sst"] = False
+ 
+-        if state.tgrad_perturbations.get("ocean_mode", "prescribed") == "prescribed":
+-            phys["do_ocean"] = False
+-            phys["nstf_name"] = [0, 0, 1, 0, 5]
+-        else:
+-            phys["do_ocean"] = True
+-            nml.setdefault("ocean_nml", {})["restore_method"] = 1
++        phys["do_ocean"] = False
++        phys["nstf_name"] = [0, 0, 1, 0, 5]
++
++        # Experiment settings (PAMIP_EXPERIMENTS), e.g. ictm = 20000 for the radiative forcing of year 2000
++        from pamip_experiment import pamip_namelist
++
++        for group, values in pamip_namelist().items():
++            nml.setdefault(group, {}).update(values)
+ 
+     return nml
+diff --git a/src/fv3_restart_driver.py b/src/fv3_restart_driver.py
+index e6a3261..c01565b 100644
+--- a/src/fv3_restart_driver.py
++++ b/src/fv3_restart_driver.py
+@@ -63,7 +63,7 @@ def _load_restart_state() -> None:
+             "The grid or start-time settings of run_config.yaml changed after the "
+             + "cold start (c_res, gtype, levels, target_lon/lat, stretch_factor, "
+             + "refine_ratio, nest boxes, init_datetime, forecast_hour or "
+-            + "tgrad_perturbations). "
++            + "pamip_experiment). "
+             + "Restore them or start a new case."
+         )
+ 
+diff --git a/src/fv3_state.py b/src/fv3_state.py
+index b3b1739..3a56b32 100644
+--- a/src/fv3_state.py
++++ b/src/fv3_state.py
+@@ -173,7 +173,10 @@ class FV3State:
+     make_gsl_orog: bool | None = None
+     # 10-11. Perturbations
+     sm_perturbations: dict | None = None
+-    tgrad_perturbations: dict | None = None
++    pamip_experiment: str | None = None
++    # Set by apply_pamip_experiment; when not None, namsfc uses these paths
++    fntsfc: str | None = None
++    fnaisc: str | None = None
+ 
+     # --- Runtime environment (fv3_utils.runtime_env_vars) ----------------
+     n_cpus_per_node: int | None = None
+@@ -322,8 +325,8 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
+     # Hashed only when set, so checksums of existing cases remain valid.
+     if data.get("forecast_hour"):
+         _hash_keys.append("forecast_hour")
+-    if data.get("tgrad_perturbations") is not None:
+-        _hash_keys.append("tgrad_perturbations")
++    if data.get("pamip_experiment") is not None:
++        _hash_keys.append("pamip_experiment")
+ 
+     def _normalize_for_hash(value):
+         if isinstance(value, dict):
+diff --git a/src/grib_io.py b/src/grib_io.py
+index 043dd1f..2d54a5c 100644
+--- a/src/grib_io.py
++++ b/src/grib_io.py
+@@ -96,6 +96,65 @@ def get_grib_codes(
+         eccodes.codes_release(gid)
+ 
+ 
++def grid_coordinates(gid, tolerance: float = 1e-3) -> tuple[np.ndarray, np.ndarray]:
++    """Return the latitudes and longitudes of every point of a message, in scan order.
++
++    Parameters
++    ----------
++    gid : int
++        ecCodes message handle.
++    tolerance : float, optional
++        Largest disagreement [degrees] between the ecCodes axes and the axes
++        implied by the first and last grid points before the latter are used.
++        The default is the GRIB1 resolution of 0.001 degree.
++
++    Returns
++    -------
++    lat, lon : numpy.ndarray
++        Coordinates [degrees] with the order of ``codes_get_values``.
++
++    Notes
++    -----
++    For a ``regular_ll`` grid ecCodes spaces the rows with the stored
++    increment ``Dj``. GRIB1 stores increments in whole millidegrees, so a 1/12
++    degree grid carries 0.083 instead of 0.08333..., and the latitudes of the
++    RTGSST climatology drift by up to 0.72 degree (about 8.6 rows) from the
++    first to the last row. The surface-cycle code of SHiELD (``setrmsk`` in
++    ``sfcsub.F``) ignores the stored increments: it places the rows evenly
++    between the first latitude and its mirror image, and the columns every
++    ``360 / Ni`` degrees from the first longitude. The same layout is used
++    here whenever it disagrees with the ecCodes axes by more than `tolerance`;
++    otherwise the ecCodes coordinates are returned unchanged.
++    """
++    lat = eccodes.codes_get_array(gid, "latitudes")
++    lon = eccodes.codes_get_array(gid, "longitudes")
++    if eccodes.codes_get(gid, "gridType") != "regular_ll":
++        return lat, lon
++    ni, nj = int(eccodes.codes_get(gid, "Ni")), int(eccodes.codes_get(gid, "Nj"))
++    rows, row = np.unique(lat, return_inverse=True)
++    cols, col = np.unique(np.mod(lon, 360.0), return_inverse=True)
++    if rows.size != nj or cols.size != ni or nj < 2 or ni < 2:
++        return lat, lon
++    first = eccodes.codes_get(gid, "latitudeOfFirstGridPointInDegrees")
++    last = eccodes.codes_get(gid, "latitudeOfLastGridPointInDegrees")
++    wanted_rows = np.linspace(min(first, last), max(first, last), nj)
++    start = eccodes.codes_get(gid, "longitudeOfFirstGridPointInDegrees")
++    step = eccodes.codes_get(gid, "iDirectionIncrementInDegrees")
++    # Rounded increments make ni * step differ from 360 by a fraction of a percent.
++    if abs(step * ni - 360.0) > 3.6:  # not a global grid: keep the stored spacing
++        return lat, lon
++    wanted_cols = np.sort(np.mod(start + np.arange(ni) * (360.0 / ni), 360.0))
++    fix_lat = np.abs(rows - wanted_rows).max() > tolerance
++    # Compare on the circle: a column at 359.999 and one at 0.0 are neighbours.
++    gap = np.abs(cols - wanted_cols)
++    fix_lon = np.minimum(gap, 360.0 - gap).max() > tolerance
++    if fix_lat:
++        lat = wanted_rows[row]
++    if fix_lon:
++        lon = wanted_cols[col]
++    return lat, lon
++
++
+ def open_grib(path: str | Path) -> xr.DataTree:
+     """Lazily open a GRIB file as a DataTree with one node per level type and grid.
+ 
+@@ -141,8 +200,7 @@ def open_grib(path: str | Path) -> xr.DataTree:
+                         )
+                 grid = eccodes.codes_get(gid, "md5GridSection")
+                 if grid not in grids:
+-                    lat = eccodes.codes_get_array(gid, "latitudes")
+-                    lon = eccodes.codes_get_array(gid, "longitudes")
++                    lat, lon = grid_coordinates(gid)
+                     y, iy = np.unique(lat, return_inverse=True)
+                     x, ix = np.unique(lon, return_inverse=True)
+                     if y.size * x.size == lat.size == np.unique(iy * x.size + ix).size:
+@@ -273,15 +331,17 @@ def open_grib(path: str | Path) -> xr.DataTree:
+                 [
+                     da.concatenate(
+                         [
+-                            da.from_delayed(
+-                                dask.delayed(decode)(
+-                                    *spans[slots[(t, l)]], shape, index
+-                                ),
+-                                (1, 1, *shape),
+-                                np.float32,
++                            (
++                                da.from_delayed(
++                                    dask.delayed(decode)(
++                                        *spans[slots[(t, l)]], shape, index
++                                    ),
++                                    (1, 1, *shape),
++                                    np.float32,
++                                )
++                                if (t, l) in slots
++                                else empty
+                             )
+-                            if (t, l) in slots
+-                            else empty
+                             for l in levels
+                         ],
+                         axis=1,
+@@ -371,8 +431,7 @@ def save_grib(
+     def values_for(dataset, field, gid, label):
+         key = (label.split("/")[0], eccodes.codes_get(gid, "md5GridSection"))
+         if key not in positions:
+-            lat = eccodes.codes_get_array(gid, "latitudes")
+-            lon = eccodes.codes_get_array(gid, "longitudes")
++            lat, lon = grid_coordinates(gid)
+             if "values" in field.dims:
+                 if not (
+                     np.array_equal(field["latitude"], lat)
+diff --git a/src/latlon_to_fv3.py b/src/latlon_to_fv3.py
+index b82328a..3ed5541 100644
+--- a/src/latlon_to_fv3.py
++++ b/src/latlon_to_fv3.py
+@@ -1,7 +1,8 @@
+ """Regridding of regular lat/lon fields onto the tiles of the FV3 surface files.
+ 
+ Shared by ``sm_perturbations`` (soil moisture climatologies) and
+-``pamip_experiment`` (SST and sea ice). The target grid is the ``geolat`` and
++``pamip_experiment`` (SST and sea ice): ``to_fv3_grid`` regrids lat/lon fields onto
++the tiles and ``ll_regrid`` lat/lon fields onto other lat/lon grids. The tile grid is the ``geolat`` and
+ ``geolon`` of a tile of the cold-start surface files in ``state.input``
+ (global ``sfc_data.tileN.nc``, nests ``sfc_data.nestNN.tileN.nc``, regional
+ ``sfc_data.nc``).
+@@ -12,7 +13,6 @@ from __future__ import annotations
+ from pathlib import Path
+ from typing import Literal
+ 
+-import numpy as np
+ import xarray as xr
+ import xesmf as xe
+ 
+@@ -28,75 +28,74 @@ def sfc_filename(tile: int) -> Path:
+     return Path(f"sfc_data.{nest_idx}tile{tile}.nc")
+ 
+ 
+-def _is_global(lon: np.ndarray) -> bool:
+-    """True when the 1-D longitudes of a regular grid close the circle."""
+-    lon = np.sort(np.asarray(lon, dtype=float))
+-    if lon.size < 2:
+-        return False
+-    return float(lon[-1] - lon[0] + np.median(np.diff(lon))) > 359.0
++def ll_regrid(
++    grid_in: xr.Dataset | xr.DataArray,
++    grid_out: xr.Dataset | xr.DataArray,
++    periodic: bool = False,
++    na_thres: float = 0.5,
++) -> xr.Dataset | xr.DataArray:
++    """Bilinear regridding of a regular lat/lon field onto another regular lat/lon grid.
++
++    ``grid_out`` has 1-D ``lat`` and ``lon``. Missing source points (NaN) are left
++    out and the weights renormalised; a target point whose NaN share of weight
++    exceeds ``na_thres`` is NaN. ``periodic=True`` closes the longitude circle of a
++    global source grid. It uses ``xarray`` interpolation, not xESMF, which runs out
++    of memory on fine regular grids such as the 0.083 degree SST file (9.3 million
++    points); for tiles use ``to_fv3_grid``.
++    """
++    if periodic:
++        first, last = float(grid_in["lon"][0]), float(grid_in["lon"][-1])
++        grid_in = xr.concat(
++            [
++                grid_in.isel(lon=[-1]).assign_coords(lon=[last - 360.0]),
++                grid_in,
++                grid_in.isel(lon=[0]).assign_coords(lon=[first + 360.0]),
++            ],
++            dim="lon",
++        )
++    target = {"lat": grid_out["lat"], "lon": grid_out["lon"]}
++    weight = grid_in.notnull().astype(float).interp(**target)
++    value = grid_in.fillna(0.0).interp(**target)
++    out = value / weight.where(
++        weight < 1.0 - 1e-9, 1.0
++    )  # full weight: no rounding of the ratio
++    return out.where((weight >= 1.0 - na_thres) & (weight > 0.0))
+ 
+ 
+ def to_fv3_grid(
+     grid_in: xr.Dataset | xr.DataArray,
+     grid_out: xr.Dataset | xr.DataArray,
+     method: Literal["bilinear", "conservative"] = "bilinear",
+-) -> xr.Dataset:
+-    """
+-    Remap ll grid to c-grid using xesmf
+-    interpolation. Regridding weights are recomputed on every call.
+-
+-    The longitude circle is closed when the source grid is global, so tile
+-    points between the last and the first source column are interpolated
+-    instead of left missing.
++    periodic: bool = False,
++    na_thres: float = 0.5,
++) -> xr.Dataset | xr.DataArray:
++    """Regrid a regular lat/lon field onto a tile of the surface files (``geolat``/``geolon``) with xESMF.
++
++    The result is formatted like the tile, with a ``Time`` axis. Missing source
++    points (NaN) are left out and the weights renormalised; a target point whose
++    NaN share of weight exceeds ``na_thres`` is NaN. ``periodic=True`` closes the
++    longitude circle of a global source grid; weights are recomputed on every call.
+     """
+-
+-    ll_grid = xr.Dataset(
+-        {
+-            "lat": grid_in["lat"],
+-            "lon": grid_in["lon"],
+-        }
+-    )
+-
+-    c_grid = xr.Dataset(
+-        {
+-            "lat": grid_out["geolat"],
+-            "lon": grid_out["geolon"],
+-        }
+-    )
+-
+     regridder = xe.Regridder(
+-        ll_grid,
+-        c_grid,
++        xr.Dataset({"lat": grid_in["lat"], "lon": grid_in["lon"]}),
++        xr.Dataset({"lat": grid_out["geolat"], "lon": grid_out["geolon"]}),
+         method=method,
+-        periodic=_is_global(grid_in["lon"].values),
++        periodic=periodic,
+     )
++    out = regridder(grid_in, skipna=True, na_thres=na_thres)
+ 
+     # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
+     # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
+-
+-    # skipna renormalizes the weights over valid source points; a target
+-    # point with less than half of its weight on valid points becomes NaN and
+-    # keeps its original value in the caller.
+-    out = regridder(grid_in, skipna=True, na_thres=0.5)
+-
+     if "Time" not in out.coords:
+         out = out.expand_dims("Time", axis=0)
+-
+-    out.attrs = grid_out.attrs
+-    out_coords = set(out.coords)
+-    for c in out_coords:
++    for c in set(out.coords):
+         if c in grid_out.coords:
+             out[c].attrs = grid_out[c].attrs
+         else:
+             out = out.drop_vars(c)
+-
+     out["Time"] = grid_out["Time"]
+-
+-    new_dims = [d for d in grid_out.dims if d in out.dims]
+-    out = out.transpose(*new_dims)
+-
++    out = out.transpose(*[d for d in grid_out.dims if d in out.dims])
+     out.attrs = grid_out.attrs
+-
+     return out
+ 
+ 
+diff --git a/src/pamip_experiment.py b/src/pamip_experiment.py
+index 63ad8de..c2a37ac 100644
+--- a/src/pamip_experiment.py
++++ b/src/pamip_experiment.py
+@@ -8,11 +8,13 @@ and ``siconc``) that already holds the SST adjustment at the changed ice edge of
+ the protocol, so nothing is added to them: experiments differ only through the
+ files they use, the control (1.1) included.
+ 
+-The PAMIP fields are regridded onto the grids of the native GRIB files with a
+-mask-normalised bilinear interpolation and written through the native messages
++The PAMIP fields are regridded with ``latlon_to_fv3.ll_regrid`` onto the grids of
++the native GRIB files and written through the native messages
+ (``grib_io.save_grib``), so headers, packing, month stamps and the land flags of
+-the sea-ice file stay as they are. As with ``sm_perturbations``, the module is
+-driven only by ``run_config.yaml``::
++the sea-ice file stay as they are. At the cold start the same fields,
++interpolated to the start date, are also written to the surface files of every
++tile. As with ``sm_perturbations``, the module is driven only by
++``run_config.yaml``::
+ 
+     pamip_experiment: "1.6"
+ 
+@@ -23,7 +25,6 @@ are read from ``<fix_src>/PAMIP/<source_id>/<variable_id>/``
+ 
+ from __future__ import annotations
+ 
+-import shutil
+ from pathlib import Path
+ 
+ import numpy as np
+@@ -34,8 +35,9 @@ from scipy.ndimage import distance_transform_edt
+ 
+ from fv3_runtime import log
+ from fv3_state import state
++from fv3_utils import cp
+ from grib_io import open_grib, save_grib
+-from latlon_to_fv3 import load_grid, sfc_filename, to_fv3_grid
++from latlon_to_fv3 import ll_regrid, load_grid, sfc_filename, to_fv3_grid
+ 
+ SST_FILE = "RTGSST.1982.2012.monthly.clim.grb"
+ ICE_FILE = "CFSR.SEAICE.1982.2012.monthly.clim.grb"
+@@ -53,20 +55,22 @@ GRIB_TOLERANCE = 0.0051  # half the 0.01 quantum of the native files
+ 
+ # Surface cycle (sfcsub.F): mid-month julian days of the monthly interpolation (dayhf),
+ # freezing temperature of sea water (tgice), thickness of new ice (sihnew).
+-DAYHF = (
+-    15.5,
+-    45.0,
+-    74.5,
+-    105.0,
+-    135.5,
+-    166.0,
+-    196.5,
+-    227.5,
+-    258.0,
+-    288.5,
+-    319.0,
+-    349.5,
+-    380.5,
++DAYHF = np.array(
++    [
++        15.5,
++        45.0,
++        74.5,
++        105.0,
++        135.5,
++        166.0,
++        196.5,
++        227.5,
++        258.0,
++        288.5,
++        319.0,
++        349.5,
++        380.5,
++    ]
+ )
+ TGICE = 271.2
+ SIHNEW = 0.2
+@@ -79,66 +83,50 @@ T_MELT = 273.16
+ # SHiELD read the CO2 table of year yyyy (radiation_gases.f). Set 5 has time-varying forcing and keeps
+ # the model default. Protocol (tier, start, length, spin-up) is described in templates/pamip_experiments.yaml.
+ # Only experiments with SST and sea-ice files in that file can be run.
+-_FORCING_2000 = {"gfs_physics_nml": {"ictm": 20000}}
+-_FORCING_VARYING: dict[str, dict] = {}
++FORCING_2000 = {"gfs_physics_nml": {"ictm": 20000}}
++FORCING_VARYING: dict[str, dict] = {}
+ PAMIP_EXPERIMENTS: dict[str, dict] = {
+     # Group 1: Atmosphere-only time-slice experiments
+-    "1.1": {"name": "pdSST-pdSIC", "namelist": _FORCING_2000},
+-    "1.2": {"name": "piSST-piSIC", "namelist": _FORCING_2000},
+-    "1.3": {"name": "piSST-pdSIC", "namelist": _FORCING_2000},
+-    "1.4": {"name": "futSST-pdSIC", "namelist": _FORCING_2000},
+-    "1.5": {"name": "pdSST-piArcSIC", "namelist": _FORCING_2000},
+-    "1.6": {"name": "pdSST-futArcSIC", "namelist": _FORCING_2000},
+-    "1.7": {"name": "pdSST-piAntSIC", "namelist": _FORCING_2000},
+-    "1.8": {"name": "pdSST-futAntSIC", "namelist": _FORCING_2000},
+-    "1.9": {"name": "pdSST-pdSICSIT", "namelist": _FORCING_2000},
+-    "1.10": {"name": "pdSST-futArcSICSIT", "namelist": _FORCING_2000},
++    "1.1": {"name": "pdSST-pdSIC", "namelist": FORCING_2000},
++    "1.2": {"name": "piSST-piSIC", "namelist": FORCING_2000},
++    "1.3": {"name": "piSST-pdSIC", "namelist": FORCING_2000},
++    "1.4": {"name": "futSST-pdSIC", "namelist": FORCING_2000},
++    "1.5": {"name": "pdSST-piArcSIC", "namelist": FORCING_2000},
++    "1.6": {"name": "pdSST-futArcSIC", "namelist": FORCING_2000},
++    "1.7": {"name": "pdSST-piAntSIC", "namelist": FORCING_2000},
++    "1.8": {"name": "pdSST-futAntSIC", "namelist": FORCING_2000},
++    "1.9": {"name": "pdSST-pdSICSIT", "namelist": FORCING_2000},
++    "1.10": {"name": "pdSST-futArcSICSIT", "namelist": FORCING_2000},
+     # Group 2: Partially coupled ocean-atmosphere time-slice experiments
+-    "2.1": {"name": "pa-pdSIC", "namelist": _FORCING_2000},
+-    "2.2": {"name": "pa-piArcSIC", "namelist": _FORCING_2000},
+-    "2.3": {"name": "pa-futArcSIC", "namelist": _FORCING_2000},
+-    "2.4": {"name": "pa-piAntSIC", "namelist": _FORCING_2000},
+-    "2.5": {"name": "pa-futAntSIC", "namelist": _FORCING_2000},
++    "2.1": {"name": "pa-pdSIC", "namelist": FORCING_2000},
++    "2.2": {"name": "pa-piArcSIC", "namelist": FORCING_2000},
++    "2.3": {"name": "pa-futArcSIC", "namelist": FORCING_2000},
++    "2.4": {"name": "pa-piAntSIC", "namelist": FORCING_2000},
++    "2.5": {"name": "pa-futAntSIC", "namelist": FORCING_2000},
+     # Group 3: Regional sea ice forcing experiments
+-    "3.1": {"name": "pdSST-futOkhotskSIC", "namelist": _FORCING_2000},
+-    "3.2": {"name": "pdSST-futBKSeasSIC", "namelist": _FORCING_2000},
++    "3.1": {"name": "pdSST-futOkhotskSIC", "namelist": FORCING_2000},
++    "3.2": {"name": "pdSST-futBKSeasSIC", "namelist": FORCING_2000},
+     # Group 4: Background SST state experiments
+-    "4.1": {"name": "modelSST-pdSIC", "namelist": _FORCING_2000},
+-    "4.2": {"name": "modelSST-futArcSIC", "namelist": _FORCING_2000},
++    "4.1": {"name": "modelSST-pdSIC", "namelist": FORCING_2000},
++    "4.2": {"name": "modelSST-futArcSIC", "namelist": FORCING_2000},
+     # Group 5: Atmosphere-only transient experiments (1979-2014)
+-    "5.1": {"name": "amip-climSST", "namelist": _FORCING_VARYING},
+-    "5.2": {"name": "amip-climSIC", "namelist": _FORCING_VARYING},
++    "5.1": {"name": "amip-climSST", "namelist": FORCING_VARYING},
++    "5.2": {"name": "amip-climSIC", "namelist": FORCING_VARYING},
+     # Group 6: Extended partially coupled ocean-atmosphere experiments
+-    "6.1": {"name": "pa-pdSIC-ext", "namelist": _FORCING_2000},
+-    "6.2": {"name": "pa-futArcSIC-ext", "namelist": _FORCING_2000},
+-    "6.3": {"name": "pa-futAntSIC-ext", "namelist": _FORCING_2000},
++    "6.1": {"name": "pa-pdSIC-ext", "namelist": FORCING_2000},
++    "6.2": {"name": "pa-futArcSIC-ext", "namelist": FORCING_2000},
++    "6.3": {"name": "pa-futAntSIC-ext", "namelist": FORCING_2000},
+ }
+ 
+-_WRITTEN: set[str] = set()  # configurations already written in this process
+-
+ 
+ def validate_pamip_experiment(experiment: object) -> str | None:
+     """Validate the ``pamip_experiment`` option before any file is written.
+ 
+-    Parameters
+-    ----------
+-    experiment : object
+-        The option of the run configuration: the experiment number as text, for
+-        example ``"1.6"``, or None for the native climatologies. The number must
+-        be quoted, because YAML reads ``1.10`` as the float 1.1.
+-
+-    Returns
+-    -------
+-    str or None
+-        The experiment number, or None when the option is not set.
+-
+-    Raises
+-    ------
+-    TypeError
+-        If the option is not text.
+-    ValueError
+-        If the experiment is not a PAMIP experiment, or has no SST and sea-ice
+-        boundary files in ``templates/pamip_experiments.yaml``.
++    Returns the experiment number, or None when the option is not set. The number
++    must be quoted text such as ``"1.6"``, because YAML reads ``1.10`` as the
++    float 1.1. Raises TypeError for other types and ValueError for an experiment
++    that is not a PAMIP experiment or has no SST and sea-ice files in
++    ``templates/pamip_experiments.yaml``.
+     """
+     if experiment is None or experiment == "":
+         return None
+@@ -161,35 +149,23 @@ def validate_pamip_experiment(experiment: object) -> str | None:
+ 
+ 
+ def pamip_namelist() -> dict[str, dict]:
+-    """SHiELD namelist settings of the configured experiment, by namelist group.
+-
+-    Returns
+-    -------
+-    dict
+-        For example ``{"gfs_physics_nml": {"ictm": 20000}}``; empty when
+-        ``pamip_experiment`` is not set.
+-    """
++    """SHiELD namelist settings of the configured experiment by namelist group, empty when none is set."""
+     experiment = validate_pamip_experiment(state.pamip_experiment)
+     return {} if experiment is None else PAMIP_EXPERIMENTS[experiment]["namelist"]
+ 
+ 
+-def radiation_year() -> int | None:
+-    """Year of the CO2 table the experiment selects with ``ictm = yyyy0``, or None."""
+-    ictm = pamip_namelist().get("gfs_physics_nml", {}).get("ictm")
+-    return None if ictm is None else ictm // 10
+-
+-
+-def _read(
+-    root: Path, spec: dict, kind: str
+-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+-    """Read one PAMIP climatology: SST in kelvin or sea ice as a fraction.
++def read_pamip(root: Path, spec: dict, kind: str) -> xr.DataArray:
++    """One PAMIP climatology as ``(month, lat, lon)``: SST in kelvin or sea ice as a fraction.
+ 
+-    Returns latitude (ascending), longitude (0..360, ascending) and the data
+-    ``(12, nlat, nlon)`` ordered January to December, NaN over land.
++    Latitude ascends, longitude is 0..360 ascending, filled or missing values are NaN.
+     """
+     variable = spec["variable_id"]
+-    name = f"{variable}_input4MIPs_SSTsAndSeaIce_PAMIP_{spec['source_id']}_gn_{spec['period']}.nc"
+-    path = Path(root) / spec["source_id"] / variable / name
++    path = (
++        Path(root)
++        / spec["source_id"]
++        / variable
++        / f"{variable}_input4MIPs_SSTsAndSeaIce_PAMIP_{spec['source_id']}_gn_{spec['period']}.nc"
++    )
+     if not path.is_file():
+         raise FileNotFoundError(
+             f"{path} not found. Download it with tools/download_pamip_amip.py"
+@@ -201,312 +177,105 @@ def _read(
+             raise ValueError(
+                 f"{path.name}: source_id is `{ds.attrs.get('source_id')}`, expected `{spec['source_id']}`"
+             )
+-        da = ds[variable].squeeze(drop=True)
+-        lat_name = next(d for d in da.dims if d in ("lat", "latitude"))
+-        lon_name = next(d for d in da.dims if d in ("lon", "longitude"))
+-        da = da.transpose("time", lat_name, lon_name)
+-        months = ds["time"].dt.month.values
+-        if da.shape[0] != 12 or sorted(months) != list(range(1, 13)):
+-            raise ValueError(
+-                f"{path.name}: a 12-month climatology is required. Got months {sorted(months)}"
+-            )
+-        units = str(da.attrs.get("units", "")).strip().lower()
+-        data = np.asarray(da.values, dtype=float)[np.argsort(months)]
+-        lat, lon = (
+-            ds[lat_name].values.astype(float),
+-            np.mod(ds[lon_name].values.astype(float), 360.0),
+-        )
+-    data[~np.isfinite(data) | (np.abs(data) > 1e10)] = np.nan
+-    if kind == "sst":
+-        if units in ("degc", "degree_c", "degrees_c", "degree_celsius", "celsius", "c"):
+-            data += 273.15
+-        elif units not in ("k", "kelvin"):
+-            raise ValueError(f"{path.name}: SST units `{units}` are not degC or K")
+-        low, high = np.nanmin(data), np.nanmax(data)
+-        if low < 250.0 or high > 320.0:
+-            raise ValueError(
+-                f"{path.name}: SST {low:.1f}..{high:.1f} K is not plausible (units?)"
+-            )
+-    else:
+-        if units in ("%", "percent"):
+-            data /= 100.0
+-        elif units not in ("1", "", "fraction", "(0-1)"):
+-            raise ValueError(
+-                f"{path.name}: sea-ice units `{units}` are not a fraction or percent"
+-            )
+-        low, high = np.nanmin(data), np.nanmax(data)
+-        if low < -1e-3 or high > 1.0 + 1e-3:
+-            raise ValueError(
+-                f"{path.name}: sea ice {low:.3f}..{high:.3f} is outside 0..1 (units?)"
+-            )
+-        data = np.clip(data, 0.0, 1.0)
+-    lat_order, lon_order = np.argsort(lat), np.argsort(lon)
+-    return lat[lat_order], lon[lon_order], data[:, lat_order][:, :, lon_order]
+-
+-
+-def _ocean(land_file: Path, lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+-    """Ocean cells of a lat/lon grid from the 0.5 degree land mask (bilinear, threshold 0.5 as in sfcsub.F).
+-
+-    The PAMIP files hold filled values over land, which must not mix into coastal ocean values.
+-    """
+-    node = open_grib(land_file).leaves[0]
+-    field = node[next(iter(node.data_vars))]
+-    field = field.isel({d: 0 for d in field.dims if d not in ("latitude", "longitude")})
+-    land = (
+-        field.sortby("latitude")
+-        .sortby("longitude")
+-        .interp(latitude=np.clip(lat, -89.75, 89.75), longitude=lon)
+-    )
+-    return land.values < 0.5
+-
+-
+-def _regrid(
+-    field: np.ndarray,
+-    lat: np.ndarray,
+-    lon: np.ndarray,
+-    tgt_lat: np.ndarray,
+-    tgt_lon: np.ndarray,
+-) -> np.ndarray:
+-    """Bilinear interpolation of a ``(nlat, nlon)`` field with NaN over land.
+-
+-    Missing source points are left out and the weights renormalised, so land
+-    never mixes into ocean values; target points with no valid neighbour (the
+-    coast of a finer grid) take the value of the nearest valid point.
+-    """
+-    ok = np.isfinite(field)
+-    both = xr.DataArray(
+-        np.stack([np.where(ok, field, 0.0), ok.astype(float)]),
+-        dims=("v", "lat", "lon"),
+-        coords={"lat": lat, "lon": lon},
+-    )
+-    both = xr.concat(  # one extra column on each side closes the longitude circle
+-        [
+-            both.isel(lon=[-1]).assign_coords(lon=[lon[-1] - 360.0]),
+-            both,
+-            both.isel(lon=[0]).assign_coords(lon=[lon[0] + 360.0]),
+-        ],
+-        dim="lon",
+-    )
+-    out = both.interp(
+-        lat=np.clip(tgt_lat, lat[0], lat[-1]), lon=np.mod(tgt_lon, 360.0)
+-    ).values
+-    with np.errstate(invalid="ignore", divide="ignore"):
+-        result = np.where(out[1] > 1e-9, out[0] / out[1], np.nan)
+-    missing = ~np.isfinite(result)
+-    if missing.any():
+-        if missing.all():
+-            raise ValueError("no valid PAMIP point to interpolate from")
+-        iy, ix = distance_transform_edt(
+-            missing, return_distances=False, return_indices=True
++        da = ds[variable].squeeze(drop=True).load()
++    months = da["time"].dt.month.values
++    if sorted(months) != list(range(1, 13)):
++        raise ValueError(
++            f"{path.name}: a 12-month climatology is required. Got months {sorted(months)}"
+         )
+-        result = result[iy, ix]
+-    return result
+-
+-
+-def _month_weights(date: pd.Timestamp) -> tuple[int, int, float, float]:
+-    """Months (0 = January) and weights of the mid-month linear interpolation of sfcsub.F (``clima``)."""
+-    rjday = date.dayofyear + date.hour / 24.0
+-    if rjday < DAYHF[0]:
+-        rjday += 365.0
+-    for m in range(12):
+-        if DAYHF[m] <= rjday < DAYHF[m + 1]:
+-            w2 = (rjday - DAYHF[m]) / (DAYHF[m + 1] - DAYHF[m])
+-            return m, (m + 1) % 12, 1.0 - w2, w2
+-    raise ValueError(f"day {rjday} is outside the monthly interpolation range")
+-
+-
+-def _fill(field: np.ndarray) -> np.ndarray:
+-    """Replace NaN (land) by the value of the nearest valid point."""
+-    missing = ~np.isfinite(field)
+-    if not missing.any():
+-        return field
+-    iy, ix = distance_transform_edt(
+-        missing, return_distances=False, return_indices=True
+-    )
+-    return field[iy, ix]
+-
+-
+-def _tiles() -> list[int]:
+-    """Tiles with a surface file: six global tiles, then the nests; one file for regional grids."""
+-    if state.gtype in ("regional_gfdl", "regional_esg"):
+-        return [1]
+-    return list(range(1, 7)) + [7 + i for i in range(state.n_nests)]
+-
+-
+-def _update_surface(sst: tuple, sic: tuple) -> None:
+-    """Set the SST and sea ice of the cold-start surface files to the PAMIP fields of the start date.
+-
+-    The PAMIP climatologies (NaN over land) are interpolated in time with the
+-    mid-month weights of the surface cycle, regridded onto each tile with
+-    ``latlon_to_fv3.to_fv3_grid`` and written to ``slmsk``, ``tsea``, ``fice``,
+-    ``hice`` and ``tisfc`` of ``sfc_data`` over non-land points. The surface
+-    cycle repeats this at the first time step; the edit makes the files agree
+-    with it. Rules, after sfcsub.F and the CHGRES_CUBE conventions:
+-
+-    - ice where the concentration is at least ``AISLIM``, with ``slmsk = 2``;
+-      below it the point is open water (``slmsk = 0``, ``fice = hice = 0``);
+-    - open water: ``tsea = tisfc =`` SST, limited to the range of the surface cycle;
+-    - ice that stays ice keeps its thickness and ice-surface temperature
+-      (at most the melting point); new ice gets ``SIHNEW`` and ``TGICE``;
+-    - over ice ``tsea = fice * tisfc + (1 - fice) * TGICE``, the relation of the
+-      CHGRES_CUBE files, which sfcsub.F inverts to get ``tisfc``;
+-    - land points are not touched.
+-    """
+-    lat, lon = sst[0], sst[1]
+-    if not (np.array_equal(lat, sic[0]) and np.array_equal(lon, sic[1])):
+-        raise ValueError("PAMIP SST and sea-ice files are on different grids")
+-    date = pd.Timestamp(state.init_datetime)
+-    m1, m2, w1, w2 = _month_weights(date)
+-    source = {}
+-    for key, field in (("sst", sst[2]), ("sic", sic[2])):
+-        f = _fill(w1 * field[m1] + w2 * field[m2])
+-        # one row at each pole, so tile points poleward of the last row are interpolated
+-        source[key] = (("lat", "lon"), np.vstack([f[:1], f, f[-1:]]))
+-    src = xr.Dataset(
+-        source, coords={"lat": np.concatenate([[-90.0], lat, [90.0]]), "lon": lon}
++    da = da.assign_coords(time=months).rename(time="month")
++    da = (
++        da.assign_coords(lon=np.mod(da["lon"], 360.0))
++        .sortby("month")
++        .sortby("lon")
++        .sortby("lat")
+     )
+-    log.info(
+-        f"PAMIP surface files: fields of {date:%Y-%m-%d %H}Z from months {m1 + 1} ({w1:.2f}) and {m2 + 1} ({w2:.2f})"
+-    )
+-
+-    backup_dir = Path(state.ic_data) / "perts"
+-    backup_dir.mkdir(parents=True, exist_ok=True)
+-    for tile in _tiles():
+-        filename = sfc_filename(tile)
+-        path = Path(state.input) / filename
+-        if not path.exists():
+-            raise FileNotFoundError(f"Input file not found: {path}")
+-        out = to_fv3_grid(src, load_grid(filename, tile))
+-        sst_t, sic_t = (
+-            out[v].isel(Time=0).transpose("yaxis_1", "xaxis_1").values.astype(float)
+-            for v in ("sst", "sic")
++    da = da.where(np.isfinite(da) & (np.abs(da) < 1e10)).rename(kind)
++    low, high = float(da.min()), float(da.max())
++    if kind == "sst" and not (
++        da.attrs.get("units") == "K" and 250.0 <= low and high <= 320.0
++    ):
++        raise ValueError(
++            f"{path.name}: SST must be in K and plausible. Got units `{da.attrs.get('units')}`, {low:.1f}..{high:.1f}"
+         )
+-
+-        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as handle:
+-            ds = handle.load()
+-        slmsk = ds["slmsk"].values[0].copy()
+-        tsea, fice, hice, tisfc = (
+-            ds[v].values[0].copy() for v in ("tsea", "fice", "hice", "tisfc")
++    if kind == "sic" and not (
++        da.attrs.get("units") in ("1", "", "fraction")
++        and -1e-3 <= low
++        and high <= 1.0 + 1e-3
++    ):
++        raise ValueError(
++            f"{path.name}: sea ice must be a fraction. Got units `{da.attrs.get('units')}`, {low:.3f}..{high:.3f}"
+         )
+-        was_ice = slmsk == 2
+-        valid = (slmsk != 1) & np.isfinite(sst_t) & np.isfinite(sic_t)
+-        missing = int(((slmsk != 1) & ~valid).sum())
+-        if missing:
+-            log.warning(
+-                f"tile {tile}: {missing} non-land points have no PAMIP value and keep their state"
+-            )
+-
+-        sst_c = np.clip(sst_t, SST_MIN_K, SST_MAX_K)
+-        sic_c = np.clip(sic_t, 0.0, 1.0)
+-        ice = valid & (sic_c >= AISLIM)
+-        water = valid & ~ice
+-        stay = ice & was_ice
+-        new = ice & ~was_ice
++    log.info(f"Using PAMIP {kind} file: {path}")
++    return da.clip(0.0, 1.0) if kind == "sic" else da
+ 
+-        tsea[water] = sst_c[water]
+-        tisfc[water] = sst_c[water]
+-        fice[water] = 0.0
+-        hice[water] = 0.0
+-        slmsk[water] = 0.0
+ 
+-        slmsk[ice] = 2.0
+-        fice[ice] = sic_c[ice]
+-        hice[new] = SIHNEW
+-        hice[stay] = np.where(hice[stay] > 0.0, hice[stay], SIHNEW)
+-        tisfc[new] = TGICE
+-        tisfc[stay] = np.minimum(tisfc[stay], T_MELT)
+-        tsea[ice] = fice[ice] * tisfc[ice] + (1.0 - fice[ice]) * TGICE
+-
+-        for v, a in (
+-            ("slmsk", slmsk),
+-            ("tsea", tsea),
+-            ("fice", fice),
+-            ("hice", hice),
+-            ("tisfc", tisfc),
+-        ):
+-            ds[v] = ds[v].copy(data=a[np.newaxis].astype(ds[v].dtype))
+-            ds[v].attrs.pop(
+-                "checksum", None
+-            )  # the data no longer match an FMS checksum
+-        backup = backup_dir / f"{filename.stem}.pamip.original.nc"
+-        if not backup.exists():
+-            shutil.copy2(path, backup)
+-        temporary = path.with_name(path.name + ".pamip.tmp")
+-        ds.to_netcdf(temporary, engine="netcdf4")
+-        ds.close()
+-        temporary.replace(path)
+-
+-
+-def _write(template: Path, destination: Path, source: tuple, kind: str) -> np.ndarray:
+-    """Write the regridded climatology through the messages of the native file.
++def write_pamip_grib(
++    template: Path, destination: Path, field: xr.DataArray, kind: str
++) -> np.ndarray:
++    """Regrid a climatology onto the native GRIB grid and write it through the messages of the native file.
+ 
+     SST replaces every value of the template (missing points stay missing); for
+-    sea ice the points above 1 (the 1.57 land flags) keep their value.
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        The values written, ``(12, nlat, nlon)`` in the month order of the template.
++    sea ice the points above 1 (the 1.57 land flags) keep their value. Returns
++    the values written, ``(12, nlat, nlon)`` in the month order of the template.
+     """
+     tree = open_grib(template)
+     node = tree.leaves[0]
+     name = next(iter(node.data_vars))
+-    field = node[name]
+-    months = field.time.dt.month.values
+-    if field.shape[:2] != (12, 1) or sorted(months) != list(range(1, 13)):
++    native = node[name]
++    months = native.time.dt.month.values
++    if native.shape[:2] != (12, 1) or sorted(months) != list(range(1, 13)):
+         raise ValueError(
+             f"{template.name}: expected twelve monthly fields on one level"
+         )
+-    lat, lon = field.latitude.values, field.longitude.values
+-    lat_s, lon_s, data_s = source
+-    data = field.values.copy()
++    grid = xr.Dataset(
++        coords={
++            "lat": ("lat", native.latitude.values),
++            "lon": ("lon", np.mod(native.longitude.values, 360.0)),
++        }
++    )
++    data = native.values.copy()
+     for i, month in enumerate(months):
+-        new = _regrid(data_s[int(month) - 1], lat_s, lon_s, lat, lon)
++        # one month at a time: the SST file has 9.3 million points
++        values = ll_regrid(
++            field.sel(month=int(month)), grid, periodic=True, na_thres=1.0
++        ).values
++        # coast points with no valid neighbour take the nearest valid value
++        iy, ix = distance_transform_edt(
++            np.isnan(values), return_distances=False, return_indices=True
++        )
++        values = values[iy, ix]
+         old = data[i, 0]
+         if kind == "sst":
+-            data[i, 0] = np.where(np.isnan(old), np.nan, new)
++            data[i, 0] = np.where(np.isnan(old), np.nan, values)
+         else:
+             data[i, 0] = np.where(
+-                np.isnan(old) | (old > LAND_FLAG), old, np.clip(new, 0.0, 1.0)
++                np.isnan(old) | (old > LAND_FLAG), old, np.clip(values, 0.0, 1.0)
+             )
+-    node[name] = field.copy(data=data)
++    node[name] = native.copy(data=data)
+     destination.parent.mkdir(parents=True, exist_ok=True)
+     destination.unlink(missing_ok=True)  # never write through a link into fix_src
+     save_grib(tree, destination, template)
+-    if len(open_grib(destination).attrs["messages"]) != 12:
+-        raise ValueError(f"{destination.name}: expected twelve messages")
+     return data[:, 0]
+ 
+ 
+ def apply_pamip_experiment() -> bool:
+-    """Write the SST and sea-ice climatologies of the PAMIP experiment for the case.
+-
+-    Uses ``state.pamip_experiment``. At the cold start it also sets the SST and sea ice of the
+-    surface files in ``state.input`` (``_update_surface``). The files go to
+-    ``FIXED/<family>`` (``FIXED/PAMIP``) as ``RTGSST.<family>_<exp>.monthly.clim.grb`` and
+-    ``CFSR.SEAICE.<family>_<exp>.monthly.clim.grb`` and their paths are stored in
+-    ``state.fntsfc`` and ``state.fnaisc``, which ``update_namsfc`` writes to
+-    namsfc. ``fix_src`` is only read.
+-
+-    Returns
+-    -------
+-    bool
+-        True when the files are written (or were already written in this process
+-        for the same configuration), False when no experiment is configured.
+-
+-    Raises
+-    ------
+-    FileNotFoundError
+-        If a native or PAMIP file is missing.
+-    ValueError
+-        If an input or an output fails its checks.
++    """Write the SST and sea-ice climatologies of the PAMIP experiment ``state.pamip_experiment``.
++
++    The files go to ``FIXED/<family>`` (``FIXED/PAMIP``) as
++    ``RTGSST.<family>_<exp>.monthly.clim.grb`` and
++    ``CFSR.SEAICE.<family>_<exp>.monthly.clim.grb``; their paths are stored in
++    ``state.fntsfc`` and ``state.fnaisc``, which ``update_namsfc`` writes to namsfc.
++    ``fix_src`` is only read. At the cold start the SST and sea ice of the surface
++    files in ``state.input`` are also set to the fields of the start date.
++
++    Returns True when files are written, False when no experiment is configured.
++    Raises FileNotFoundError for a missing native or PAMIP file and ValueError
++    when an input or an output fails its checks.
+     """
+     experiment = validate_pamip_experiment(state.pamip_experiment)
+     if experiment is None:
+         return False
+-    key = f"{state.fix}|{experiment}"
+-    if key in _WRITTEN:  # update_namsfc runs once per domain; write once
+-        return True
+ 
+     entry = yaml.safe_load(REGISTRY_FILE.read_text())["experiments"][experiment]
+     family = entry[
+@@ -514,31 +283,44 @@ def apply_pamip_experiment() -> bool:
+     ]  # PAMIP: directory below FIXED and fix_src, and tag of the file names
+     out_dir = Path(state.fix) / family
+     am_dir, pamip_dir = Path(state.fix_src) / "am", Path(state.fix_src) / family
+-    sst = _read(pamip_dir, entry["sst"], "sst")
+-    sic = _read(pamip_dir, entry["sic"], "sic")
+-    ocean = _ocean(am_dir / LAND_FILE, sst[0], sst[1])
+-    sst[2][:, ~ocean] = np.nan
+-    sic[2][:, ~ocean] = np.nan
+-    log.info(
+-        f"PAMIP experiment {experiment} ({PAMIP_EXPERIMENTS[experiment]['name']}): SST {entry['sst']['source_id']}, SIC {entry['sic']['source_id']}"
++    src = xr.merge(
++        [
++            read_pamip(pamip_dir, entry["sst"], "sst"),
++            read_pamip(pamip_dir, entry["sic"], "sic"),
++        ],
++        join="exact",
+     )
+ 
+-    # Ice-edge consistency of the pair (PAMIP sets the SST of changed ice points).
+-    if sst[2].shape == sic[2].shape:
+-        ice = sic[2] >= AISLIM
+-        warm = float((ice & (sst[2] > 275.15)).sum() / max(ice.sum(), 1))
+-        if warm > 0.02:
+-            log.warning(
+-                f"{warm:.1%} of the PAMIP sea-ice points have SST above 2 degC; check that SST and SIC belong together"
+-            )
++    # The PAMIP files hold filled values over land: keep the ocean of the 0.5 degree land mask
++    # (bilinear, threshold 0.5 as in sfcsub.F) and add one row at each pole for tile points beyond the last row.
++    node = open_grib(am_dir / LAND_FILE).leaves[0]
++    land = node[next(iter(node.data_vars))]
++    land = land.isel(
++        {d: 0 for d in land.dims if d not in ("latitude", "longitude")}
++    ).rename(latitude="lat", longitude="lon")
++    land = (
++        land.assign_coords(lon=np.mod(land["lon"], 360.0)).sortby("lat").sortby("lon")
++    )
++    src = src.where(ll_regrid(land, src, periodic=True) < 0.5)
++    src = xr.concat(
++        [
++            src.isel(lat=[0]).assign_coords(lat=[-90.0]),
++            src,
++            src.isel(lat=[-1]).assign_coords(lat=[90.0]),
++        ],
++        dim="lat",
++    )
+ 
+     names = {
+-        "sst": SST_FILE.replace("1982.2012", f"{family}_{experiment}"),
+-        "sic": ICE_FILE.replace("1982.2012", f"{family}_{experiment}"),
++        key: file.replace("1982.2012", f"{family}_{experiment}")
++        for key, file in (("sst", SST_FILE), ("sic", ICE_FILE))
+     }
+-    sst_out = _write(am_dir / SST_FILE, out_dir / names["sst"], sst, "sst")
+-    sic_out = _write(am_dir / ICE_FILE, out_dir / names["sic"], sic, "sic")
+-
++    sst_out = write_pamip_grib(
++        am_dir / SST_FILE, out_dir / names["sst"], src["sst"], "sst"
++    )
++    sic_out = write_pamip_grib(
++        am_dir / ICE_FILE, out_dir / names["sic"], src["sic"], "sic"
++    )
+     if (
+         np.nanmin(sst_out) < SST_MIN_K - GRIB_TOLERANCE
+         or np.nanmax(sst_out) > SST_MAX_K + GRIB_TOLERANCE
+@@ -546,25 +328,100 @@ def apply_pamip_experiment() -> bool:
+         raise ValueError(
+             f"SST {np.nanmin(sst_out):.2f}..{np.nanmax(sst_out):.2f} K leaves the {SST_MIN_K}..{SST_MAX_K} K range of the surface cycle"
+         )
+-    ocean = sic_out[sic_out <= LAND_FLAG]
++    sic_ocean = sic_out[sic_out <= LAND_FLAG]
+     if (
+-        np.isnan(ocean).any()
+-        or ocean.min() < -GRIB_TOLERANCE
+-        or ocean.max() > 1.0 + GRIB_TOLERANCE
++        np.isnan(sic_ocean).any()
++        or sic_ocean.min() < -GRIB_TOLERANCE
++        or sic_ocean.max() > 1.0 + GRIB_TOLERANCE
+     ):
+         raise ValueError(
+             "Sea-ice concentration outside 0..1 or missing in the written file"
+         )
+-    log.info(
+-        f"Wrote {out_dir / names['sst']} and {out_dir / names['sic']}; SST {np.nanmin(sst_out):.2f}..{np.nanmax(sst_out):.2f} K"
+-    )
+ 
+     # update_namsfc writes these paths to namsfc FNTSFC and FNAISC.
+     state.fntsfc = f"FIXED/{family}/{names['sst']}"
+     state.fnaisc = f"FIXED/{family}/{names['sic']}"
+     if (
+-        state.restart_no == 0
++        state.restart_no != 0
+     ):  # later segments continue from the cycled state of the model
+-        _update_surface(sst, sic)
+-    _WRITTEN.add(key)
++        return True
++
++    # Surface files: the fields of the start date, interpolated between mid-month values as in the
++    # surface cycle (sfcsub.F), regridded onto each tile and written to slmsk, tsea, fice, hice and
++    # tisfc over non-land points, so the initial state agrees with the forcing. Rules after sfcsub.F
++    # and the CHGRES_CUBE conventions: ice where the concentration is at least AISLIM, with slmsk = 2,
++    # below it open water (slmsk = 0, fice = hice = 0); open water has tsea = tisfc = SST; ice that
++    # stays ice keeps its thickness and ice-surface temperature (at most the melting point), new ice gets
++    # SIHNEW and TGICE; over ice tsea = fice * tisfc + (1 - fice) * TGICE, which sfcsub.F inverts to
++    # get tisfc. Land points are not touched. As slmsk already agrees, newice of sfcsub.F no longer
++    # fires at points that change between ice and open water, so their snow, soil temperature and
++    # roughness keep the GFS values.
++    date = pd.Timestamp(state.init_datetime)
++    rjday = date.dayofyear + date.hour / 24.0
++    if rjday < DAYHF[0]:
++        rjday += 365.0
++    m = int(np.searchsorted(DAYHF, rjday, side="right") - 1)
++    w2 = (rjday - DAYHF[m]) / (DAYHF[m + 1] - DAYHF[m])
++    now = src.isel(month=m) * (1.0 - w2) + src.isel(month=(m + 1) % 12) * w2
++    for v in ("sst", "sic"):  # land takes the nearest ocean value
++        iy, ix = distance_transform_edt(
++            now[v].isnull().values, return_distances=False, return_indices=True
++        )
++        now[v] = now[v].copy(data=now[v].values[iy, ix])
++
++    tiles = (
++        [1]
++        if state.gtype in ("regional_gfdl", "regional_esg")
++        else list(range(1, 7 + state.n_nests))
++    )
++    for tile in tiles:
++        filename = sfc_filename(tile)
++        path = Path(state.input) / filename
++        if not path.exists():
++            raise FileNotFoundError(f"Input file not found: {path}")
++        out = to_fv3_grid(now, load_grid(filename, tile), periodic=True)
++        sst_t, sic_t = (
++            out[v].isel(Time=0).transpose("yaxis_1", "xaxis_1").values.astype(float)
++            for v in ("sst", "sic")
++        )
++
++        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as handle:
++            ds = handle.load()
++        slmsk = ds["slmsk"].values[0].copy()
++        tsea, fice, hice, tisfc = (
++            ds[v].values[0].copy() for v in ("tsea", "fice", "hice", "tisfc")
++        )
++        valid = (slmsk != 1) & np.isfinite(sst_t) & np.isfinite(sic_t)
++        sst_c = np.clip(sst_t, SST_MIN_K, SST_MAX_K)
++        sic_c = np.clip(sic_t, 0.0, 1.0)
++        ice = valid & (sic_c >= AISLIM)
++        water = valid & ~ice
++        stay = ice & (slmsk == 2)
++        new = ice & (slmsk != 2)
++
++        tsea[water] = tisfc[water] = sst_c[water]
++        fice[water] = hice[water] = slmsk[water] = 0.0
++        slmsk[ice] = 2.0
++        fice[ice] = sic_c[ice]
++        hice[new] = SIHNEW
++        hice[stay] = np.where(hice[stay] > 0.0, hice[stay], SIHNEW)
++        tisfc[new] = TGICE
++        tisfc[stay] = np.minimum(tisfc[stay], T_MELT)
++        tsea[ice] = fice[ice] * tisfc[ice] + (1.0 - fice[ice]) * TGICE
++
++        for v, a in (
++            ("slmsk", slmsk),
++            ("tsea", tsea),
++            ("fice", fice),
++            ("hice", hice),
++            ("tisfc", tisfc),
++        ):
++            ds[v] = ds[v].copy(data=a[np.newaxis].astype(ds[v].dtype))
++            ds[v].attrs.pop(
++                "checksum", None
++            )  # the data no longer match an FMS checksum
++        backup = Path(state.ic_data) / "perts" / f"{filename.stem}.pamip.original.nc"
++        if not backup.exists():
++            cp(path, backup)
++        ds.to_netcdf(path, engine="netcdf4")
+     return True
+diff --git a/src/sm_perturbations.py b/src/sm_perturbations.py
+index f452ba6..34164e8 100644
+--- a/src/sm_perturbations.py
++++ b/src/sm_perturbations.py
+@@ -1,15 +1,14 @@
+ from __future__ import annotations
+ 
+ from pathlib import Path
+-from typing import Literal
+ 
+ import pandas as pd
+ import xarray as xr
+-import xesmf as xe
+ 
+ from fv3_runtime import log
+ from fv3_state import state
+ from fv3_utils import cp, segment_hours
++from latlon_to_fv3 import load_grid, sfc_filename, to_fv3_grid
+ 
+ # Physical bounds for valid volumetric soil moisture (m3 m-3). Used for both
+ # the validity mask and the clip so the two are guaranteed consistent.
+@@ -37,15 +36,6 @@ def _valid_mask(ds: xr.Dataset, v: str, z: int) -> xr.DataArray:
+     return (layer >= SM_MIN) & (layer <= SM_MAX)
+ 
+ 
+-def _sfc_filename(tile: int) -> Path:
+-    """Surface file of a tile: global sfc_data.tileN.nc, nest
+-    sfc_data.nestNN.tileN.nc, regional sfc_data.nc (single tile, no suffix)."""
+-    if state.gtype in ("regional_gfdl", "regional_esg"):
+-        return Path("sfc_data.nc")
+-    nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
+-    return Path(f"sfc_data.{nest_idx}tile{tile}.nc")
+-
+-
+ def segment_start(restart_no: int) -> pd.Timestamp:
+     """Start time of segment `restart_no` (0 is the cold start)."""
+     hours = segment_hours(
+@@ -82,84 +72,6 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
+     return ds
+ 
+ 
+-def to_fv3_grid(
+-    grid_in: xr.Dataset | xr.DataArray,
+-    grid_out: xr.Dataset | xr.DataArray,
+-    method: Literal["bilinear", "conservative"] = "bilinear",
+-) -> xr.Dataset:
+-    """
+-    Remap ll grid to c-grid using xesmf
+-    interpolation. Regridding weights are recomputed on every call.
+-    """
+-
+-    ll_grid = xr.Dataset(
+-        {
+-            "lat": grid_in["lat"],
+-            "lon": grid_in["lon"],
+-        }
+-    )
+-
+-    c_grid = xr.Dataset(
+-        {
+-            "lat": grid_out["geolat"],
+-            "lon": grid_out["geolon"],
+-        }
+-    )
+-
+-    regridder = xe.Regridder(
+-        ll_grid,
+-        c_grid,
+-        method=method,
+-    )
+-
+-    # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
+-    # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
+-
+-    # skipna renormalizes the weights over valid source points; a target
+-    # point with less than half of its weight on valid points becomes NaN and
+-    # keeps its original value in the caller.
+-    out = regridder(grid_in, skipna=True, na_thres=0.5)
+-
+-    if "Time" not in out.coords:
+-        out = out.expand_dims("Time", axis=0)
+-
+-    out.attrs = grid_out.attrs
+-    out_coords = set(out.coords)
+-    for c in out_coords:
+-        if c in grid_out.coords:
+-            out[c].attrs = grid_out[c].attrs
+-        else:
+-            out = out.drop_vars(c)
+-
+-    out["Time"] = grid_out["Time"]
+-
+-    new_dims = [d for d in grid_out.dims if d in out.dims]
+-    out = out.transpose(*new_dims)
+-
+-    out.attrs = grid_out.attrs
+-
+-    return out
+-
+-
+-def load_grid(filename: Path, tile: int) -> xr.Dataset:
+-    grid_file = Path(state.ic_data) / "perts" / f"tile.{tile}.grid.nc"
+-    if not grid_file.exists():
+-        if state.restart_no == 0:
+-            path = Path(state.input) / filename
+-        else:
+-            path = Path(state.ic_data) / "INPUT" / filename
+-        with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as ds:
+-            # Select coordinate variables only. `ds.dims` returns dimension names,
+-            # which are not necessarily variables and raise KeyError on selection.
+-            keep = ["geolat", "geolon"] + list(ds.coords)
+-            keep = [k for k in dict.fromkeys(keep) if k in ds.variables]
+-            ds = ds[keep].load()
+-            ds.to_netcdf(grid_file, engine="netcdf4")
+-
+-    ds = xr.open_dataset(grid_file, decode_cf=False, engine="netcdf4").load()
+-    return ds
+-
+-
+ def _write_layers(
+     ds: xr.Dataset, p: dict, in_path: Path, backup_path: Path, ice: xr.DataArray | None
+ ) -> None:
+@@ -191,7 +103,7 @@ def _write_layers(
+ 
+ def _open_input(tile: int, backup_dir: Path, restart_no: int):
+     """Open a tile's surface input after saving an unmodified copy."""
+-    filename = _sfc_filename(tile)
++    filename = sfc_filename(tile)
+     in_path = Path(state.input) / filename
+     backup_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.perturbed.nc"
+     orig_path = backup_dir / f"{filename.stem}.r{restart_no:03d}.original.nc"
+diff --git a/src/tgrad_perturbations.py b/src/tgrad_perturbations.py
+deleted file mode 100644
+index c1633ab..0000000
+--- a/src/tgrad_perturbations.py
++++ /dev/null
+@@ -1,523 +0,0 @@
+-from __future__ import annotations
+-
+-import math
+-from collections.abc import Callable
+-from pathlib import Path
+-
+-import numpy as np
+-import xarray as xr
+-from scipy.spatial import cKDTree
+-
+-from fv3_runtime import log
+-from fv3_state import state
+-from fv3_utils import cp
+-from grib_io import open_grib, save_grib
+-
+-SST_FILE = "RTGSST.1982.2012.monthly.clim.grb"
+-ICE_FILE = "CFSR.SEAICE.1982.2012.monthly.clim.grb"
+-LAND_FILE = "seaice_newland.grb"  # 0.5 deg land mask, 1 = land (verified on Oscar)
+-
+-# Literature bounds on the polar SST change [K]. CMIP6 central-Arctic Aug-Sep
+-# SST warming by 2100 spans about 0.7-8 K across models under SSP2-4.5, about
+-# 3 K in moderately ice-free models (ERL 2023, doi:10.1088/1748-9326/ad0c8a);
+-# observed Arctic amplification 1979-2021 is 3.8 (Rantanen et al. 2022). +2
+-# and +4 K are standard sensitivity amplitudes; values up to 8 K are accepted
+-# as strong-forcing experiments; larger magnitudes are rejected.
+-DELTA_T_STANDARD = 4.0
+-DELTA_T_MAX = 8.0
+-
+-T_FREEZE = 271.2  # K, con_tice in SHiELD physcons
+-ICE_EDGE = 0.15  # aislim in sfcsub: SIC >= 0.15 is treated as sea ice
+-OCEAN_FRACTION = (0.6, 0.8)  # plausible global ocean fraction; else mask is wrong
+-POLES = {"north": ("north",), "south": ("south",), "both": ("north", "south")}
+-
+-Transform = Callable[[np.ndarray, np.ndarray, int], np.ndarray]
+-_WRITTEN: set[str] = set()  # configurations already written in this process
+-
+-
+-def polar_weight(lat: np.ndarray, p: dict, amps: dict[str, float]) -> np.ndarray:
+-    """Sum over poles of amplitude times a smoothstep ramp in latitude.
+-
+-    Parameters
+-    ----------
+-    lat : numpy.ndarray
+-        Latitude [degrees north].
+-    p : dict
+-        Validated parameters with ``lat_start`` and ``lat_full`` [degrees].
+-    amps : dict of str to float
+-        Amplitude per pole.
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        :math:`\\sum_{pole} a_{pole} W(\\phi)`, with :math:`\\phi` = `lat`
+-        for the north and -`lat` for the south.
+-
+-    Notes
+-    -----
+-    .. math:: W = x^2 (3 - 2x), \\quad
+-              x = \\mathrm{clip}\\left(\\frac{\\phi - \\phi_s}{\\phi_f - \\phi_s}, 0, 1\\right)
+-    """
+-    span = p["lat_full"] - p["lat_start"]
+-    out = np.zeros_like(lat, dtype=float)
+-    for pole, amp in amps.items():
+-        phi = lat if pole == "north" else -lat
+-        x = np.clip((phi - p["lat_start"]) / span, 0.0, 1.0)
+-        out += amp * (x * x * (3.0 - 2.0 * x))
+-    return out
+-
+-
+-def nearest_index(
+-    src_lat: np.ndarray, src_lon: np.ndarray, lat: np.ndarray, lon: np.ndarray
+-) -> np.ndarray:
+-    """Nearest source point on the sphere for each target point.
+-
+-    Parameters
+-    ----------
+-    src_lat, src_lon : numpy.ndarray
+-        Source grid coordinates [degrees].
+-    lat, lon : numpy.ndarray
+-        Target grid coordinates [degrees].
+-
+-    Returns
+-    -------
+-    numpy.ndarray
+-        Index into the source points for every target point.
+-    """
+-
+-    def xyz(la: np.ndarray, lo: np.ndarray) -> np.ndarray:
+-        phi, lam = np.deg2rad(la), np.deg2rad(lo)
+-        return np.column_stack(
+-            (np.cos(phi) * np.cos(lam), np.cos(phi) * np.sin(lam), np.sin(phi))
+-        )
+-
+-    _, idx = cKDTree(xyz(src_lat, src_lon)).query(xyz(lat, lon))
+-    return idx
+-
+-
+-def perturb_grib(src: Path, dst: Path, transform: Transform) -> tuple[float, float]:
+-    """Rewrite every monthly field with transformed values, keeping all headers.
+-
+-    Parameters
+-    ----------
+-    src : Path
+-        Source GRIB climatology with one variable on one level.
+-    dst : Path
+-        Output GRIB file.
+-    transform : callable
+-        ``transform(values, lat, month) -> values`` on flattened fields.
+-
+-    Returns
+-    -------
+-    d_min, d_max : float
+-        Smallest and largest change over all months; 0 when nothing changes.
+-
+-    Notes
+-    -----
+-    Missing (NaN) points stay missing. Headers and packing come from `src`
+-    through :func:`grib_io.save_grib`.
+-    """
+-    tree = open_grib(src)
+-    node = tree.leaves[0]
+-    name = next(iter(node.data_vars))
+-    field = node[name]
+-    lat = xr.broadcast(field.latitude, field.longitude)[0].values.ravel()
+-    data = np.empty(field.shape, dtype=field.dtype)
+-    d_min, d_max = 0.0, 0.0
+-    for i, month in enumerate(field.time.dt.month.values):
+-        old = field[i, 0].values.ravel().astype(float)
+-        new = np.where(np.isnan(old), np.nan, transform(old, lat, int(month)))
+-        change = new - old
+-        if np.isfinite(change).any():
+-            d_min = min(d_min, float(np.nanmin(change)))
+-            d_max = max(d_max, float(np.nanmax(change)))
+-        data[i, 0] = new.reshape(field.shape[2:])
+-    node[name] = field.copy(data=data)
+-    save_grib(tree, dst)
+-    return d_min, d_max
+-
+-
+-def adjust_sea_ice(p: dict, methods: list, am_dir: Path) -> Transform | None:
+-    """Write the FIXED sea-ice climatology.
+-
+-    Parameters
+-    ----------
+-    p : dict
+-        Validated perturbation parameters.
+-    methods : list of str
+-        Selected methods.
+-    am_dir : Path
+-        Pristine ``fix_src/am`` directory.
+-
+-    Returns
+-    -------
+-    callable or None
+-        The sea-ice transform when ``ice_loss`` is applied, else None.
+-
+-    Raises
+-    ------
+-    FileNotFoundError
+-        If the source climatology is missing.
+-
+-    Notes
+-    -----
+-    .. math:: SIC' = SIC \\left(1 - \\min\\left(1, A_m \\sum_{pole} r_{pole} W(\\phi)\\right)\\right)
+-
+-    Values outside [0, 1] are land flags (1.57 in the CFSR file) and are kept.
+-    """
+-    src = am_dir / ICE_FILE
+-    dst = Path(state.fix) / "MODS" / ICE_FILE
+-
+-    if not src.exists():
+-        raise FileNotFoundError(f"Sea ice climatology not found: {src}")
+-
+-    dst.unlink(missing_ok=True)  # never write through a symlink into fix_src
+-
+-    if "ice_loss" not in methods:
+-        dst.parent.mkdir(parents=True, exist_ok=True)
+-        cp(src, dst)
+-        log.info(f"Copied unperturbed sea ice to: {dst}")
+-        return None
+-
+-    scale = p["monthly_scale"]
+-
+-    def ice_fn(vals: np.ndarray, lat: np.ndarray, month: int) -> np.ndarray:
+-        weight = scale[month - 1] * polar_weight(lat, p, p["sic_poles"])
+-        loss = np.clip(weight, 0.0, 1.0)
+-        fraction = (vals >= 0.0) & (vals <= 1.0)
+-        return np.where(fraction, np.clip(vals * (1.0 - loss), 0.0, 1.0), vals)
+-
+-    d_min, d_max = perturb_grib(src, dst, ice_fn)
+-    log.info(
+-        f"Applied ice_loss with sic_reduction={p['sic_reduction']}: "
+-        + f"dSIC [{d_min:.3f}, {d_max:.3f}]"
+-    )
+-    return ice_fn
+-
+-
+-def adjust_sst(p: dict, methods: list, am_dir: Path, ice_fn: Transform | None) -> None:
+-    """Write the FIXED SST climatology.
+-
+-    Parameters
+-    ----------
+-    p : dict
+-        Validated perturbation parameters.
+-    methods : list of str
+-        Selected methods.
+-    am_dir : Path
+-        Pristine ``fix_src/am`` directory.
+-    ice_fn : callable or None
+-        Sea-ice transform from :func:`adjust_sea_ice`.
+-
+-    Raises
+-    ------
+-    FileNotFoundError
+-        If the source climatology is missing.
+-    ValueError
+-        If the land mask gives an implausible ocean fraction.
+-
+-    Notes
+-    -----
+-    dT = ``uniform_warming_k`` + the shift method, plus
+-    ``opened_water_delta_t_k`` where ``ice_loss`` opens water. dT is zero
+-    where the final SIC >= ``ICE_EDGE`` in every month (perennial ice and
+-    land flags), and cooling never takes SST below ``T_FREEZE``.
+-
+-    polar_shift:
+-
+-    .. math:: \\Delta T = A_m \\sum_{pole} \\Delta T_{pole} W(\\phi)
+-
+-    uniform_shift replaces that pattern by its cos(lat)-weighted mean over
+-    ocean points that are not perennial ice.
+-    """
+-    src = am_dir / SST_FILE
+-    dst = Path(state.fix) / "MODS" / SST_FILE
+-
+-    if not src.exists():
+-        raise FileNotFoundError(f"SST climatology not found: {src}")
+-
+-    dst.unlink(missing_ok=True)  # never write through a symlink into fix_src
+-
+-    shifts = [m for m in methods if m in ("polar_shift", "uniform_shift")]
+-    opened_dt = 0.0
+-    if "ice_loss" in methods:
+-        opened_dt = float(p.get("opened_water_delta_t_k", 0.0))
+-
+-    if not shifts and opened_dt == 0.0:
+-        dst.parent.mkdir(parents=True, exist_ok=True)
+-        cp(src, dst)
+-        log.info(f"Copied unperturbed SST to: {dst}")
+-        return
+-
+-    sst = open_grib(src).leaves[0]
+-    sst = sst[next(iter(sst.data_vars))]
+-    lat, lon = (c.values.ravel() for c in xr.broadcast(sst.latitude, sst.longitude))
+-
+-    ice_src = am_dir / ICE_FILE
+-    opened = {}
+-    if ice_src.exists():
+-        ice = open_grib(ice_src).leaves[0]
+-        ice = ice[next(iter(ice.data_vars))]
+-        ice_lat, ice_lon = (
+-            c.values.ravel() for c in xr.broadcast(ice.latitude, ice.longitude)
+-        )
+-        idx = nearest_index(ice_lat, ice_lon, lat, lon)
+-        frozen = None
+-        for i, month in enumerate(ice.time.dt.month.values):
+-            sic0 = np.nan_to_num(ice[i, 0].values.ravel().astype(float), nan=0.0)
+-            sic1 = sic0 if ice_fn is None else ice_fn(sic0, ice_lat, int(month))
+-            ice1 = sic1 >= ICE_EDGE
+-            frozen = ice1 if frozen is None else frozen & ice1
+-            opened[int(month)] = ((sic0 >= ICE_EDGE) & (sic0 <= 1.0) & ~ice1)[idx]
+-        frozen = frozen[idx]
+-        del idx
+-    else:
+-        log.warning(f"Sea ice climatology not found: {ice_src}; no perennial-ice mask")
+-        frozen = np.zeros(lat.shape, dtype=bool)
+-
+-    scale = p["monthly_scale"]
+-    uniform = float(p.get("uniform_warming_k", 0.0)) if shifts else 0.0
+-    pattern = polar_weight(lat, p, p["dt_poles"])
+-
+-    if "uniform_shift" in shifts:
+-        land = open_grib(am_dir / LAND_FILE).leaves[0]
+-        land = land[next(iter(land.data_vars))]
+-        land_lat, land_lon = (
+-            c.values.ravel() for c in xr.broadcast(land.latitude, land.longitude)
+-        )
+-        is_land = np.nan_to_num(land[0, 0].values.ravel().astype(float), nan=1.0) >= 0.5
+-        ocean = ~is_land[nearest_index(land_lat, land_lon, lat, lon)]
+-        cosw = np.cos(np.deg2rad(lat))
+-        frac = float(np.sum(cosw * ocean) / np.sum(cosw))
+-        log.info(f"Ocean fraction: {frac:.3f}")
+-        if not OCEAN_FRACTION[0] <= frac <= OCEAN_FRACTION[1]:
+-            raise ValueError(
+-                f"Ocean fraction {frac:.3f} outside {OCEAN_FRACTION}; "
+-                + f"check {am_dir / LAND_FILE}"
+-            )
+-        cosw = cosw * (ocean & ~frozen)
+-        pattern = np.full_like(pattern, np.sum(pattern * cosw) / np.sum(cosw))
+-
+-    def sst_fn(vals: np.ndarray, lat: np.ndarray, month: int) -> np.ndarray:
+-        d_t = np.zeros_like(vals)
+-        if shifts:
+-            d_t = uniform + scale[month - 1] * pattern
+-        d_t = np.where(frozen, 0.0, d_t) + opened_dt * opened.get(month, False)
+-        return np.maximum(vals + d_t, np.minimum(vals, T_FREEZE))
+-
+-    d_min, d_max = perturb_grib(src, dst, sst_fn)
+-    applied = shifts + (["opened_water"] if opened_dt else [])
+-    log.info(
+-        f"Applied {', '.join(applied)} to SST: dT [{d_min:.2f}, {d_max:.2f}] K, "
+-        + f"{int(frozen.sum())} ice/land points held"
+-    )
+-
+-
+-def validate_tgrad_perturbations(perturbations: object) -> tuple[dict, list] | None:
+-    """Validate ``tgrad_perturbations`` before any file is written.
+-
+-    Parameters
+-    ----------
+-    perturbations : object
+-        The ``tgrad_perturbations`` block from the state; empty or None
+-        disables the perturbation.
+-
+-    Returns
+-    -------
+-    tuple of (dict, list) or None
+-        Parameters with defaults, ``monthly_scale`` as twelve factors and
+-        per-pole amplitudes ``dt_poles`` and ``sic_poles``, and the selected
+-        methods; None when no block is configured.
+-
+-    Raises
+-    ------
+-    KeyError
+-        If ``method`` or a key required by a method is missing.
+-    TypeError
+-        If the block is not a mapping.
+-    ValueError
+-        If a key, method or value is invalid.
+-
+-    Notes
+-    -----
+-    A scalar amplitude applies to every pole selected by ``poles``; a mapping
+-    ``{north: x, south: y}`` sets each pole explicitly. The ``DELTA_T_MAX``
+-    limit applies to the base ``polar_delta_t_k``, before ``monthly_scale``.
+-    """
+-    if not perturbations:
+-        return None
+-
+-    if not isinstance(perturbations, dict):
+-        raise TypeError("`tgrad_perturbations` config must be a mapping")
+-
+-    p = dict(perturbations)  # state copy stays as configured (checksum)
+-
+-    allowed = ("none", "polar_shift", "uniform_shift", "ice_loss")
+-    keys = (
+-        "method",
+-        "polar_delta_t_k",
+-        "sic_reduction",
+-        "poles",
+-        "lat_start",
+-        "lat_full",
+-        "ocean_mode",
+-        "uniform_warming_k",
+-        "monthly_scale",
+-        "opened_water_delta_t_k",
+-    )
+-
+-    if "method" not in p:
+-        raise KeyError("Missing perturbation key: method")
+-
+-    unknown = [k for k in p if k not in keys]
+-    if unknown:
+-        raise ValueError(f"Unknown keys in perturbation config: {unknown}")
+-
+-    methods = p["method"]
+-    if isinstance(methods, str):
+-        methods = [methods]
+-    if not isinstance(methods, (list, tuple)) or not methods:
+-        raise ValueError("`method` must be a name or a non-empty list; use `none`")
+-    methods = list(methods)
+-
+-    for m in methods:
+-        if m not in allowed:
+-            raise ValueError(f"`method` must be one of {allowed}. Got `{m}`")
+-
+-    needs = {
+-        "polar_shift": "polar_delta_t_k",
+-        "uniform_shift": "polar_delta_t_k",
+-        "ice_loss": "sic_reduction",
+-    }
+-    for m in methods:
+-        if m in needs and needs[m] not in p:
+-            raise KeyError(f"If method includes '{m}', you must provide '{needs[m]}'")
+-
+-    if "none" in methods and len(methods) > 1:
+-        raise ValueError("`none` cannot be combined with other methods")
+-
+-    if "polar_shift" in methods and "uniform_shift" in methods:
+-        raise ValueError("only one of `polar_shift` and `uniform_shift` can be used")
+-
+-    p.setdefault("poles", "north")
+-    p["lat_start"] = float(p.get("lat_start", 60.0))
+-    p["lat_full"] = float(p.get("lat_full", 80.0))
+-    p.setdefault("ocean_mode", "prescribed")
+-
+-    if p["poles"] not in POLES:
+-        raise ValueError(f"`poles` must be one of {tuple(POLES)}. Got `{p['poles']}`")
+-
+-    if not 0.0 <= p["lat_start"] < p["lat_full"] <= 90.0:
+-        raise ValueError("`lat_start` and `lat_full` need 0 <= start < full <= 90")
+-
+-    if p["ocean_mode"] not in ("prescribed", "mlo"):
+-        raise ValueError(
+-            f"`ocean_mode` must be prescribed or mlo. Got `{p['ocean_mode']}`"
+-        )
+-
+-    for k in ("uniform_warming_k", "opened_water_delta_t_k"):
+-        if k in p:
+-            p[k] = float(p[k])
+-
+-    scale = p.get("monthly_scale")
+-    if scale is None:
+-        scale = [1.0] * 12
+-    if not isinstance(scale, (list, tuple)) or len(scale) != 12:
+-        raise ValueError("`monthly_scale` needs 12 values (Jan..Dec)")
+-    p["monthly_scale"] = [float(a) for a in scale]
+-
+-    for key, out in (("polar_delta_t_k", "dt_poles"), ("sic_reduction", "sic_poles")):
+-        value = p.get(key, 0.0)
+-        if isinstance(value, dict):
+-            bad = [k for k in value if k not in ("north", "south")]
+-            if bad:
+-                raise ValueError(f"`{key}` keys must be north or south. Got {bad}")
+-            p[out] = {k: float(v) for k, v in value.items()}
+-        else:
+-            p[out] = {pole: float(value) for pole in POLES[p["poles"]]}
+-
+-    # NaN passes every range test below and would blank the climatology.
+-    numbers = {
+-        "lat_start": [p["lat_start"]],
+-        "lat_full": [p["lat_full"]],
+-        "monthly_scale": p["monthly_scale"],
+-        "polar_delta_t_k": list(p["dt_poles"].values()),
+-        "sic_reduction": list(p["sic_poles"].values()),
+-    }
+-    for k in ("uniform_warming_k", "opened_water_delta_t_k"):
+-        if k in p:
+-            numbers[k] = [p[k]]
+-    for key, values in numbers.items():
+-        if not all(math.isfinite(v) for v in values):
+-            raise ValueError(f"`{key}` must be finite. Got {values}")
+-
+-    for pole, dt in p["dt_poles"].items():
+-        if abs(dt) > DELTA_T_MAX:
+-            raise ValueError(
+-                f"`polar_delta_t_k` must be within +/-{DELTA_T_MAX} K. "
+-                + f"Got {dt} K ({pole})"
+-            )
+-
+-    for pole, r in p["sic_poles"].items():
+-        if not 0.0 <= r <= 1.0:
+-            raise ValueError(f"`sic_reduction` must be within 0..1. Got {r} ({pole})")
+-
+-    return p, methods
+-
+-
+-def apply_tgrad_perturbations() -> bool:
+-    """Write the FIXED SST and sea-ice climatologies from pristine ``fix_src/am``.
+-
+-    Uses the ``tgrad_perturbations`` config in the state. Both files are
+-    rewritten under their original names, perturbed or not, so a case switched
+-    back to a control arm cannot keep a stale perturbed copy. ``fix_src`` is
+-    only read.
+-
+-    Returns
+-    -------
+-    bool
+-        True when the files are written (or were already written in this
+-        process for the same config), False when no perturbation is configured.
+-    """
+-
+-    validated = validate_tgrad_perturbations(state.tgrad_perturbations)
+-    if validated is None:
+-        return False
+-
+-    p, methods = validated
+-
+-    # update_namsfc runs once per domain (global and nests); write once.
+-    key = f"{state.fix}|{p!r}"
+-    if key in _WRITTEN:
+-        return True
+-
+-    am_dir = Path(state.fix_src) / "am"
+-    scale = p["monthly_scale"]
+-
+-    log.info(f"tgrad_perturbations detected; applying {', '.join(methods)}")
+-    log.info(f"Using climatologies from: {am_dir}")
+-    if any(a != 1.0 for a in scale):
+-        log.info(f"Using monthly_scale={scale}")
+-
+-    if {"polar_shift", "uniform_shift"} & set(methods):
+-        for pole, dt in p["dt_poles"].items():
+-            if abs(dt) > DELTA_T_STANDARD:
+-                log.info(f"Strong forcing: polar_delta_t_k={dt} K ({pole})")
+-            if pole == "south" and dt > 0.0:
+-                log.info(f"Idealized: southern warming of {dt} K")
+-            peak = max(abs(a) for a in scale) * abs(dt)
+-            if peak > DELTA_T_MAX:
+-                log.warning(f"Scaled anomaly {peak} K exceeds {DELTA_T_MAX} K ({pole})")
+-    if "ice_loss" in methods:
+-        for pole, r in p["sic_poles"].items():
+-            if min(min(max(a * r, 0.0), 1.0) for a in scale) > 0.5:
+-                log.info(f"Idealized: ice loss above 50% in every month ({pole})")
+-
+-    ice_fn = adjust_sea_ice(p, methods, am_dir)
+-    adjust_sst(p, methods, am_dir, ice_fn)
+-
+-    _WRITTEN.add(key)
+-
+-    log.info("Finished applying tgrad perturbations")
+-
+-    return True
+diff --git a/templates/pamip_experiments.yaml b/templates/pamip_experiments.yaml
+index 8149a99..3d2d5d3 100644
+--- a/templates/pamip_experiments.yaml
++++ b/templates/pamip_experiments.yaml
+@@ -1,69 +1,73 @@
+-# PAMIP Tier-1 SST and sea-ice boundary conditions (input4MIPs, target_mip PAMIP).
++# PAMIP Tier 1 and 2 SST and sea-ice boundary conditions (input4MIPs, target_mip PAMIP).
+ #
+-# Read by src/tgrad_perturbations.py; this file is the only place that ties an
+-# experiment number to its forcing files. Every experiment is a pair of
+-# absolute monthly climatologies, so each one (the control 1.1 included) uses
+-# PAMIP fields for both SST and sea-ice concentration. The pair already holds
+-# the ice-edge SST adjustment of the protocol, so nothing is added to it.
++# Read by src/pamip_experiment.py and tools/download_pamip_amip.py; this file is
++# the only place that ties an experiment number to its forcing files. Every
++# experiment, the control 1.1 included, is a pair of absolute monthly climatologies
++# (twelve months on a 1 degree grid), and the pair already holds the ice-edge SST
++# adjustment of the protocol (pre-industrial or future SST is imposed where the
++# SIC differs from present day by more than 10 %, Appendix A), so nothing is added.
+ #
+-# Basis
+-#   Smith, D. M. et al. (2019), Geosci. Model Dev. 12, 1139-1164,
+-#   doi:10.5194/gmd-12-1139-2019: Table 1 (experiments), Table A1 (forcing
+-#   files of each experiment) and Appendix A (construction of the fields).
+-#   Known issues of the data set:
+-#   https://www.cesm.ucar.edu/projects/cmip6/pamip/known_issues
++# Basis: Smith, D. M. et al. (2019), Geosci. Model Dev. 12, 1139-1164,
++# doi:10.5194/gmd-12-1139-2019 (Table 1 experiments, Table A1 forcing files,
++# Appendix A construction of the fields; present day is the HadISST 1979-2008
++# climatology). Known issues of the data set:
++# https://www.cesm.ucar.edu/projects/cmip6/pamip/known_issues
+ #
+-# Layout of the downloaded files (tools/download_pamip_amip.py):
+-#   <fix_src>/PAMIP/<source_id>/<variable_id>/<file>.nc
++# File name of a dataset (as indexed on ESGF, checked against Table A1):
++#   <variable_id>_input4MIPs_SSTsAndSeaIce_PAMIP_<source_id>_gn_<period>.nc
++# Downloaded to <fix_src>/PAMIP/<source_id>/<variable_id>/ by tools/download_pamip_amip.py.
++# source_id UCI-present-1-0 also holds other siconc files (1979-2014); the period
++# selects the 1979-2008 climatology.
++#
++# The experiment names and their SHiELD namelist settings are PAMIP_EXPERIMENTS in src/pamip_experiment.py.
++#
++# Protocol of Smith et al. (2019), Appendix B, for experiments 1 to 4 (not read by the code):
++#   tier             1: 1.1, 1.3, 1.5, 1.6, 1.7, 1.8; 2: 1.2, 1.4, 2.x; 3: the others (protocol page)
++#   start            1 April 2000
++#   length           14 months, the first 2 months are spin-up and ignored (Appendix B); Table 1 lists
++#                    12 years for 1.1 and 1 year for the other experiments of sets 1 to 4
++#   members          minimum 100 (Table 1), from perturbed initial conditions
++#   radiative forcing present day, taken as the year 2000, for all but set 5, which uses time-varying forcing;
++#                    here only the CO2 table of 2000 is selected (ictm = 20000 in PAMIP_EXPERIMENTS)
++#   boundary data  processed with the standard AMIP II protocol before use, so that monthly means of the model
++#                    agree with the files; SHiELD does not do this, it interpolates linearly between mid-month
++#                    values at each surface cycle (every 24 h)
++# Set 5 runs 1 January 1979 to 31 December 2014 and set 6 runs 100 years from 1 April 2000.
+ #
+ # Keys per experiment
+-#   name        PAMIP experiment name
+-#   sst, sic    source_id and variable_id of the input4MIPs dataset
+-#   min_version oldest accepted dataset version (YYYYMMDD) when the file reports one
+-#   changes     what differs from the control: used for report-only consistency
+-#               checks (arctic: Arctic SIC and the SST at changed ice, global:
+-#               SST everywhere)
+-
+-protocol:
+-  family: PAMIP # case directory FIXED/PAMIP; file names carry the family and experiment
+-  control: "1.1"
+-  radiative_year: 2000 # Table 1 notes: present-day (year 2000) forcing for 1.x
+-  start: "2000-04-01" # Appendix B: 1 April 2000, 14 months, first two ignored
+-  length_months: 14
+-  spinup_months: 2
+-  minimum_members: 100
+-  sic_edge: 0.15 # 15 % threshold of the ice edge (Appendix A, SIT rule)
++#   family       data family: directory below FIXED and fix_src, tag of the generated file names
++#   sst, sic     source_id, variable_id and period of the input4MIPs file; the files hold
++#                filled values over land, which the code masks with seaice_newland.grb
++#
++# The files carry source_id and source_version attributes; the source_id is checked on reading.
++# The SST of 1.3 must come from ...-1-1 (source_version 1.1), which replaces the file of Table A1
++# (known issues page of the PAMIP protocol, version 20191002).
+ 
+ experiments:
+   "1.1":
+-    name: pdSST-pdSIC
++    family: PAMIP
+     description: Present-day SST and SIC, HadISST 1979-2008 climatology (control).
+-    sst: {source_id: UCI-present-1-0, variable_id: tos}
+-    sic: {source_id: UCI-present-1-0, variable_id: siconc}
+-    changes: {sic: none, sst: none}
++    sst: {source_id: UCI-present-1-0, variable_id: tos, period: 197901-200812-clim}
++    sic: {source_id: UCI-present-1-0, variable_id: siconc, period: 197901-200812-clim}
+   "1.3":
+-    name: piSST-pdSIC
++    family: PAMIP
+     description: Preindustrial SST with present-day SIC.
+-    # Version 20190228 (source_id ...-1-0) had the wrong SST where sea ice was
+-    # lost between preindustrial and present day; 20191002 (...-1-1) replaces it.
+-    sst: {source_id: UCI-pi-prArctic-prAntarctic-1-1, variable_id: tos, min_version: "20191002"}
+-    sic: {source_id: UCI-present-1-0, variable_id: siconc}
+-    changes: {sic: none, sst: global}
++    # Table A1 lists ...-1-0; the known issues page reports a correction of the 1.3 SST (version
++    # 20191002), published as ...-1-1, which is used here.
++    sst: {source_id: UCI-pi-prArctic-prAntarctic-1-1, variable_id: tos, period: 187001-188012-clim}
++    sic: {source_id: UCI-present-1-0, variable_id: siconc, period: 197901-200812-clim}
+   "1.4":
+-    name: futSST-pdSIC
+-    description: Future SST (2 K global warming) with present-day SIC.
+-    sst: {source_id: UCI-fu-prArctic-prAntarctic-1-0, variable_id: tos}
+-    sic: {source_id: UCI-present-1-0, variable_id: siconc}
+-    changes: {sic: none, sst: global}
++    family: PAMIP
++    description: Future SST (2 K global warming) with present-day SIC (Tier 2).
++    sst: {source_id: UCI-fu-prArctic-prAntarctic-1-0, variable_id: tos, period: clim}
++    sic: {source_id: UCI-present-1-0, variable_id: siconc, period: 197901-200812-clim}
+   "1.5":
+-    name: pdSST-piArcSIC
++    family: PAMIP
+     description: Present-day SST with preindustrial Arctic SIC.
+-    sst: {source_id: UCI-piArctic-1-0, variable_id: tos}
+-    sic: {source_id: UCI-piArctic-1-0, variable_id: siconc}
+-    changes: {sic: arctic, sst: arctic}
++    sst: {source_id: UCI-piArctic-1-0, variable_id: tos, period: 187001-188012-clim}
++    sic: {source_id: UCI-piArctic-1-0, variable_id: siconc, period: 187001-188012-clim}
+   "1.6":
+-    name: pdSST-futArcSIC
++    family: PAMIP
+     description: Present-day SST with future (2 K) Arctic SIC.
+-    sst: {source_id: UCI-fut2CArctic-1-0, variable_id: tos}
+-    sic: {source_id: UCI-fut2CArctic-1-0, variable_id: siconc}
+-    changes: {sic: arctic, sst: arctic}
++    sst: {source_id: UCI-fut2CArctic-1-0, variable_id: tos, period: clim}
++    sic: {source_id: UCI-fut2CArctic-1-0, variable_id: siconc, period: clim}
+diff --git a/tests/cases/pamip_ctrl/run_config.yaml b/tests/cases/pamip_ctrl/run_config.yaml
+index 1a8fe20..c6f3b1b 100644
+--- a/tests/cases/pamip_ctrl/run_config.yaml
++++ b/tests/cases/pamip_ctrl/run_config.yaml
+@@ -1,9 +1,9 @@
+-# PAMIP experiment 1.1 (pdSST-pdSIC control). Pair with the other pamip_* case; they differ
+-# only in tgrad_perturbations.experiment. Two monthly segments from the PAMIP
+-# start date. Needs the PAMIP NetCDF files in <fix_src>/PAMIP.
++# PAMIP experiment 1.1 (pdSST-pdSIC control). Pair with pamip_native (stock climatologies) and
++# pamip_futarcsic (1.6); they differ only in pamip_experiment. Needs the PAMIP NetCDF files
++# in <fix_src>/PAMIP. ICs come from GFS, so the date must lie in the GFS archive.
+ description: test PAMIP 1.1
+ archive_data: false # Tests do not archive outputs
+-init_datetime: "2000040100Z"
++init_datetime: "2024040100Z"
+ run_length: 1
+ run_length_units: months
+ resubmit: 1
+@@ -17,5 +17,4 @@ n_cpus: 144
+ walltime: 12
+ constraint_node: "48core"
+ 
+-tgrad_perturbations:
+-  experiment: "1.1"
++pamip_experiment: "1.1"
+diff --git a/tests/cases/pamip_futarcsic/run_config.yaml b/tests/cases/pamip_futarcsic/run_config.yaml
+index 12f99e7..49eb0f0 100644
+--- a/tests/cases/pamip_futarcsic/run_config.yaml
++++ b/tests/cases/pamip_futarcsic/run_config.yaml
+@@ -1,9 +1,9 @@
+-# PAMIP experiment 1.6 (pdSST-futArcSIC). Pair with the other pamip_* case; they differ
+-# only in tgrad_perturbations.experiment. Two monthly segments from the PAMIP
+-# start date. Needs the PAMIP NetCDF files in <fix_src>/PAMIP.
++# PAMIP experiment 1.6 (pdSST-futArcSIC). Pair with pamip_native and pamip_ctrl; the three differ
++# only in pamip_experiment. Two monthly segments from 1 April 2024. Needs the PAMIP NetCDF files
++# in <fix_src>/PAMIP. ICs come from GFS, so the date must lie in the GFS archive.
+ description: test PAMIP 1.6
+ archive_data: false # Tests do not archive outputs
+-init_datetime: "2000040100Z"
++init_datetime: "2024040100Z"
+ run_length: 1
+ run_length_units: months
+ resubmit: 1
+@@ -17,5 +17,4 @@ n_cpus: 144
+ walltime: 12
+ constraint_node: "48core"
+ 
+-tgrad_perturbations:
+-  experiment: "1.6"
++pamip_experiment: "1.6"
+diff --git a/tests/cases/pamip_native/run_config.yaml b/tests/cases/pamip_native/run_config.yaml
+index af30504..50cea02 100644
+--- a/tests/cases/pamip_native/run_config.yaml
++++ b/tests/cases/pamip_native/run_config.yaml
+@@ -18,4 +18,3 @@ n_nodes: 3
+ n_cpus: 144
+ walltime: 12
+ constraint_node: "48core"
+-
+diff --git a/tests/cases/tgrad_ctrl/run_config.yaml b/tests/cases/tgrad_ctrl/run_config.yaml
+deleted file mode 100644
+index 83ffce3..0000000
+--- a/tests/cases/tgrad_ctrl/run_config.yaml
++++ /dev/null
+@@ -1,30 +0,0 @@
+-# Experiment pair with tgrad_sst4: identical except the tgrad method/amplitude.
+-# Two monthly segments; the driver log must show the FIXED/MODS writes once, at
+-# the cold start, and namsfc fntsfc/fnaisc pointing to FIXED/MODS.
+-description: test tgrad control
+-archive_data: false # Tests do not archive outputs
+-init_datetime: "2023070100Z"
+-run_length: 24
+-run_length_units: hours
+-resubmit: 1
+-merge_freq: -1
+-c_res: C96
+-gtype: uniform
+-levels: 64
+-generate_ic_data: true
+-n_nodes: 3
+-n_cpus: 144
+-walltime: 12
+-constraint_node: "48core"
+-
+-tgrad_perturbations:
+-  method: none
+-  ocean_mode: prescribed
+-  poles: north
+-  lat_start: 60.0
+-  lat_full: 80.0
+-
+-dt_atmos: 1200
+-dt_ocean: 1200
+-k_split: [3]
+-n_split: [6]
+diff --git a/tests/cases/tgrad_sst4/run_config.yaml b/tests/cases/tgrad_sst4/run_config.yaml
+deleted file mode 100644
+index 249c233..0000000
+--- a/tests/cases/tgrad_sst4/run_config.yaml
++++ /dev/null
+@@ -1,30 +0,0 @@
+-# Experiment pair with tgrad_ctrl: 4 K Arctic SST increment (0 K at 60N, 4 K
+-# poleward of 80N). SST4 - CTRL in FIXED/MODS/RTGSST*.grb must match the pattern.
+-description: test tgrad sst4
+-archive_data: false # Tests do not archive outputs
+-init_datetime: "2023070100Z"
+-run_length: 24
+-run_length_units: hours
+-resubmit: 1
+-merge_freq: -1
+-c_res: C96
+-gtype: uniform
+-levels: 64
+-generate_ic_data: true
+-n_nodes: 3
+-n_cpus: 144
+-walltime: 12
+-constraint_node: "48core"
+-
+-tgrad_perturbations:
+-  method: polar_shift
+-  ocean_mode: prescribed
+-  poles: north
+-  lat_start: 60.0
+-  lat_full: 80.0
+-  polar_delta_t_k: 4.0
+-
+-dt_atmos: 1200
+-dt_ocean: 1200
+-k_split: [3]
+-n_split: [6]
+diff --git a/tests/submit.sh b/tests/submit.sh
+index cca508d..834a6bf 100755
+--- a/tests/submit.sh
++++ b/tests/submit.sh
+@@ -4,5 +4,6 @@
+ # (cd cases/nest_gfs && ../../../case_submit.sh)
+ # (cd cases/sm_ctrl && ../../../case_submit.sh)
+ # (cd cases/sm_dry && ../../../case_submit.sh)
+-# (cd cases/tgrad_ctrl && ../../../case_submit.sh)
+-# (cd cases/tgrad_sst4 && ../../../case_submit.sh)
+\ No newline at end of file
++(cd cases/pamip_native && ../../../case_submit.sh)
++(cd cases/pamip_ctrl && ../../../case_submit.sh)
++(cd cases/pamip_futarcsic && ../../../case_submit.sh)
+diff --git a/tools/download_pamip_amip.py b/tools/download_pamip_amip.py
+index 981bc14..119aed3 100644
+--- a/tools/download_pamip_amip.py
++++ b/tools/download_pamip_amip.py
+@@ -1,11 +1,15 @@
+ #!/usr/bin/env python3
+ """Download all discoverable PAMIP and PCMDI-AMIP SST/sea-ice forcing files."""
+ 
++import argparse
+ import csv
+ import os
+ import shutil
++import sys
+ from pathlib import Path
+ 
++import yaml
++
+ import intake_esgf
+ from intake_esgf import ESGFCatalog
+ from intake_esgf.exceptions import NoSearchResults
+@@ -13,6 +17,13 @@ from intake_esgf.exceptions import NoSearchResults
+ PAMIP_VARIABLES = ("tos", "siconc", "sithick")
+ AMIP_VARIABLES = ("tos", "tosbcs", "siconc")
+ AMIP_ERAS = ("CMIP6", "CMIP6Plus", "CMIP7", "CMIP7Plus")
++PROJECTS = (
++    "input4MIPs",
++    "input4mips",
++)  # the ESGF index spells some datasets in lower case
++REGISTRY = (
++    Path(__file__).resolve().parent.parent / "templates" / "pamip_experiments.yaml"
++)
+ FIELDS = ("mip_era", "source_id", "variable_id", "status", "file", "detail")
+ 
+ 
+@@ -27,25 +38,43 @@ def search(era: str, target: str, variables: tuple[str, ...], amip: bool):
+     if amip:
+         filters["institution_id"] = "PCMDI"
+ 
+-    catalog = ESGFCatalog().search(**filters, quiet=True)
+-    pairs = catalog.df[["source_id", "variable_id"]].drop_duplicates()
+-    return sorted(
+-        (str(source), str(variable))
+-        for source, variable in pairs.itertuples(index=False, name=None)
+-        if not amip or str(source).startswith("PCMDI-AMIP-")
+-    )
++    found = set()
++    for project in PROJECTS:  # one project name per search
++        try:
++            catalog = ESGFCatalog().search(
++                **{**filters, "project": project}, quiet=True
++            )
++        except NoSearchResults:
++            continue
++        pairs = catalog.df[["source_id", "variable_id"]].drop_duplicates()
++        found.update(
++            (str(source), str(variable))
++            for source, variable in pairs.itertuples(index=False, name=None)
++            if not amip or str(source).startswith("PCMDI-AMIP-")
++        )
++    if not found:
++        raise NoSearchResults()
++    return sorted(found)
+ 
+ 
+ def download(era: str, target: str, source: str, variable: str) -> list[Path]:
+     """Return verified local paths, downloading the dataset if necessary."""
+-    catalog = ESGFCatalog().search(
+-        project="input4MIPs",
+-        mip_era=era,
+-        target_mip=target,
+-        source_id=source,
+-        variable_id=variable,
+-        quiet=True,
+-    )
++    catalog = None
++    for project in PROJECTS:
++        try:
++            catalog = ESGFCatalog().search(
++                project=project,
++                mip_era=era,
++                target_mip=target,
++                source_id=source,
++                variable_id=variable,
++                quiet=True,
++            )
++            break
++        except NoSearchResults:
++            continue
++    if catalog is None:
++        raise FileNotFoundError(f"No dataset {source}/{variable} in the index")
+     paths = {
+         Path(path) for entries in catalog.to_path_dict().values() for path in entries
+     }
+@@ -142,12 +171,86 @@ def process(group: str, root: Path, list_only: bool) -> int:
+     return failures
+ 
+ 
+-def main() -> None:
++def needed(experiments: list[str] | None) -> list[tuple[str, str, str]]:
++    """Source, variable and file name of the PAMIP files that the registry experiments use."""
++    registry = yaml.safe_load(REGISTRY.read_text())["experiments"]
++    keys = [str(e) for e in experiments] if experiments else [str(k) for k in registry]
++    unknown = [k for k in keys if k not in {str(r) for r in registry}]
++    if unknown:
++        raise SystemExit(
++            f"Unknown experiments {unknown}; choose from {[str(r) for r in registry]}"
++        )
++    pairs = set()
++    for key in keys:
++        entry = {str(k): v for k, v in registry.items()}[key]
++        for part in ("sst", "sic"):
++            spec = entry[part]
++            name = f"{spec['variable_id']}_input4MIPs_SSTsAndSeaIce_PAMIP_{spec['source_id']}_gn_{spec['period']}.nc"
++            pairs.add((spec["source_id"], spec["variable_id"], name))
++    return sorted(pairs)
++
++
++def download_needed(root: Path, experiments: list[str] | None, list_only: bool) -> int:
++    """Download (or list) only the datasets of the selected PAMIP experiments."""
++    directory = root / "PAMIP"
++    directory.mkdir(parents=True, exist_ok=True)
++    intake_esgf.conf.set(local_cache=str(directory / "_cache"))
++    failures = 0
++    for source, variable, name in needed(experiments):
++        if list_only:
++            print(f"{source}/{variable}/{name}")
++            continue
++        try:
++            paths = [
++                p
++                for p in download("CMIP6", "PAMIP", source, variable)
++                if p.name == name
++            ]
++            if not paths:  # e.g. UCI-present-1-0 also holds 1979-2014 siconc files
++                raise FileNotFoundError(f"{name} is not in the index")
++            for path in paths:
++                print(
++                    f"{store(path, directory / source / variable / path.name).upper():10} {directory / source / variable / path.name}",
++                    flush=True,
++                )
++        except Exception as exc:
++            failures += 1
++            print(f"ERROR {source}/{variable}: {exc}", file=sys.stderr, flush=True)
++    return failures
++
+ 
+-    root = Path("../fix").resolve()
++def main(argv: list[str] | None = None) -> None:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument(
++        "--root",
++        type=Path,
++        required=True,
++        help="fix_src directory of the case (fix_src in run_config.yaml) that receives PAMIP/ and AMIP/",
++    )
++    parser.add_argument(
++        "--needed",
++        action="store_true",
++        help="download only the files of the PAMIP experiments in templates/pamip_experiments.yaml",
++    )
++    parser.add_argument(
++        "--experiment",
++        action="append",
++        help="with --needed: experiment number (repeatable)",
++    )
++    parser.add_argument(
++        "--list",
++        action="store_true",
++        help="with --needed: print the identifiers and exit",
++    )
++    args = parser.parse_args(argv)
++    if (args.list or args.experiment) and not args.needed:
++        parser.error("--list and --experiment require --needed")
++    root = args.root.resolve()
+     intake_esgf.conf.set(all_indices=True, confirm_download=False)
+-    groups = ("PAMIP", "AMIP")
+-    errors = sum(process(group, root, False) for group in groups)
++    if args.needed:
++        errors = download_needed(root, args.experiment, args.list)
++    else:
++        errors = sum(process(group, root, False) for group in ("PAMIP", "AMIP"))
+     if errors:
+         raise SystemExit(1)
+ 
