@@ -1,0 +1,21 @@
+# PAMIP experiment 1.1 (pdSST-pdSIC control). Pair with the other pamip_* case; they differ
+# only in tgrad_perturbations.experiment. Two monthly segments from the PAMIP
+# start date. Needs the PAMIP NetCDF files in <fix_src>/PAMIP.
+description: test PAMIP 1.1
+archive_data: false # Tests do not archive outputs
+init_datetime: "2000040100Z"
+run_length: 1
+run_length_units: months
+resubmit: 1
+merge_freq: -1
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+n_nodes: 3
+n_cpus: 144
+walltime: 12
+constraint_node: "48core"
+
+tgrad_perturbations:
+  experiment: "1.1"

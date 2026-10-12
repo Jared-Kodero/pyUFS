@@ -1,0 +1,69 @@
+# PAMIP Tier-1 SST and sea-ice boundary conditions (input4MIPs, target_mip PAMIP).
+#
+# Read by src/tgrad_perturbations.py; this file is the only place that ties an
+# experiment number to its forcing files. Every experiment is a pair of
+# absolute monthly climatologies, so each one (the control 1.1 included) uses
+# PAMIP fields for both SST and sea-ice concentration. The pair already holds
+# the ice-edge SST adjustment of the protocol, so nothing is added to it.
+#
+# Basis
+#   Smith, D. M. et al. (2019), Geosci. Model Dev. 12, 1139-1164,
+#   doi:10.5194/gmd-12-1139-2019: Table 1 (experiments), Table A1 (forcing
+#   files of each experiment) and Appendix A (construction of the fields).
+#   Known issues of the data set:
+#   https://www.cesm.ucar.edu/projects/cmip6/pamip/known_issues
+#
+# Layout of the downloaded files (tools/download_pamip_amip.py):
+#   <fix_src>/PAMIP/<source_id>/<variable_id>/<file>.nc
+#
+# Keys per experiment
+#   name        PAMIP experiment name
+#   sst, sic    source_id and variable_id of the input4MIPs dataset
+#   min_version oldest accepted dataset version (YYYYMMDD) when the file reports one
+#   changes     what differs from the control: used for report-only consistency
+#               checks (arctic: Arctic SIC and the SST at changed ice, global:
+#               SST everywhere)
+
+protocol:
+  family: PAMIP # case directory FIXED/PAMIP; file names carry the family and experiment
+  control: "1.1"
+  radiative_year: 2000 # Table 1 notes: present-day (year 2000) forcing for 1.x
+  start: "2000-04-01" # Appendix B: 1 April 2000, 14 months, first two ignored
+  length_months: 14
+  spinup_months: 2
+  minimum_members: 100
+  sic_edge: 0.15 # 15 % threshold of the ice edge (Appendix A, SIT rule)
+
+experiments:
+  "1.1":
+    name: pdSST-pdSIC
+    description: Present-day SST and SIC, HadISST 1979-2008 climatology (control).
+    sst: {source_id: UCI-present-1-0, variable_id: tos}
+    sic: {source_id: UCI-present-1-0, variable_id: siconc}
+    changes: {sic: none, sst: none}
+  "1.3":
+    name: piSST-pdSIC
+    description: Preindustrial SST with present-day SIC.
+    # Version 20190228 (source_id ...-1-0) had the wrong SST where sea ice was
+    # lost between preindustrial and present day; 20191002 (...-1-1) replaces it.
+    sst: {source_id: UCI-pi-prArctic-prAntarctic-1-1, variable_id: tos, min_version: "20191002"}
+    sic: {source_id: UCI-present-1-0, variable_id: siconc}
+    changes: {sic: none, sst: global}
+  "1.4":
+    name: futSST-pdSIC
+    description: Future SST (2 K global warming) with present-day SIC.
+    sst: {source_id: UCI-fu-prArctic-prAntarctic-1-0, variable_id: tos}
+    sic: {source_id: UCI-present-1-0, variable_id: siconc}
+    changes: {sic: none, sst: global}
+  "1.5":
+    name: pdSST-piArcSIC
+    description: Present-day SST with preindustrial Arctic SIC.
+    sst: {source_id: UCI-piArctic-1-0, variable_id: tos}
+    sic: {source_id: UCI-piArctic-1-0, variable_id: siconc}
+    changes: {sic: arctic, sst: arctic}
+  "1.6":
+    name: pdSST-futArcSIC
+    description: Present-day SST with future (2 K) Arctic SIC.
+    sst: {source_id: UCI-fut2CArctic-1-0, variable_id: tos}
+    sic: {source_id: UCI-fut2CArctic-1-0, variable_id: siconc}
+    changes: {sic: arctic, sst: arctic}
