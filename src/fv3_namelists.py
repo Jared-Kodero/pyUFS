@@ -371,9 +371,7 @@ def update_namsfc(nml):
     # The mixed-layer depth climatology is read at each surface cycle when
     # fnmldc is set (sfcsub.F) and used only by the slab ocean; it is not in
     # the NOAA fix bucket. Without the ocean model it is left out when absent.
-    prescribed = bool(state.tgrad_perturbations) and (
-        state.tgrad_perturbations.get("ocean_mode", "prescribed") == "prescribed"
-    )
+    prescribed = bool(state.pamip_experiment)
     ocean = nml.get("gfs_physics_nml", {}).get("do_ocean", False) and not prescribed
     if not ocean and not (am_dir / namsfc_files["fnmldc"]).exists():
         del namsfc_files["fnmldc"]
@@ -388,13 +386,15 @@ def update_namsfc(nml):
 
     nml["namsfc"] = namsfc
 
-    if state.tgrad_perturbations:
-        # SST and sea-ice climatologies are written to FIXED/MODS by
-        # apply_tgrad_perturbations(), either perturbed or as clean copies.
-        nml["namsfc"]["fntsfc"] = f"FIXED/MODS/{namsfc_files['fntsfc']}"
-        nml["namsfc"]["fnaisc"] = f"FIXED/MODS/{namsfc_files['fnaisc']}"
+    if state.pamip_experiment:
+        # state.fntsfc and state.fnaisc are set by apply_pamip_experiment()
+        # to the PAMIP SST and sea-ice files; otherwise the native ones stay.
+        if state.fntsfc:
+            nml["namsfc"]["fntsfc"] = state.fntsfc
+        if state.fnaisc:
+            nml["namsfc"]["fnaisc"] = state.fnaisc
 
-        # SST, ice mask and ice concentration follow the (perturbed) FIXED
+        # SST, ice mask and ice concentration follow the PAMIP FIXED
         # climatologies at every surface cycle; fsicl covers points already
         # classified as ice (non-open-ocean branch of the sfcsub merge).
         nml["namsfc"].update({"ftsfs": 0, "faiss": 0, "fsics": 0, "fsicl": 0})
@@ -402,11 +402,13 @@ def update_namsfc(nml):
         phys = nml.setdefault("gfs_physics_nml", {})
         phys["use_ext_sst"] = False
 
-        if state.tgrad_perturbations.get("ocean_mode", "prescribed") == "prescribed":
-            phys["do_ocean"] = False
-            phys["nstf_name"] = [0, 0, 1, 0, 5]
-        else:
-            phys["do_ocean"] = True
-            nml.setdefault("ocean_nml", {})["restore_method"] = 1
+        phys["do_ocean"] = False
+        phys["nstf_name"] = [0, 0, 1, 0, 5]
+
+        # Experiment settings (PAMIP_EXPERIMENTS), e.g. ictm = 20000 for the radiative forcing of year 2000
+        from pamip_experiment import pamip_namelist
+
+        for group, values in pamip_namelist().items():
+            nml.setdefault(group, {}).update(values)
 
     return nml

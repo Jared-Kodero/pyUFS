@@ -96,6 +96,65 @@ def get_grib_codes(
         eccodes.codes_release(gid)
 
 
+def grid_coordinates(gid, tolerance: float = 1e-3) -> tuple[np.ndarray, np.ndarray]:
+    """Return the latitudes and longitudes of every point of a message, in scan order.
+
+    Parameters
+    ----------
+    gid : int
+        ecCodes message handle.
+    tolerance : float, optional
+        Largest disagreement [degrees] between the ecCodes axes and the axes
+        implied by the first and last grid points before the latter are used.
+        The default is the GRIB1 resolution of 0.001 degree.
+
+    Returns
+    -------
+    lat, lon : numpy.ndarray
+        Coordinates [degrees] with the order of ``codes_get_values``.
+
+    Notes
+    -----
+    For a ``regular_ll`` grid ecCodes spaces the rows with the stored
+    increment ``Dj``. GRIB1 stores increments in whole millidegrees, so a 1/12
+    degree grid carries 0.083 instead of 0.08333..., and the latitudes of the
+    RTGSST climatology drift by up to 0.72 degree (about 8.6 rows) from the
+    first to the last row. The surface-cycle code of SHiELD (``setrmsk`` in
+    ``sfcsub.F``) ignores the stored increments: it places the rows evenly
+    between the first latitude and its mirror image, and the columns every
+    ``360 / Ni`` degrees from the first longitude. The same layout is used
+    here whenever it disagrees with the ecCodes axes by more than `tolerance`;
+    otherwise the ecCodes coordinates are returned unchanged.
+    """
+    lat = eccodes.codes_get_array(gid, "latitudes")
+    lon = eccodes.codes_get_array(gid, "longitudes")
+    if eccodes.codes_get(gid, "gridType") != "regular_ll":
+        return lat, lon
+    ni, nj = int(eccodes.codes_get(gid, "Ni")), int(eccodes.codes_get(gid, "Nj"))
+    rows, row = np.unique(lat, return_inverse=True)
+    cols, col = np.unique(np.mod(lon, 360.0), return_inverse=True)
+    if rows.size != nj or cols.size != ni or nj < 2 or ni < 2:
+        return lat, lon
+    first = eccodes.codes_get(gid, "latitudeOfFirstGridPointInDegrees")
+    last = eccodes.codes_get(gid, "latitudeOfLastGridPointInDegrees")
+    wanted_rows = np.linspace(min(first, last), max(first, last), nj)
+    start = eccodes.codes_get(gid, "longitudeOfFirstGridPointInDegrees")
+    step = eccodes.codes_get(gid, "iDirectionIncrementInDegrees")
+    # Rounded increments make ni * step differ from 360 by a fraction of a percent.
+    if abs(step * ni - 360.0) > 3.6:  # not a global grid: keep the stored spacing
+        return lat, lon
+    wanted_cols = np.sort(np.mod(start + np.arange(ni) * (360.0 / ni), 360.0))
+    fix_lat = np.abs(rows - wanted_rows).max() > tolerance
+    # Compare on the circle: a column at 359.999 and one at 0.0 are neighbours.
+    gap = np.abs(cols - wanted_cols)
+    fix_lon = np.minimum(gap, 360.0 - gap).max() > tolerance
+    if fix_lat:
+        lat = wanted_rows[row]
+    if fix_lon:
+        lon = wanted_cols[col]
+    return lat, lon
+
+
 def open_grib(path: str | Path) -> xr.DataTree:
     """Lazily open a GRIB file as a DataTree with one node per level type and grid.
 
@@ -141,8 +200,7 @@ def open_grib(path: str | Path) -> xr.DataTree:
                         )
                 grid = eccodes.codes_get(gid, "md5GridSection")
                 if grid not in grids:
-                    lat = eccodes.codes_get_array(gid, "latitudes")
-                    lon = eccodes.codes_get_array(gid, "longitudes")
+                    lat, lon = grid_coordinates(gid)
                     y, iy = np.unique(lat, return_inverse=True)
                     x, ix = np.unique(lon, return_inverse=True)
                     if y.size * x.size == lat.size == np.unique(iy * x.size + ix).size:
@@ -273,15 +331,17 @@ def open_grib(path: str | Path) -> xr.DataTree:
                 [
                     da.concatenate(
                         [
-                            da.from_delayed(
-                                dask.delayed(decode)(
-                                    *spans[slots[(t, l)]], shape, index
-                                ),
-                                (1, 1, *shape),
-                                np.float32,
+                            (
+                                da.from_delayed(
+                                    dask.delayed(decode)(
+                                        *spans[slots[(t, l)]], shape, index
+                                    ),
+                                    (1, 1, *shape),
+                                    np.float32,
+                                )
+                                if (t, l) in slots
+                                else empty
                             )
-                            if (t, l) in slots
-                            else empty
                             for l in levels
                         ],
                         axis=1,
@@ -371,8 +431,7 @@ def save_grib(
     def values_for(dataset, field, gid, label):
         key = (label.split("/")[0], eccodes.codes_get(gid, "md5GridSection"))
         if key not in positions:
-            lat = eccodes.codes_get_array(gid, "latitudes")
-            lon = eccodes.codes_get_array(gid, "longitudes")
+            lat, lon = grid_coordinates(gid)
             if "values" in field.dims:
                 if not (
                     np.array_equal(field["latitude"], lat)

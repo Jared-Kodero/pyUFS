@@ -173,7 +173,10 @@ class FV3State:
     make_gsl_orog: bool | None = None
     # 10-11. Perturbations
     sm_perturbations: dict | None = None
-    tgrad_perturbations: dict | None = None
+    pamip_experiment: str | None = None
+    # Set by apply_pamip_experiment; when not None, namsfc uses these paths
+    fntsfc: str | None = None
+    fnaisc: str | None = None
 
     # --- Runtime environment (fv3_utils.runtime_env_vars) ----------------
     n_cpus_per_node: int | None = None
@@ -322,8 +325,8 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
     # Hashed only when set, so checksums of existing cases remain valid.
     if data.get("forecast_hour"):
         _hash_keys.append("forecast_hour")
-    if data.get("tgrad_perturbations") is not None:
-        _hash_keys.append("tgrad_perturbations")
+    if data.get("pamip_experiment") is not None:
+        _hash_keys.append("pamip_experiment")
 
     def _normalize_for_hash(value):
         if isinstance(value, dict):

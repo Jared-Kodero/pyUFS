@@ -1,9 +1,9 @@
-# PAMIP experiment 1.6 (pdSST-futArcSIC). Pair with the other pamip_* case; they differ
-# only in tgrad_perturbations.experiment. Two monthly segments from the PAMIP
-# start date. Needs the PAMIP NetCDF files in <fix_src>/PAMIP.
+# PAMIP experiment 1.6 (pdSST-futArcSIC). Pair with pamip_native and pamip_ctrl; the three differ
+# only in pamip_experiment. Two monthly segments from 1 April 2024. Needs the PAMIP NetCDF files
+# in <fix_src>/PAMIP. ICs come from GFS, so the date must lie in the GFS archive.
 description: test PAMIP 1.6
 archive_data: false # Tests do not archive outputs
-init_datetime: "2000040100Z"
+init_datetime: "2024040100Z"
 run_length: 1
 run_length_units: months
 resubmit: 1
@@ -17,5 +17,4 @@ n_cpus: 144
 walltime: 12
 constraint_node: "48core"
 
-tgrad_perturbations:
-  experiment: "1.6"
+pamip_experiment: "1.6"
