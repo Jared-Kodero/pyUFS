@@ -55,13 +55,19 @@ def ll_regrid(
             if coord not in grid.dims:
                 raise ValueError(f"Grid must contain {coord!r} dimension.")
 
-    def get_coords(grid: xr.Dataset | xr.DataArray) -> xr.Dataset:
-        return xr.Dataset(
-            coords={
-                "lat": (y_cood, grid[y_cood].values),
-                "lon": (x_cood, grid[x_cood].values),
-            }
-        )
+    ll_in = xr.Dataset(
+        {
+            "lat": grid_in["lat"],
+            "lon": grid_in["lon"],
+        }
+    )
+
+    ll_out = xr.Dataset(
+        {
+            "lat": grid_out["geolat"],
+            "lon": grid_out["geolon"],
+        }
+    )
 
     if isinstance(grid_in, xr.DataArray):
         chunked = grid_in if grid_in.chunks is not None else None
@@ -83,21 +89,23 @@ def ll_regrid(
         }
 
     regridder = xe.Regridder(
-        get_coords(grid_in),
-        get_coords(grid_out),
+        ll_in,
+        ll_out,
         method=method,
         periodic=True,
         unmapped_to_nan=unmapped_to_nan,
-        input_dims=(y_cood, x_cood),
-        output_dims=(y_cood, x_cood),
     )
 
-    return regridder(
+    ds = regridder(
         grid_in,
         skipna=True,
         keep_attrs=True,
         output_chunks=output_chunks,
     )
+
+    ds = ds.rename({"lat": y_cood, "lon": x_cood})
+
+    return ds
 
 
 def to_fv3_grid(
@@ -105,35 +113,56 @@ def to_fv3_grid(
     grid_out: xr.Dataset | xr.DataArray,
     method: Literal["bilinear", "conservative"] = "bilinear",
     periodic: bool = False,
-    na_thres: float = 0.5,
-) -> xr.Dataset | xr.DataArray:
-    """Regrid a regular lat/lon field onto a tile of the surface files (``geolat``/``geolon``) with xESMF.
-
-    The result is formatted like the tile, with a ``Time`` axis. Missing source
-    points (NaN) are left out and the weights renormalised; a target point whose
-    NaN share of weight exceeds ``na_thres`` is NaN. ``periodic=True`` closes the
-    longitude circle of a global source grid; weights are recomputed on every call.
+) -> xr.Dataset:
     """
+    Remap ll grid to c-grid using xesmf
+    interpolation. Regridding weights are recomputed on every call.
+    """
+
+    ll_grid = xr.Dataset(
+        {
+            "lat": grid_in["lat"],
+            "lon": grid_in["lon"],
+        }
+    )
+
+    c_grid = xr.Dataset(
+        {
+            "lat": grid_out["geolat"],
+            "lon": grid_out["geolon"],
+        }
+    )
+
     regridder = xe.Regridder(
-        xr.Dataset({"lat": grid_in["lat"], "lon": grid_in["lon"]}),
-        xr.Dataset({"lat": grid_out["geolat"], "lon": grid_out["geolon"]}),
+        ll_grid,
+        c_grid,
         method=method,
         periodic=periodic,
     )
-    out = regridder(grid_in, skipna=True, na_thres=na_thres)
 
     # init dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1')
     # restart dims ('Time', 'yaxis_1', 'xaxis_1', 'zaxis_1', 'zaxis_2', 'zaxis_3')
+
+    out = regridder(grid_in, skipna=True)
+
     if "Time" not in out.coords:
         out = out.expand_dims("Time", axis=0)
-    for c in set(out.coords):
+
+    out.attrs = grid_out.attrs
+    out_coords = set(out.coords)
+    for c in out_coords:
         if c in grid_out.coords:
             out[c].attrs = grid_out[c].attrs
         else:
             out = out.drop_vars(c)
+
     out["Time"] = grid_out["Time"]
-    out = out.transpose(*[d for d in grid_out.dims if d in out.dims])
+
+    new_dims = [d for d in grid_out.dims if d in out.dims]
+    out = out.transpose(*new_dims)
+
     out.attrs = grid_out.attrs
+
     return out
 
 
