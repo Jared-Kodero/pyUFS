@@ -56,16 +56,16 @@ def ll_regrid(
                 raise ValueError(f"Grid must contain {coord!r} dimension.")
 
     ll_in = xr.Dataset(
-        {
-            "lat": grid_in["lat"],
-            "lon": grid_in["lon"],
+        coords={
+            "lat": (y_cood, grid_in[y_cood].values),
+            "lon": (x_cood, grid_in[x_cood].values),
         }
     )
 
     ll_out = xr.Dataset(
-        {
-            "lat": grid_out["geolat"],
-            "lon": grid_out["geolon"],
+        coords={
+            "lat": (y_cood, grid_out[y_cood].values),
+            "lon": (x_cood, grid_out[x_cood].values),
         }
     )
 
@@ -94,18 +94,16 @@ def ll_regrid(
         method=method,
         periodic=True,
         unmapped_to_nan=unmapped_to_nan,
+        input_dims=(y_cood, x_cood),
+        output_dims=(y_cood, x_cood),
     )
 
-    ds = regridder(
+    return regridder(
         grid_in,
         skipna=True,
         keep_attrs=True,
         output_chunks=output_chunks,
     )
-
-    ds = ds.rename({"lat": y_cood, "lon": x_cood})
-
-    return ds
 
 
 def to_fv3_grid(
