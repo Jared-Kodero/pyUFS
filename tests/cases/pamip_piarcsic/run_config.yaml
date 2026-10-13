@@ -1,0 +1,27 @@
+# PAMIP 1.5 (pdSST-piArcSIC) on the native baseline: the native SHiELD SST and sea-ice
+# climatologies plus 1.5 minus 1.1 (preindustrial Arctic sea ice, stronger Arctic to mid-latitude
+# temperature gradient). Pair with pamip_ctrl (control) and pamip_futarcsic (1.6).
+# They differ only in pamip_experiment. Needs the PAMIP NetCDF files in <fix_src>/PAMIP
+# (tools/download_pamip_amip.py). ICs come from GFS, so the date must lie in the GFS archive.
+description: test PAMIP 1.5 native baseline
+archive_data: false # Tests do not archive outputs
+init_datetime: "2024040100Z"
+run_length: 1
+run_length_units: months
+resubmit: 11 # 12 monthly segments, April 2024 to March 2025 (JJA are segments 3 to 5)
+merge_freq: -1
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+n_nodes: 3
+n_cpus: 144
+walltime: 12
+constraint_node: "48core"
+dt_atmos: 1200 # same time step in all PAMIP tests
+dt_ocean: 1200
+k_split: [3]
+n_split: [6]
+
+pamip_experiment: "1.5"
+pamip_baseline: native
