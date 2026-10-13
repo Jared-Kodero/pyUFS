@@ -1093,12 +1093,27 @@ headers, packing, month stamps and land flags of the native files. The paths are
 ice by the climatology at each cycle) and `do_ocean = false` (no mixed-layer ocean), `use_ext_sst = false` and `nstf_name = [0, 0, 1, 0, 5]` (NSST off, the model default). The surface cycle runs every `fhcyc` = 24 h, so the climatology is applied at the first step and then daily, interpolated linearly between mid-month values. The AMIP II processing that the protocol asks for (monthly means of the model equal to the means of the files) is not applied. At the cold start
 the same fields, interpolated to the start date with the mid-month weights of the surface cycle, are
 also regridded onto every tile with `to_fv3_grid` of `src/latlon_to_fv3.py` (shared with `sm_perturbations`, xESMF). The PAMIP grid is regridded onto
-the native GRIB grids with `ll_regrid` of the same module (bilinear `xarray` interpolation with NaN-renormalised
-weights; xESMF runs out of memory on the 0.083 degree SST grid of 9.3 million points) and written to `slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
-so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, the reset that `sfcsub.F` applies to snow, soil temperature and roughness at points changing between ice and open water does not happen, so these keep the GFS values at such points.
+the native GRIB grids with `ll_regrid` of the same module (bilinear xESMF with NaN-skipping weights and a periodic longitude; points with no valid
+source value take the nearest valid value; one regridder serves the twelve months of a file, and its
+weights for the 0.083 degree SST grid of 9.3 million points take about 3 minutes and 15 GB of memory) and written to
+`slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
+so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, `newice` of `sfcsub.F` does not fire at points changing between ice and open water, so its resets are applied there instead: snow (`sheleg`, `snwdph`) 0, roughness `zorl` 1 cm and soil (sea-ice layer) temperature `stc` 271.2 K.
 Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
 `preprocess_only` exits before they are written. The option is validated when the case
 starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.
+
+`pamip_baseline` (null or `pamip`, the default) applies the experiment to the PAMIP fields as they are.
+With `pamip_baseline: native` the PAMIP perturbation, experiment minus 1.1, is regridded from 1 degree and added to
+the native SHiELD climatologies (`RTGSST.1982.2012`, 0.083 degree, and `CFSR.SEAICE.1982.2012`, 0.5 degree):
+sea ice is clipped to 0 to 1 and the land flags kept; SST is perturbed where the native value lies in the
+271.2 to 313.0 K range of the surface cycle and kept between the native freezing value and 313.0 K. The files are
+`RTGSST.PAMIP_native_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_native_<exp>.monthly.clim.grb`, and the
+cold-start surface files take the written fields. The control of this baseline is experiment 1.1 (no
+perturbation: the native fields with the surface-cycle settings of the PAMIP runs); `pamip_experiment: null`
+keeps the stock settings and is not a control for it. `pamip_fields` (null or `both`, `sst`, `sic`) takes only
+the SST or only the sea ice from the experiment; the other field is the control (PAMIP 1.1, or the native field
+with the native baseline) and `_sst` or `_sic` is added to the file names. The protocol pairs hold the
+ice-edge SST adjustment, which `sst` or `sic` alone leaves out. Both keys are part of the restart checksum when set.
 
 Run 1.1 and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing), then 1.5 and 1.3; 1.4 is a Tier 2
 experiment. A run of days only checks that the files are read. The PAMIP protocol is a 14-month
@@ -1112,7 +1127,7 @@ model year. Volcanic aerosol and solar constant are not changed. The SHiELD name
 each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
 `templates/pamip_experiments.yaml`.
 
-Three test cases differ only in `pamip_experiment` and run two one-month segments from 1 April 2024: `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method), `tests/cases/pamip_ctrl` (1.1) and `tests/cases/pamip_futarcsic` (1.6). The last two need the PAMIP files in `fix_src/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
+Four test cases run twelve one-month segments from 1 April 2024 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_ctrl` (1.1), `tests/cases/pamip_piarcsic` (1.5) and `tests/cases/pamip_futarcsic` (1.6), which use `pamip_baseline: native` and differ only in `pamip_experiment`, and `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method). The first three need the PAMIP files in `fix_src/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
 
 ## 22. Monthly runs
 

@@ -350,5 +350,26 @@ sm_perturbations: null
 # excepted): namelist ictm = 20000 and the CO2 table of 2000 is staged. Volcanic aerosol and
 # the solar constant are not changed. The SHiELD settings of each experiment are
 # PAMIP_EXPERIMENTS in src/pamip_experiment.py; the protocol is in templates/pamip_experiments.yaml.
+#
+# pamip_baseline (null = pamip) chooses what the experiment is applied to:
+#   pamip    the PAMIP fields as they are (the protocol).
+#   native   the native SHiELD climatologies (RTGSST 0.083 degree, CFSR sea ice 0.5 degree,
+#            1982-2012) plus the PAMIP perturbation, experiment minus 1.1, regridded from
+#            1 degree. Sea ice is clipped to 0..1; SST is perturbed where the native value lies
+#            in 271.2..313.0 K and kept between the native freezing value and 313.0 K. The
+#            control of this baseline is pamip_experiment "1.1" (no perturbation: the native
+#            fields with the surface-cycle settings of the PAMIP runs); pamip_experiment null
+#            keeps the stock settings and is not a control for it. Files:
+#            RTGSST.PAMIP_native_<exp>.monthly.clim.grb, CFSR.SEAICE.PAMIP_native_<exp>...
+# pamip_fields (null = both) takes both fields, only the SST (sst) or only the sea ice
+# (sic) from the experiment; the other is the control (PAMIP 1.1, or the native field
+# with the native baseline) and "_sst" or "_sic" is added to the file names. The protocol
+# pairs hold the ice-edge SST adjustment, which sst or sic alone leaves out.
+#
+# Examples: native control       pamip_experiment: "1.1", pamip_baseline: native
+#           native + Arctic loss  pamip_experiment: "1.6", pamip_baseline: native
+#           ice perturbation only pamip_experiment: "1.6", pamip_baseline: native, pamip_fields: sic
 
 pamip_experiment: null
+pamip_baseline: null
+pamip_fields: null

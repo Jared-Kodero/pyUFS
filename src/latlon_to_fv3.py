@@ -2,7 +2,7 @@
 
 Shared by ``sm_perturbations`` (soil moisture climatologies) and
 ``pamip_experiment`` (SST and sea ice): ``to_fv3_grid`` regrids lat/lon fields onto
-the tiles and ``ll_regrid`` lat/lon fields onto other lat/lon grids. The tile grid is the ``geolat`` and
+the tiles and ``ll_regrid`` (xESMF) lat/lon fields onto other lat/lon grids. The tile grid is the ``geolat`` and
 ``geolon`` of a tile of the cold-start surface files in ``state.input``
 (global ``sfc_data.tileN.nc``, nests ``sfc_data.nestNN.tileN.nc``, regional
 ``sfc_data.nc``).
@@ -30,36 +30,74 @@ def sfc_filename(tile: int) -> Path:
 
 def ll_regrid(
     grid_in: xr.Dataset | xr.DataArray,
-    grid_out: xr.Dataset | xr.DataArray,
-    periodic: bool = False,
-    na_thres: float = 0.5,
+    grid_out: xr.Dataset | xr.DataArray | None = None,
+    x_cood: str = "lon",
+    y_cood: str = "lat",
+    method: Literal[
+        "bilinear",
+        "conservative",
+        "conservative_normed",
+        "patch",
+        "nearest_s2d",
+        "nearest_d2s",
+    ] = "bilinear",
+    unmapped_to_nan: bool = True,
 ) -> xr.Dataset | xr.DataArray:
-    """Bilinear regridding of a regular lat/lon field onto another regular lat/lon grid.
+    """Regrid source data using xESMF with NaN-aware interpolation."""
 
-    ``grid_out`` has 1-D ``lat`` and ``lon``. Missing source points (NaN) are left
-    out and the weights renormalised; a target point whose NaN share of weight
-    exceeds ``na_thres`` is NaN. ``periodic=True`` closes the longitude circle of a
-    global source grid. It uses ``xarray`` interpolation, not xESMF, which runs out
-    of memory on fine regular grids such as the 0.083 degree SST file (9.3 million
-    points); for tiles use ``to_fv3_grid``.
-    """
-    if periodic:
-        first, last = float(grid_in["lon"][0]), float(grid_in["lon"][-1])
-        grid_in = xr.concat(
-            [
-                grid_in.isel(lon=[-1]).assign_coords(lon=[last - 360.0]),
-                grid_in,
-                grid_in.isel(lon=[0]).assign_coords(lon=[first + 360.0]),
-            ],
-            dim="lon",
+    import xesmf as xe
+
+    if grid_out is None:
+        return grid_in
+
+    for grid in (grid_in, grid_out):
+        for coord in (y_cood, x_cood):
+            if coord not in grid.dims:
+                raise ValueError(f"Grid must contain {coord!r} dimension.")
+
+    def get_coords(grid: xr.Dataset | xr.DataArray) -> xr.Dataset:
+        return xr.Dataset(
+            coords={
+                "lat": (y_cood, grid[y_cood].values),
+                "lon": (x_cood, grid[x_cood].values),
+            }
         )
-    target = {"lat": grid_out["lat"], "lon": grid_out["lon"]}
-    weight = grid_in.notnull().astype(float).interp(**target)
-    value = grid_in.fillna(0.0).interp(**target)
-    out = value / weight.where(
-        weight < 1.0 - 1e-9, 1.0
-    )  # full weight: no rounding of the ratio
-    return out.where((weight >= 1.0 - na_thres) & (weight > 0.0))
+
+    if isinstance(grid_in, xr.DataArray):
+        chunked = grid_in if grid_in.chunks is not None else None
+    else:
+        chunked = next(
+            (
+                var
+                for var in grid_in.data_vars.values()
+                if var.chunks is not None and y_cood in var.dims and x_cood in var.dims
+            ),
+            None,
+        )
+
+    output_chunks = None
+    if chunked is not None:
+        output_chunks = {
+            coord: min(chunked.chunksizes[coord][0], grid_out.sizes[coord])
+            for coord in (y_cood, x_cood)
+        }
+
+    regridder = xe.Regridder(
+        get_coords(grid_in),
+        get_coords(grid_out),
+        method=method,
+        periodic=True,
+        unmapped_to_nan=unmapped_to_nan,
+        input_dims=(y_cood, x_cood),
+        output_dims=(y_cood, x_cood),
+    )
+
+    return regridder(
+        grid_in,
+        skipna=True,
+        keep_attrs=True,
+        output_chunks=output_chunks,
+    )
 
 
 def to_fv3_grid(

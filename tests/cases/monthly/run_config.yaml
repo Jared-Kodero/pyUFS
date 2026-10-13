@@ -13,7 +13,7 @@ n_nodes: 3
 n_cpus: 144
 walltime: 12
 dt_atmos: 1800
-dt_ocean: 1800
+dt_cpld: 1800
 k_split: [3]
 n_split: [6]
 
