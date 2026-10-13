@@ -18,3 +18,7 @@ n_nodes: 3
 n_cpus: 144
 walltime: 12
 constraint_node: "48core"
+dt_atmos: 1200
+dt_ocean: 1200
+k_split: [3]
+n_split: [6]
