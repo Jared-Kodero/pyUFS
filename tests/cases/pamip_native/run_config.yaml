@@ -4,10 +4,10 @@
 # ICs come from GFS, so the date must lie in the GFS archive.
 description: test PAMIP stock reference (no boundary replacement)
 archive_data: false # Tests do not archive outputs
-init_datetime: "2024040100Z"
+init_datetime: "2023010100Z"
 run_length: 1
 run_length_units: months
-resubmit: 11 # 12 monthly segments, April 2024 to March 2025 (JJA are segments 3 to 5)
+resubmit: 11 # 12
 merge_freq: -1
 c_res: C96
 gtype: uniform

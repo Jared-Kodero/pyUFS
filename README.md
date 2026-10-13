@@ -1102,17 +1102,21 @@ quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arct
 PAMIP monthly climatologies from `fix_src/PAMIP` (`python tools/download_pamip_amip.py --needed --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
 of the native SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
 `RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
-headers, packing, month stamps and land flags of the native files. The paths are stored in
+headers, packing, month stamps and land flags of the native files. Only ocean points of SHiELD's own land mask
+(`seaice_newland.grb`, 0.5 degree, regridded to the file grid and thresholded at 0.5 as in `sfcsub.F`) change; land
+points keep the native values, because the surface cycle weights the source fields by that mask and never reads land
+values at ocean points. The paths are stored in
 `state.fntsfc` and `state.fnaisc`, which `update_namsfc` writes to `namsfc`. With the option set,
 `update_namsfc` also sets `ftsfs = faiss = fsics = fsicl = 0` (the surface cycle replaces SST and
 ice by the climatology at each cycle) and `do_ocean = false` (no mixed-layer ocean), `use_ext_sst = false` and `nstf_name = [0, 0, 1, 0, 5]` (NSST off, the model default). The surface cycle runs every `fhcyc` = 24 h, so the climatology is applied at the first step and then daily, interpolated linearly between mid-month values. The AMIP II processing that the protocol asks for (monthly means of the model equal to the means of the files) is not applied. At the cold start
 the same fields, interpolated to the start date with the mid-month weights of the surface cycle, are
 also regridded onto every tile with `to_fv3_grid` of `src/latlon_to_fv3.py` (shared with `sm_perturbations`, xESMF). The PAMIP grid is regridded onto
 the native GRIB grids with `ll_regrid` of the same module (bilinear xESMF with NaN-skipping weights and a periodic longitude; points with no valid
-source value take the nearest valid value; one regridder serves the twelve months of a file, and its
-weights for the 0.083 degree SST grid of 9.3 million points take about 3 minutes and 15 GB of memory) and written to
+source value take the nearest valid value (ocean points only); one regridder serves the twelve months of a file, and its
+weights for the 0.083 degree SST grid of 9.3 million points take about 3 minutes and 15 GB of memory; the land mask needs a second regridder of the same size, built after the first is released) and written to
 `slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
 so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, `newice` of `sfcsub.F` does not fire at points changing between ice and open water, so its resets are applied there instead: snow (`sheleg`, `snwdph`) 0, roughness `zorl` 1 cm and soil (sea-ice layer) temperature `stc` 271.2 K.
+At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_native_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the stock SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/carto`, as `fv3_plot_grid.py`.
 Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
 `preprocess_only` exits before they are written. The option is validated when the case
 starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.

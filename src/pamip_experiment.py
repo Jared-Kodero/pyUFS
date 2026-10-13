@@ -11,7 +11,10 @@ files they use, the control (1.1) included.
 The PAMIP fields are regridded with ``latlon_to_fv3.ll_regrid`` onto the grids of
 the native GRIB files and written through the native messages
 (``grib_io.save_grib``), so headers, packing, month stamps and the land flags of
-the sea-ice file stay as they are. At the cold start the same fields,
+the sea-ice file stay as they are. Only ocean points of the SHiELD land mask
+(``seaice_newland.grb``) change; land points keep the native values, as
+``sfcsub.F`` weights the climatologies by that mask and never reads land values
+at ocean points. At the cold start the same fields,
 interpolated to the start date, are also written to the surface files of every
 tile. As with ``sm_perturbations``, the module is driven only by
 ``run_config.yaml``::
@@ -65,6 +68,23 @@ FIELDS = ("both", "sst", "sic")
 SST_MIN_K, SST_MAX_K = 271.2, 313.0
 AISLIM = 0.15
 LAND_FLAG = 1.0
+
+PLOT_DPI = 300  # twelve global panels per change figure
+PLOT_LON = 720  # longitude points drawn per panel; finer grids are block-averaged
+MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+]
 GRIB_TOLERANCE = 0.0051  # half the 0.01 quantum of the native files
 
 # Surface cycle (sfcsub.F): mid-month julian days of the monthly interpolation (dayhf),
@@ -239,23 +259,58 @@ def read_pamip(root: Path, spec: dict, kind: str) -> xr.DataArray:
     return da.clip(0.0, 1.0) if kind == "sic" else da
 
 
+def combine_month(
+    old: np.ndarray,
+    values: np.ndarray,
+    ocean: np.ndarray,
+    kind: str,
+    perturbation: bool,
+) -> np.ndarray:
+    """One month of the file to write, ``old`` being the native field and ``values`` the regridded PAMIP field.
+
+    Only ocean points of the SHiELD land mask change; land points keep the native
+    values, which the surface cycle never reads at ocean points (sfcsub.F weights
+    the source by the land mask). ``values`` may hold NaN where no ocean source
+    point is near: these take the nearest valid value.
+    """
+    iy, ix = distance_transform_edt(
+        np.isnan(values), return_distances=False, return_indices=True
+    )
+    values = values[iy, ix]
+    if kind == "sst":
+        if perturbation:
+            inside = ocean & (old >= SST_MIN_K) & (old <= SST_MAX_K)
+            # native freezing value of the month
+            freezing = np.nanmin(np.where(inside, old, np.nan))
+            new = np.clip(old + values, freezing, SST_MAX_K)
+        else:
+            inside, new = ocean, values
+        return np.where(np.isnan(old) | ~inside, old, new)
+    new = np.clip(old + values if perturbation else values, 0.0, 1.0)
+    return np.where(np.isnan(old) | ~ocean | (old > LAND_FLAG), old, new)
+
+
 def write_pamip_grib(
     template: Path,
     destination: Path,
     field: xr.DataArray,
     kind: str,
+    land: xr.DataArray,
     perturbation: bool = False,
 ) -> xr.DataArray:
     """Regrid a climatology onto the native GRIB grid and write it through the messages of the native file.
 
-    SST replaces every value of the template (missing points stay missing); for
-    sea ice the points above 1 (the 1.57 land flags) keep their value. With
-    ``perturbation`` the field is a perturbation added to the native values:
-    sea ice is clipped to 0..1, and SST is changed only where the native value
-    lies in the SST_MIN_K..SST_MAX_K range of the surface cycle (native land values
-    outside it stay) and is kept between the native freezing value of the month and
-    SST_MAX_K. Returns the values written, ``(month, lat, lon)`` in the month order
-    of the template.
+    ``land`` is the 0.5 degree land mask (1 = land) of SHiELD, regridded here to
+    the template grid and thresholded at 0.5 as in sfcsub.F. Only ocean points
+    change; land points keep the native values (including the 1.57 sea-ice land
+    flags), which the surface cycle ignores at ocean points. SST replaces the
+    native ocean value; sea ice is clipped to 0..1 and the points above 1 keep
+    their value. With ``perturbation`` the field is a perturbation added to the
+    native values: sea ice is clipped to 0..1, and SST is changed only where the
+    native value lies in the SST_MIN_K..SST_MAX_K range of the surface cycle and
+    is kept between the native freezing value of the month and SST_MAX_K.
+    Returns the values written and the stock values of the template, both
+    ``(month, lat, lon)`` in the month order of the template.
     """
     tree = open_grib(template)
     node = tree.leaves[0]
@@ -273,39 +328,173 @@ def write_pamip_grib(
         }
     )
     data = native.values.copy()
+    stock = native.values  # the stock SHiELD values, kept for the change plots
     # One regridder for the twelve months: xESMF builds the weights of the 0.083 degree
     # SST grid (9.3 million points) in about 3 minutes and 15 GB.
     field = field.transpose("month", "lat", "lon")  # contiguous, as xESMF expects
     regridded = ll_regrid(field.copy(data=np.ascontiguousarray(field.values)), grid)
+    ocean = (
+        ll_regrid(land.copy(data=np.ascontiguousarray(land.values)), grid).values < 0.5
+    )
     for i, month in enumerate(months):
-        values = regridded.sel(month=int(month)).values
-        # coast points with no valid neighbour take the nearest valid value
-        iy, ix = distance_transform_edt(
-            np.isnan(values), return_distances=False, return_indices=True
+        data[i, 0] = combine_month(
+            data[i, 0],
+            regridded.sel(month=int(month)).values,
+            ocean,
+            kind,
+            perturbation,
         )
-        values = values[iy, ix]
-        old = data[i, 0]
-        if perturbation and kind == "sst":
-            inside = (old >= SST_MIN_K) & (old <= SST_MAX_K)
-            freezing = np.nanmin(np.where(inside, old, np.nan))
-            values = np.where(inside, np.clip(old + values, freezing, SST_MAX_K), old)
-        elif perturbation:
-            values = old + values
-        if kind == "sst":
-            data[i, 0] = np.where(np.isnan(old), np.nan, values)
-        else:
-            data[i, 0] = np.where(
-                np.isnan(old) | (old > LAND_FLAG), old, np.clip(values, 0.0, 1.0)
+    if kind == "sst" and not perturbation:
+        written = data[:, 0][:, ocean]
+        if (
+            np.nanmin(written) < SST_MIN_K - GRIB_TOLERANCE
+            or np.nanmax(written) > SST_MAX_K + GRIB_TOLERANCE
+        ):
+            raise ValueError(
+                f"SST {np.nanmin(written):.2f}..{np.nanmax(written):.2f} K leaves the {SST_MIN_K}..{SST_MAX_K} K range of the surface cycle"
             )
     node[name] = native.copy(data=data)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.unlink(missing_ok=True)  # never write through a link into fix_src
     save_grib(tree, destination, template)
-    return xr.DataArray(
-        data[:, 0],
-        dims=("month", "lat", "lon"),
-        coords={"month": months, "lat": grid["lat"].values, "lon": grid["lon"].values},
+    coords = {"month": months, "lat": grid["lat"].values, "lon": grid["lon"].values}
+    return (
+        xr.DataArray(data[:, 0], dims=("month", "lat", "lon"), coords=coords),
+        xr.DataArray(stock[:, 0], dims=("month", "lat", "lon"), coords=coords),
     )
+
+
+def nice_limit(x: float) -> float:
+    """Smallest of 1, 2, 2.5, 5 times a power of ten that is at least x (0 gives 1e-3)."""
+    if not np.isfinite(x) or x <= 0:
+        return 1e-3
+    mag = 10.0 ** np.floor(np.log10(x))
+    return float(next(m * mag for m in (1.0, 2.0, 2.5, 5.0, 10.0) if m * mag >= x))
+
+
+def plot_pamip_change(
+    stock: xr.DataArray,
+    written: xr.DataArray,
+    kind: str,
+    title: str,
+    out_path: Path,
+) -> float | None:
+    """Draw the change of a PAMIP climatology file against the stock SHiELD file.
+
+    ``stock`` and ``written`` are ``(month, lat, lon)`` DataArrays on the same
+    grid (SST in K, sea ice as a fraction). The figure is an xarray facet grid,
+    one Robinson panel per month of ``written - stock``, with a colour scale
+    symmetric about zero shared by the twelve panels. Points that did not
+    change (land, and ocean where the experiment matches the stock field) are
+    white. Grids finer than ``PLOT_LON`` points in longitude are block-averaged
+    for drawing only. Returns the largest absolute change of the full-resolution
+    difference. A failure is logged and does not stop the run (returns None).
+    """
+    try:
+        import cartopy
+        import cartopy.crs as ccrs
+        import cartopy.feature as cfeature
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        carto = Path(state.fix_src) / "carto"  # Natural Earth cache of fv3_plot_grid.py
+        if carto.is_dir():
+            cartopy.config["pre_existing_data_dir"] = carto
+            cartopy.config["data_dir"] = carto
+
+        diff = (written - stock).sortby("month").sortby("lat").sortby("lon")
+        peak = float(np.nanmax(np.abs(diff.values)))
+        factor = max(diff.sizes["lon"] // PLOT_LON, 1)
+        if (
+            factor > 1
+            and diff.sizes["lon"] % factor == 0
+            and diff.sizes["lat"] % factor == 0
+        ):
+            diff = diff.coarsen(lat=factor, lon=factor).mean()
+        diff = diff.assign_coords(
+            lon=((diff["lon"] + 180.0) % 360.0) - 180.0,
+            month=[MONTHS[int(m) - 1] for m in diff["month"].values],
+        ).sortby("lon")
+        limit = nice_limit(peak)
+        cmap, label = (
+            ("RdBu_r", "SST change (K)")
+            if kind == "sst"
+            else ("RdBu", "Sea-ice concentration change (fraction)")
+        )
+
+        grid = diff.plot(
+            x="lon",
+            y="lat",
+            col="month",
+            col_wrap=4,
+            transform=ccrs.PlateCarree(),
+            subplot_kws={"projection": ccrs.Robinson(central_longitude=0.0)},
+            cmap=cmap,
+            vmin=-limit,
+            vmax=limit,
+            size=2.4,
+            aspect=1.55,
+            rasterized=True,
+            add_colorbar=False,
+        )
+        grid.set_titles("{value}", size=10)
+        grid.fig.set_layout_engine("constrained")
+        grid.fig.colorbar(
+            grid.axs.flat[0].collections[0],
+            ax=list(grid.axs.flat),
+            orientation="horizontal",
+            label=label,
+            shrink=0.5,
+            aspect=40,
+        )
+        for ax in grid.axs.flat:
+            ax.set_global()
+            ax.add_feature(cfeature.COASTLINE, edgecolor="#66655D", linewidth=0.4)
+        grid.fig.suptitle(
+            f"{title}: file minus stock SHiELD file. Largest change {peak:.3g}",
+            fontsize=12,
+        )
+        out_path = Path(out_path)
+        out_path.unlink(missing_ok=True)
+        grid.fig.savefig(out_path, dpi=PLOT_DPI, bbox_inches="tight")
+        plt.close(grid.fig)
+        log.info(f"Wrote {out_path}")
+        return peak
+    except Exception:
+        log.exception(f"PAMIP change plot {Path(out_path).name} failed; continuing")
+        return None
+
+
+def plot_changes(
+    tag, experiment, baseline, fields, sst_stock, sst_out, sic_stock, sic_out
+):
+    """Draw the SST and sea-ice change of the written files against the stock files.
+
+    The figures ``pamip_<tag>_sst_change.png`` and ``pamip_<tag>_sic_change.png``
+    go to ``state.run_dir``, where fv3_plot_grid.py saves its figures. Ensemble
+    members share that directory: the first takes a lock and draws, the others
+    find the figure and skip it (delete a figure to draw it again).
+    """
+    title = f"PAMIP {experiment}, baseline {baseline}, fields {fields}"
+    for kind, stock, written in (
+        ("sst", sst_stock, sst_out),
+        ("sic", sic_stock, sic_out),
+    ):
+        out = Path(state.run_dir) / f"pamip_{tag}_{kind}_change.png"
+        lock = out.with_suffix(".lock")
+        try:
+            if out.exists():
+                continue
+            lock.touch(exist_ok=False)
+        except FileExistsError:
+            continue
+        try:
+            peak = plot_pamip_change(stock, written, kind, title, out)
+            log.info(f"PAMIP {kind} change against the stock file: largest {peak}")
+        finally:
+            lock.unlink(missing_ok=True)
 
 
 def apply_pamip_experiment() -> bool:
@@ -377,6 +566,15 @@ def apply_pamip_experiment() -> bool:
         dim="lat",
     )
 
+    land = xr.concat(  # pole rows too, for the template points beyond the last row
+        [
+            land.isel(lat=[0]).assign_coords(lat=[-90.0]),
+            land,
+            land.isel(lat=[-1]).assign_coords(lat=[90.0]),
+        ],
+        dim="lat",
+    )
+
     tag = (
         f"{family}_{experiment}"
         if baseline == "pamip"
@@ -389,21 +587,12 @@ def apply_pamip_experiment() -> bool:
         for key, file in (("sst", SST_FILE), ("sic", ICE_FILE))
     }
     perturbation = baseline == "native"
-    sst_out = write_pamip_grib(
-        am_dir / SST_FILE, out_dir / names["sst"], src["sst"], "sst", perturbation
+    sst_out, sst_stock = write_pamip_grib(
+        am_dir / SST_FILE, out_dir / names["sst"], src["sst"], "sst", land, perturbation
     )
-    sic_out = write_pamip_grib(
-        am_dir / ICE_FILE, out_dir / names["sic"], src["sic"], "sic", perturbation
+    sic_out, sic_stock = write_pamip_grib(
+        am_dir / ICE_FILE, out_dir / names["sic"], src["sic"], "sic", land, perturbation
     )
-    # With the native baseline the native land values outside the range stay as
-    # they are and the perturbed points are kept inside it by write_pamip_grib.
-    if not perturbation and (
-        np.nanmin(sst_out.values) < SST_MIN_K - GRIB_TOLERANCE
-        or np.nanmax(sst_out.values) > SST_MAX_K + GRIB_TOLERANCE
-    ):
-        raise ValueError(
-            f"SST {np.nanmin(sst_out.values):.2f}..{np.nanmax(sst_out.values):.2f} K leaves the {SST_MIN_K}..{SST_MAX_K} K range of the surface cycle"
-        )
     sic_ocean = sic_out.values[sic_out.values <= LAND_FLAG]
     if (
         np.isnan(sic_ocean).any()
@@ -412,6 +601,11 @@ def apply_pamip_experiment() -> bool:
     ):
         raise ValueError(
             "Sea-ice concentration outside 0..1 or missing in the written file"
+        )
+
+    if state.restart_no == 0:
+        plot_changes(
+            tag, experiment, baseline, fields, sst_stock, sst_out, sic_stock, sic_out
         )
 
     # update_namsfc writes these paths to namsfc FNTSFC and FNAISC.

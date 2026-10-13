@@ -317,7 +317,8 @@ sm_perturbations: null
 # with tools/download_pamip_amip.py --needed --root <fix_src>) are regridded onto the grids of
 # fix_src/am/RTGSST.* and CFSR.SEAICE.* and written to FIXED/PAMIP/ as
 # RTGSST.PAMIP_<exp>.monthly.clim.grb and CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb,
-# keeping the headers, packing, month stamps and land flags of the native files.
+# keeping the headers, packing, month stamps and land flags of the native files; only ocean points
+# of the SHiELD land mask change and land points keep the native values (sfcsub.F never reads them).
 # Their paths are stored in state.fntsfc and state.fnaisc, which update_namsfc
 # writes to namsfc when set. fix_src is only read. The option is validated when the
 # case starts, before grid and IC generation; restart segments keep the FIXED/PAMIP
@@ -328,6 +329,8 @@ sm_perturbations: null
 # applied. The same fields, interpolated to the start date, are also
 # regridded onto the tiles (to_fv3_grid in latlon_to_fv3.py, as sm_perturbations) and written to
 # slmsk, tsea, fice, hice and tisfc of sfc_data over non-land points at the cold start.
+# At cold start, pamip_<tag>_sst_change.png and pamip_<tag>_sic_change.png (written minus stock
+# SHiELD file, twelve Robinson panels) are saved to run_dir next to grid_faces.png.
 # Leave it null to keep the native climatologies.
 #
 # pamip_experiment: "1.6"   # null, or the experiment number as quoted text
