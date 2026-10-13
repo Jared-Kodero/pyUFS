@@ -63,7 +63,7 @@ def _load_restart_state() -> None:
             "The grid or start-time settings of run_config.yaml changed after the "
             + "cold start (c_res, gtype, levels, target_lon/lat, stretch_factor, "
             + "refine_ratio, nest boxes, init_datetime, forecast_hour or "
-            + "pamip_experiment). "
+            + "pamip_experiment, pamip_baseline or pamip_fields). "
             + "Restore them or start a new case."
         )
 

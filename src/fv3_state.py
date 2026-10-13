@@ -174,6 +174,8 @@ class FV3State:
     # 10-11. Perturbations
     sm_perturbations: dict | None = None
     pamip_experiment: str | None = None
+    pamip_baseline: str | None = None  # pamip (default) or native
+    pamip_fields: str | None = None  # both (default), sst or sic
     # Set by apply_pamip_experiment; when not None, namsfc uses these paths
     fntsfc: str | None = None
     fnaisc: str | None = None
@@ -325,8 +327,9 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
     # Hashed only when set, so checksums of existing cases remain valid.
     if data.get("forecast_hour"):
         _hash_keys.append("forecast_hour")
-    if data.get("pamip_experiment") is not None:
-        _hash_keys.append("pamip_experiment")
+    for key in ("pamip_experiment", "pamip_baseline", "pamip_fields"):
+        if data.get(key) is not None:
+            _hash_keys.append(key)
 
     def _normalize_for_hash(value):
         if isinstance(value, dict):
