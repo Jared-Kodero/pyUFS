@@ -17,6 +17,17 @@ tile. As with ``sm_perturbations``, the module is driven only by
 ``run_config.yaml``::
 
     pamip_experiment: "1.6"
+    pamip_baseline: pamip   # pamip (default) or native
+    pamip_fields: both      # both (default), sst or sic
+
+With ``pamip_baseline: native`` the PAMIP files are not used as they are: the
+perturbation of the experiment (experiment minus the control 1.1) is added to the
+native SHiELD climatologies, so the control of that baseline is experiment 1.1
+(no perturbation, the native fields with the surface-cycle settings of the
+PAMIP runs). ``pamip_fields`` takes only the SST or only the sea ice from the
+experiment; the other field is the control (PAMIP 1.1, or the native field with
+the native baseline). The protocol pairs hold the ice-edge SST adjustment, which
+``sst`` or ``sic`` alone leaves out.
 
 The experiment table is ``templates/pamip_experiments.yaml``; the NetCDF files
 are read from ``<fix_src>/PAMIP/<source_id>/<variable_id>/``
@@ -45,6 +56,9 @@ LAND_FILE = "seaice_newland.grb"  # 0.5 degree land mask, 1 = land; only read
 REGISTRY_FILE = (
     Path(__file__).resolve().parent.parent / "templates" / "pamip_experiments.yaml"
 )
+CONTROL = "1.1"  # the perturbation of the native baseline is experiment minus CONTROL
+BASELINES = ("pamip", "native")
+FIELDS = ("both", "sst", "sic")
 
 # sfcsub.F: SST outside 271.2..313.0 K over open ocean is replaced by the surface
 # cycle, aislim = 0.15 is the sea-ice threshold, sea-ice values above 1 are land.
@@ -75,6 +89,9 @@ DAYHF = np.array(
 TGICE = 271.2
 SIHNEW = 0.2
 T_MELT = 273.16
+# newice of sfcsub.F at points that change between ice and open water: snow (snoomx, snoimx)
+# 0, roughness (zoromx, zorimx) 1 cm, soil (sea-ice layer) temperature TGICE
+ZORL_NEWICE = 1.0
 
 # PAMIP experiments of Smith et al. (2019, GMD 12, 1139) and the protocol page
 # https://www.cesm.ucar.edu/projects/cmip6/pamip/protocol. "name" is the short name and "namelist" the
@@ -126,10 +143,22 @@ def validate_pamip_experiment(experiment: object) -> str | None:
     must be quoted text such as ``"1.6"``, because YAML reads ``1.10`` as the
     float 1.1. Raises TypeError for other types and ValueError for an experiment
     that is not a PAMIP experiment or has no SST and sea-ice files in
-    ``templates/pamip_experiments.yaml``.
+    ``templates/pamip_experiments.yaml``, and for ``pamip_baseline`` or
+    ``pamip_fields`` outside their values or set without an experiment.
     """
+    baseline, fields = state.pamip_baseline, state.pamip_fields
     if experiment is None or experiment == "":
+        if baseline is not None or fields is not None:
+            raise ValueError(
+                "`pamip_baseline` and `pamip_fields` need `pamip_experiment`"
+            )
         return None
+    if baseline is not None and baseline not in BASELINES:
+        raise ValueError(
+            f"`pamip_baseline` must be one of {BASELINES}. Got {baseline!r}"
+        )
+    if fields is not None and fields not in FIELDS:
+        raise ValueError(f"`pamip_fields` must be one of {FIELDS}. Got {fields!r}")
     if not isinstance(experiment, str):
         raise TypeError(
             f'`pamip_experiment` must be quoted text such as "1.6". Got {experiment!r}'
@@ -211,13 +240,22 @@ def read_pamip(root: Path, spec: dict, kind: str) -> xr.DataArray:
 
 
 def write_pamip_grib(
-    template: Path, destination: Path, field: xr.DataArray, kind: str
-) -> np.ndarray:
+    template: Path,
+    destination: Path,
+    field: xr.DataArray,
+    kind: str,
+    perturbation: bool = False,
+) -> xr.DataArray:
     """Regrid a climatology onto the native GRIB grid and write it through the messages of the native file.
 
     SST replaces every value of the template (missing points stay missing); for
-    sea ice the points above 1 (the 1.57 land flags) keep their value. Returns
-    the values written, ``(12, nlat, nlon)`` in the month order of the template.
+    sea ice the points above 1 (the 1.57 land flags) keep their value. With
+    ``perturbation`` the field is a perturbation added to the native values:
+    sea ice is clipped to 0..1, and SST is changed only where the native value
+    lies in the SST_MIN_K..SST_MAX_K range of the surface cycle (native land values
+    outside it stay) and is kept between the native freezing value of the month and
+    SST_MAX_K. Returns the values written, ``(month, lat, lon)`` in the month order
+    of the template.
     """
     tree = open_grib(template)
     node = tree.leaves[0]
@@ -235,17 +273,24 @@ def write_pamip_grib(
         }
     )
     data = native.values.copy()
+    # One regridder for the twelve months: xESMF builds the weights of the 0.083 degree
+    # SST grid (9.3 million points) in about 3 minutes and 15 GB.
+    field = field.transpose("month", "lat", "lon")  # contiguous, as xESMF expects
+    regridded = ll_regrid(field.copy(data=np.ascontiguousarray(field.values)), grid)
     for i, month in enumerate(months):
-        # one month at a time: the SST file has 9.3 million points
-        values = ll_regrid(
-            field.sel(month=int(month)), grid, periodic=True, na_thres=1.0
-        ).values
+        values = regridded.sel(month=int(month)).values
         # coast points with no valid neighbour take the nearest valid value
         iy, ix = distance_transform_edt(
             np.isnan(values), return_distances=False, return_indices=True
         )
         values = values[iy, ix]
         old = data[i, 0]
+        if perturbation and kind == "sst":
+            inside = (old >= SST_MIN_K) & (old <= SST_MAX_K)
+            freezing = np.nanmin(np.where(inside, old, np.nan))
+            values = np.where(inside, np.clip(old + values, freezing, SST_MAX_K), old)
+        elif perturbation:
+            values = old + values
         if kind == "sst":
             data[i, 0] = np.where(np.isnan(old), np.nan, values)
         else:
@@ -256,7 +301,11 @@ def write_pamip_grib(
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.unlink(missing_ok=True)  # never write through a link into fix_src
     save_grib(tree, destination, template)
-    return data[:, 0]
+    return xr.DataArray(
+        data[:, 0],
+        dims=("month", "lat", "lon"),
+        coords={"month": months, "lat": grid["lat"].values, "lon": grid["lon"].values},
+    )
 
 
 def apply_pamip_experiment() -> bool:
@@ -264,7 +313,9 @@ def apply_pamip_experiment() -> bool:
 
     The files go to ``FIXED/<family>`` (``FIXED/PAMIP``) as
     ``RTGSST.<family>_<exp>.monthly.clim.grb`` and
-    ``CFSR.SEAICE.<family>_<exp>.monthly.clim.grb``; their paths are stored in
+    ``CFSR.SEAICE.<family>_<exp>.monthly.clim.grb`` (``<family>_native_<exp>``
+    for the native baseline, with ``_sst`` or ``_sic`` appended when
+    ``pamip_fields`` selects one field); their paths are stored in
     ``state.fntsfc`` and ``state.fnaisc``, which ``update_namsfc`` writes to namsfc.
     ``fix_src`` is only read. At the cold start the SST and sea ice of the surface
     files in ``state.input`` are also set to the fields of the start date.
@@ -277,19 +328,31 @@ def apply_pamip_experiment() -> bool:
     if experiment is None:
         return False
 
-    entry = yaml.safe_load(REGISTRY_FILE.read_text())["experiments"][experiment]
+    baseline = state.pamip_baseline or "pamip"
+    fields = state.pamip_fields or "both"
+    experiments = yaml.safe_load(REGISTRY_FILE.read_text())["experiments"]
+    entry, control = experiments[experiment], experiments[CONTROL]
     family = entry[
         "family"
     ]  # PAMIP: directory below FIXED and fix_src, and tag of the file names
     out_dir = Path(state.fix) / family
     am_dir, pamip_dir = Path(state.fix_src) / "am", Path(state.fix_src) / family
+    # a field that pamip_fields leaves out comes from the control
+    specs = {
+        kind: (entry if fields in ("both", kind) else control)[kind]
+        for kind in ("sst", "sic")
+    }
     src = xr.merge(
-        [
-            read_pamip(pamip_dir, entry["sst"], "sst"),
-            read_pamip(pamip_dir, entry["sic"], "sic"),
-        ],
+        [read_pamip(pamip_dir, specs[kind], kind) for kind in ("sst", "sic")],
         join="exact",
     )
+    if baseline == "native":
+        # the PAMIP perturbation (experiment minus control), added to the native files
+        src = src - xr.merge(
+            [read_pamip(pamip_dir, control[kind], kind) for kind in ("sst", "sic")],
+            join="exact",
+        )
+    log.info(f"PAMIP experiment {experiment}, baseline {baseline}, fields {fields}")
 
     # The PAMIP files hold filled values over land: keep the ocean of the 0.5 degree land mask
     # (bilinear, threshold 0.5 as in sfcsub.F) and add one row at each pole for tile points beyond the last row.
@@ -299,9 +362,12 @@ def apply_pamip_experiment() -> bool:
         {d: 0 for d in land.dims if d not in ("latitude", "longitude")}
     ).rename(latitude="lat", longitude="lon")
     land = (
-        land.assign_coords(lon=np.mod(land["lon"], 360.0)).sortby("lat").sortby("lon")
+        land.assign_coords(lon=np.mod(land["lon"], 360.0))
+        .sortby("lat")
+        .sortby("lon")
+        .load()  # in memory, so that src and the regridding below are not lazy (dask)
     )
-    src = src.where(ll_regrid(land, src, periodic=True) < 0.5)
+    src = src.where(ll_regrid(land, src) < 0.5)
     src = xr.concat(
         [
             src.isel(lat=[0]).assign_coords(lat=[-90.0]),
@@ -311,24 +377,34 @@ def apply_pamip_experiment() -> bool:
         dim="lat",
     )
 
+    tag = (
+        f"{family}_{experiment}"
+        if baseline == "pamip"
+        else f"{family}_native_{experiment}"
+    )
+    if fields != "both":
+        tag = f"{tag}_{fields}"
     names = {
-        key: file.replace("1982.2012", f"{family}_{experiment}")
+        key: file.replace("1982.2012", tag)
         for key, file in (("sst", SST_FILE), ("sic", ICE_FILE))
     }
+    perturbation = baseline == "native"
     sst_out = write_pamip_grib(
-        am_dir / SST_FILE, out_dir / names["sst"], src["sst"], "sst"
+        am_dir / SST_FILE, out_dir / names["sst"], src["sst"], "sst", perturbation
     )
     sic_out = write_pamip_grib(
-        am_dir / ICE_FILE, out_dir / names["sic"], src["sic"], "sic"
+        am_dir / ICE_FILE, out_dir / names["sic"], src["sic"], "sic", perturbation
     )
-    if (
-        np.nanmin(sst_out) < SST_MIN_K - GRIB_TOLERANCE
-        or np.nanmax(sst_out) > SST_MAX_K + GRIB_TOLERANCE
+    # With the native baseline the native land values outside the range stay as
+    # they are and the perturbed points are kept inside it by write_pamip_grib.
+    if not perturbation and (
+        np.nanmin(sst_out.values) < SST_MIN_K - GRIB_TOLERANCE
+        or np.nanmax(sst_out.values) > SST_MAX_K + GRIB_TOLERANCE
     ):
         raise ValueError(
-            f"SST {np.nanmin(sst_out):.2f}..{np.nanmax(sst_out):.2f} K leaves the {SST_MIN_K}..{SST_MAX_K} K range of the surface cycle"
+            f"SST {np.nanmin(sst_out.values):.2f}..{np.nanmax(sst_out.values):.2f} K leaves the {SST_MIN_K}..{SST_MAX_K} K range of the surface cycle"
         )
-    sic_ocean = sic_out[sic_out <= LAND_FLAG]
+    sic_ocean = sic_out.values[sic_out.values <= LAND_FLAG]
     if (
         np.isnan(sic_ocean).any()
         or sic_ocean.min() < -GRIB_TOLERANCE
@@ -353,16 +429,26 @@ def apply_pamip_experiment() -> bool:
     # below it open water (slmsk = 0, fice = hice = 0); open water has tsea = tisfc = SST; ice that
     # stays ice keeps its thickness and ice-surface temperature (at most the melting point), new ice gets
     # SIHNEW and TGICE; over ice tsea = fice * tisfc + (1 - fice) * TGICE, which sfcsub.F inverts to
-    # get tisfc. Land points are not touched. As slmsk already agrees, newice of sfcsub.F no longer
-    # fires at points that change between ice and open water, so their snow, soil temperature and
-    # roughness keep the GFS values.
+    # get tisfc. Land points are not touched. As slmsk already agrees, newice of sfcsub.F does not
+    # fire at points that change between ice and open water, so its resets are applied here: snow
+    # (sheleg, snwdph) 0, roughness ZORL_NEWICE and soil (sea-ice layer) temperature stc TGICE.
     date = pd.Timestamp(state.init_datetime)
     rjday = date.dayofyear + date.hour / 24.0
     if rjday < DAYHF[0]:
         rjday += 365.0
     m = int(np.searchsorted(DAYHF, rjday, side="right") - 1)
     w2 = (rjday - DAYHF[m]) / (DAYHF[m + 1] - DAYHF[m])
-    now = src.isel(month=m) * (1.0 - w2) + src.isel(month=(m + 1) % 12) * w2
+    if perturbation:
+        # the written fields on the 0.5 degree sea-ice grid (SST sampled at its points, land missing);
+        # sorted, as the GRIB longitudes start at -0.25 (359.75) and nearest selection needs order
+        sic = sic_out.where(sic_out <= LAND_FLAG).sortby("lat").sortby("lon")
+        sst = sst_out.sortby("lat").sortby("lon")
+        sst = sst.sel(lat=sic["lat"], lon=sic["lon"], method="nearest")
+        sst = sst.assign_coords(lat=sic["lat"], lon=sic["lon"]).where(sic.notnull())
+        written = xr.Dataset({"sst": sst, "sic": sic}).sortby("month")
+    else:
+        written = src
+    now = written.isel(month=m) * (1.0 - w2) + written.isel(month=(m + 1) % 12) * w2
     for v in ("sst", "sic"):  # land takes the nearest ocean value
         iy, ix = distance_transform_edt(
             now[v].isnull().values, return_distances=False, return_indices=True
@@ -388,8 +474,18 @@ def apply_pamip_experiment() -> bool:
         with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as handle:
             ds = handle.load()
         slmsk = ds["slmsk"].values[0].copy()
-        tsea, fice, hice, tisfc = (
-            ds[v].values[0].copy() for v in ("tsea", "fice", "hice", "tisfc")
+        tsea, fice, hice, tisfc, sheleg, snwdph, zorl, stc = (
+            ds[v].values[0].copy()
+            for v in (
+                "tsea",
+                "fice",
+                "hice",
+                "tisfc",
+                "sheleg",
+                "snwdph",
+                "zorl",
+                "stc",
+            )
         )
         valid = (slmsk != 1) & np.isfinite(sst_t) & np.isfinite(sic_t)
         sst_c = np.clip(sst_t, SST_MIN_K, SST_MAX_K)
@@ -398,6 +494,7 @@ def apply_pamip_experiment() -> bool:
         water = valid & ~ice
         stay = ice & (slmsk == 2)
         new = ice & (slmsk != 2)
+        changed = new | (water & (slmsk == 2))  # new ice and melted ice
 
         tsea[water] = tisfc[water] = sst_c[water]
         fice[water] = hice[water] = slmsk[water] = 0.0
@@ -408,6 +505,9 @@ def apply_pamip_experiment() -> bool:
         tisfc[new] = TGICE
         tisfc[stay] = np.minimum(tisfc[stay], T_MELT)
         tsea[ice] = fice[ice] * tisfc[ice] + (1.0 - fice[ice]) * TGICE
+        sheleg[changed] = snwdph[changed] = 0.0
+        zorl[changed] = ZORL_NEWICE
+        stc[:, changed] = TGICE
 
         for v, a in (
             ("slmsk", slmsk),
@@ -415,6 +515,10 @@ def apply_pamip_experiment() -> bool:
             ("fice", fice),
             ("hice", hice),
             ("tisfc", tisfc),
+            ("sheleg", sheleg),
+            ("snwdph", snwdph),
+            ("zorl", zorl),
+            ("stc", stc),
         ):
             ds[v] = ds[v].copy(data=a[np.newaxis].astype(ds[v].dtype))
             ds[v].attrs.pop(

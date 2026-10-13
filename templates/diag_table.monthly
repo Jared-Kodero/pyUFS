@@ -24,7 +24,7 @@ DATETIME
  "dynamics", "zsurf", "HGTsfc","atmos_static", "all", .false., "none", 2
 
 # Surface thermodynamics
- "dynamics", "ts",   "ts",   "fv3_hist", "all", .true., "none", 2
+ "gfs_sfc",  "tsfc", "ts",   "fv3_hist", "all", .true., "none", 2
  "dynamics", "ps",   "ps",   "fv3_hist", "all", .true., "none", 2
  "dynamics", "slp",  "slp",  "fv3_hist", "all", .true., "none", 2
 
