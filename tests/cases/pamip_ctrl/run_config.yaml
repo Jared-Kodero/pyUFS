@@ -8,6 +8,7 @@ archive_data: false # Tests do not archive outputs
 init_datetime: "2023010100Z"
 run_length: 1
 run_length_units: months
+constraint_node: null
 resubmit: 11 # 12
 merge_freq: -1
 c_res: C96
@@ -17,7 +18,6 @@ generate_ic_data: true
 n_nodes: 3
 n_cpus: 144
 walltime: 12
-constraint_node: "48core"
 dt_atmos: 1200 # same time step in all PAMIP tests
 dt_ocean: 1200
 k_split: [3]
