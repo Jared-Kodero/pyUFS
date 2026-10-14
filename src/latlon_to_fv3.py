@@ -16,12 +16,13 @@ from typing import Literal
 import xarray as xr
 import xesmf as xe
 
-from fv3_state import state
-
 
 def sfc_filename(tile: int) -> Path:
     """Surface file of a tile: global sfc_data.tileN.nc, nest
     sfc_data.nestNN.tileN.nc, regional sfc_data.nc (single tile, no suffix)."""
+
+    from fv3_state import state
+
     if state.gtype in ("regional_gfdl", "regional_esg"):
         return Path("sfc_data.nc")
     nest_idx = f"nest{(tile - 5):02d}." if tile > 6 else ""
@@ -169,6 +170,8 @@ def load_grid(filename: Path, tile: int) -> xr.Dataset:
 
     Read from the surface file once and cached in ``<ic_data>/perts``.
     """
+    from fv3_state import state
+
     grid_file = Path(state.ic_data) / "perts" / f"tile.{tile}.grid.nc"
     if not grid_file.exists():
         if state.restart_no == 0:
