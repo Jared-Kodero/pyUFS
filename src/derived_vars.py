@@ -208,7 +208,6 @@ def calc_derived_vars(ds: xr.Dataset) -> xr.Dataset:
     ds = calc_moisture_trans(ds)
     ds = calc_bulk_richardson(ds)
     ds = calc_mse(ds)
-    ds = calc_moisture_trans(ds)
     ds = calc_vpd2m(ds)
     ds = calc_evaporative_fraction(ds)
     return ds
