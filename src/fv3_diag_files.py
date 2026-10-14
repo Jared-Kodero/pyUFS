@@ -271,8 +271,7 @@ def check_diag_fields(table: AsciiDiagTable | YamlDiagTable) -> None:
         if (stream, output) in seen:
             first = seen[(stream, output)]
             problems.append(
-                f"output name {output!r} is used twice in stream {stream!r}: "
-                f"{first} and {native}"
+                f"output name {output!r} is used twice in stream {stream!r}: {first} and {native}"
             )
         else:
             seen[(stream, output)] = native
