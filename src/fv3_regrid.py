@@ -14,7 +14,7 @@ import numpy as np
 import xarray as xr
 
 from derived_vars import calc_derived_vars
-from fv3_runtime import get_stream_handles
+from fv3_diag_files import load_variables, stream_handles, variables
 from fv3_state import load_fv3_state
 from fv3_utils import cres_to_deg, env_setup, exit_code
 from pyfregrid import fregrid
@@ -332,10 +332,14 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
     if "plev" in ds.dims:  # surface-only streams carry no pressure axis
         ds = ds.sortby("plev", ascending=False)
 
+    # Precipitation rates are clipped at zero, found by their native diag_table
+    # field so the output_name chosen there does not matter.
+    precip = {variables["totprcpb_ave"], variables["cnvprcpb_ave"]}
+
     for var in ds.data_vars:
         ds[var].attrs.update(data_attrs.get(var, {}))
 
-        if var in ["pr", "prc", "cnvprcpb_ave", "totprcpb_ave"]:
+        if var in precip:
             ds[var] = ds[var].clip(min=0, keep_attrs=True)
 
     ds = calc_derived_vars(ds)
@@ -670,7 +674,8 @@ def regrid_regional_tile(streams: list, c_res: int):
 
 def regrid():
     env_setup()
-    streams = get_stream_handles()
+    load_variables()  # output names of the staged diag_table
+    streams = stream_handles()
     # remove spec and static files from streams
     streams = [s for s in streams if "spec" not in s and "static" not in s]
     if state.gtype in ("regional_gfdl", "regional_esg"):

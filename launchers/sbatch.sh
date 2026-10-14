@@ -1,6 +1,22 @@
 # shellcheck shell=bash
 
-# sbatch.sh - Script to submit a job to SLURM with the appropriate environment variables
+# sbatch.sh - submit launchers/case_run.sh to SLURM.
+#
+# Called by case_submit.py (first segment, executed) and by case_run.sh (later
+# segments, sourced). It builds no values itself: every CASE_* variable below
+# is already in the environment (documented in launchers/case_submit.py).
+#
+#   CASE_NODE_EXCLUSIVE_FLAG   --exclusive, or empty
+#   CASE_NODE_CONSTRAINT_FLAG  --constraint=<value>, or empty
+#   CASE_MEMORY_FLAG           --mem=<n>g (one node), --mem-per-cpu=<n>g (several), or empty
+#   CASE_SBATCH_OPTIONS        raw extra sbatch arguments from run_config.yaml (sbatch_options)
+#   CASE_TIME_LIMIT            H:00:00 from walltime
+#   CASE_NNODES / CASE_NTASKS / CASE_NTASKS_PER_NODE / CASE_CPUS_PER_TASK / CASE_PARTITION
+#   SLURM_JOB_NAME             <parent>.<case>[.MEMnn]
+#   SLURM_OPEN_MODE            truncate (first segment) or append (resubmission)
+#
+# The flag variables are deliberately unquoted so that an empty value adds no
+# argument and CASE_SBATCH_OPTIONS can hold several words.
 
 # Every CASE_* and path variable is in the environment: set by case_submit.py
 # for the first segment and inherited, with updated values, by case_run.sh for
@@ -12,6 +28,8 @@ EXPORT_VARS="ALL"
 EXIT_CODE=0
 # "|| EXIT_CODE=$?" keeps a failed sbatch from aborting a caller that runs
 # under set -e (case_run.sh) before the error below is reported.
+# --parsable prints only the job id. --output=/dev/null: case_run.sh writes its
+# own log (CASE_LOG_FILE), so SLURM does not create a second one.
 JOB_ID=$(sbatch --parsable \
 $CASE_NODE_EXCLUSIVE_FLAG \
 $CASE_NODE_CONSTRAINT_FLAG \

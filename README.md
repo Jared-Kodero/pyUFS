@@ -85,7 +85,7 @@ internet access (Docker Hub, repo.anaconda.com, conda-forge) and several GB in `
 
 The `modules` key lists the host modules loaded before a native `shield_exe` is launched
 (default `hpcx-mpi`, `netcdf-mpi`, `libyaml`, `netcdf`); it is not used with the
-container image. `launchers/case_submit.sh` needs a host `python3` with PyYAML. The Python
+container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
 dependencies used inside the preprocessing container are listed in `config/env.yaml`
 and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
 `cartopy`, and `wgrib2`. The scheduler is SLURM. `launchers/sbatch.sh` submits
@@ -100,7 +100,7 @@ The driver logs the selected paths and the reason. When work and case directorie
 coincide, no copy or deletion is performed for staging. The fallback runs inside the
 case tree. The run directory (`case_root/<parent>/<case>`) must not contain the submission
 directory, since it is mirrored with deletion and removed after archiving;
-`launchers/case_submit.sh` refuses such a layout. Every `container_bindpath` entry must exist on the
+`case_submit.sh` refuses such a layout. Every `container_bindpath` entry must exist on the
 compute node, or Apptainer does not start.
 
 ## 3. Repository layout
@@ -112,7 +112,7 @@ compute node, or Apptainer does not start.
 | `config/` | Default `run_config.yaml` and the container Conda environment, `env.yaml`. |
 | `templates/` | Model namelists, diagnostic and tracer tables, and initial-condition conversion templates. |
 | `tables/` | CSV reference catalogs for diagnostic, GFS, HRRR, and ERA5 fields. |
-| `tools/` | SHiELD build, container build, and shared fixed-dataset maintenance utilities. |
+| `tools/` | SHiELD build, container build, shared fixed-dataset maintenance and boundary-condition dataset utilities (`download_pamip_amip.py`, `esa_sst.py`). |
 | `config/examples/` | Example run configurations and overrides (Section 18). |
 | `tests/cases/` | Existing HPC regression cases, retaining their case-local files and directories. |
 | `tests/submit.sh` | Helper that submits the four PAMIP cases from the `tests/` directory; the other cases are commented out in it. |
@@ -130,13 +130,15 @@ default file.
 
 1. Create a case directory.
 2. Place a `run_config.yaml` in that directory.
-3. Run `launchers/case_submit.sh` from the case directory, directly or through a local wrapper.
-4. `launchers/case_submit.sh` deactivates any active conda environment and calls
+3. Run `case_submit.sh` from the case directory, directly or through a local wrapper.
+4. `case_submit.sh` deactivates any active conda environment and calls
    `launchers/case_submit.py`.
 5. `launchers/case_submit.py` validates the configuration against the default key set, rejects
-   unknown keys with a suggested correction, resolves paths and SLURM flags, and submits
+   unknown keys with a suggested correction, fills unset keys from the default file, resolves
+   paths and SLURM flags into `CASE_*` environment variables, and submits
    `launchers/case_run.sh` through `launchers/sbatch.sh`. Ensemble members are submitted as
-   separate jobs.
+   separate jobs (`<parent>.<case>.MEMnn`). The variables are listed in the module docstring
+   of `launchers/case_submit.py`, and the mapping to `sbatch` flags is in section 6.2.
 6. `case_run.sh` prepares directories, stages the case to the working directory, runs the
    preprocess container, launches SHiELD, runs the regridding stage, synchronizes outputs, and optionally
    resubmits the next segment or archives the case.
@@ -199,14 +201,35 @@ Environment variables such as `$USER` and `$HOME` are expanded.
 | `n_cpus` | 192 | Requested task count. The submitted count is rounded down to a multiple of `n_nodes`. |
 | `n_cpus_per_task` | 1 | CPUs per task. |
 | `partition` | batch | SLURM partition. |
-| `mem` | 0 | Total job memory in GB. 0 uses the scheduler default. |
+| `mem` | 0 | Total job memory in GB. 0 uses the scheduler default. See the memory rule below. |
 | `constraint_node` | null | Optional SLURM node constraint passed as `--constraint=<value>`. |
-| `exclusive_node` | false | Request exclusive node access. |
+| `exclusive_node` | false | Request exclusive node access (`--exclusive`). |
+| `sbatch_options` | "" | Extra raw options appended to the `sbatch` call, for example `"--account=myproj --mail-type=END"`. |
 | `logfile` | shield_driver | Base name of the driver log written in the case directory. |
 
 Tasks per node are computed as `n_cpus // n_nodes`, and the submitted task count is
-`(n_cpus // n_nodes) * n_nodes`. When `mem` exceeds twice the task count, a per-CPU or
-per-job memory flag is derived.
+`(n_cpus // n_nodes) * n_nodes`.
+
+The keys map to `sbatch` flags in `launchers/sbatch.sh`:
+
+| Key | Flag |
+| --- | --- |
+| `walltime` | `--time=<walltime>:00:00` |
+| `n_nodes` | `--nodes` |
+| `n_cpus` | `--ntasks` (rounded as above) and `--ntasks-per-node` |
+| `n_cpus_per_task` | `--cpus-per-task` |
+| `partition` | `--partition` |
+| `constraint_node` | `--constraint=<value>`, omitted when null |
+| `exclusive_node` | `--exclusive`, omitted when false |
+| `mem` | `--mem=<mem>g` on one node, `--mem-per-cpu=<mem // tasks>g` on several nodes, omitted when `mem` is not above 2 GB per task |
+| `sbatch_options` | appended unchanged |
+
+The job name is `<parent directory>.<case directory>`, with `.MEMnn` added for ensemble members. The
+driver log (`logfile`) is written by the job itself, so `sbatch` is called with `--output=/dev/null`.
+A multi-node job runs the native `shield_exe` directly; a single-node job may use the container.
+
+The test cases in `tests/cases/*/run_config.yaml` list all SLURM keys in a `# SBATCH OPTIONS`
+block at the top of the file, so the request of a case is read in one place.
 
 ### 6.3 Case metadata
 
@@ -379,7 +402,7 @@ retrieved with retry and multi-source fallback:
 
 The source model is selected per model domain. It is **not** selected with a key in
 `run_config.yaml`. To override the built-in source assignment, place a domain-specific
-`chgres_cube` YAML file in the case directory from which `launchers/case_submit.sh` is launched.
+`chgres_cube` YAML file in the case directory from which `case_submit.sh` is launched.
 
 ### 8.1 Default GFS/HRRR source assignment
 
@@ -866,6 +889,21 @@ surface) are neither filled nor counted as zero, and fields without horizontal d
 (`average_T1`, `average_T2`, `average_DT`, `time_bnds`) are copied unchanged. Weights are
 computed once per grid and stream set.
 
+Each variable line of a `diag_table` (or `varlist` entry of a `diag_table.yaml`) names a native
+model field (module and field, for example `"gfs_sfc", "t2m"`) and an output name, which is the
+variable name in the history and regridded files and may be chosen freely. At staging, every
+module and field pair is checked against `tables/diag_field.csv`, read with pandas; an unknown pair
+stops the case before the run, with the closest valid names suggested (FMS would otherwise skip the
+field without an error). An output name used twice in one stream also stops the case. The derived variables of `src/derived_vars.py` (`ivt`, `ivtu`, `ivtv`,
+`vimfc`, `brn`, `mse`, `evf`, `vpd2m`) and the zero clip of the precipitation rates find their inputs
+by native field, so they do not depend on the output names; the derived variables are written under
+their fixed names. `fv3_diag_files.variables` maps each native field name to its output name
+(`variables["t_plev"]` is `"t"` with the default table) and is filled whenever a diag_table is
+loaded; a calculation reads `ds[variables["t_plev"]]` and is skipped, with a warning, when an input is not
+written to the stream. A field written under several names, or shared by two modules, takes the first
+entry of the table.
+`src/fv3_diag_files.py` provides `AsciiDiagTable` and `YamlDiagTable` to read, edit and write both formats.
+
 The `merge_freq` key controls how per-segment regridded files are combined.
 
 - `-1` merges the whole run into one file per stream and grid on the final segment.
@@ -965,7 +1003,7 @@ non-empty.
 An empty value selects the container image for a single-node run; all multi-node runs require
 a native `shield_exe`. Because the non-null repository default is restored when a case sets
 `shield_exe: null`, use `shield_exe: ""` to force the single-node container path.
-`launchers/case_submit.sh` stops when the configured `shield_exe` does not exist.
+`case_submit.sh` stops when the configured `shield_exe` does not exist.
 
 ```bash
 python tools/build_shield.py                      # repro, 64bit, pic, cleanall
@@ -1079,7 +1117,7 @@ themselves.
 2. Write `run_config.yaml` into it.
 3. Add optional case-local overrides such as `diag_table`, `chgres_cube.yaml`, or
    `input.nml`.
-4. Run `launchers/case_submit.sh` from the case directory.
+4. Run `case_submit.sh` from the case directory.
 
 Recommended case-local launcher:
 
@@ -1088,8 +1126,11 @@ Recommended case-local launcher:
 "/path/to/pyUFS/case_submit.sh"
 ```
 
-Deactivate any active conda environment and use a clean shell before submitting, so the
-workflow starts from a predictable environment. Place the launcher in the case directory and
+`case_submit.sh` deactivates any active conda environment for its own process; use a clean shell
+before submitting so the workflow starts from a predictable environment. The case is read from
+the current directory, and a submission directory inside the run directory
+(`case_root/<parent>/<case_name>`) is refused, because the run directory is mirrored and
+removed after archiving. `tests/submit.sh` submits the test cases, each from its own directory. Place the launcher in the case directory and
 run it there so the workflow reads the local `run_config.yaml` and any case-local files.
 
 ## 21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
