@@ -123,7 +123,7 @@ HRRR_GEOGRID = "geo_em.d01.nc_HRRRX"
 LOCAL_ONLY_HINTS = {
     "am/mld_DR003_c1m_reg2.0.grb": "GFDL fvGFS_INPUT_DATA (not in the NOAA bucket)",
     "external/ERA5/": "fix_src/external/ERA5 (built locally from ERA5)",
-    "carto/": "tools/update_fix.py (Cartopy Natural Earth download)",
+    "external/CARTOPY/": "tools/update_fix.py (Cartopy Natural Earth download)",
 }
 
 
