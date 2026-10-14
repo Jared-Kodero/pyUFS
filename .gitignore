@@ -17,4 +17,5 @@
 **/*.nc
 **/*.log
 **/*.png
+*.patch
 .vscode

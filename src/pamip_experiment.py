@@ -33,7 +33,7 @@ the native baseline). The protocol pairs hold the ice-edge SST adjustment, which
 ``sst`` or ``sic`` alone leaves out.
 
 The experiment table is ``templates/pamip_experiments.yaml``; the NetCDF files
-are read from ``<fix_src>/PAMIP/<source_id>/<variable_id>/``
+are read from ``<fix_src>/external/PAMIP/<source_id>/<variable_id>/``
 (``tools/download_pamip_amip.py``).
 """
 
@@ -523,9 +523,10 @@ def apply_pamip_experiment() -> bool:
     entry, control = experiments[experiment], experiments[CONTROL]
     family = entry[
         "family"
-    ]  # PAMIP: directory below FIXED and fix_src, and tag of the file names
+    ]  # PAMIP: directory below FIXED and fix_src/external, and tag of the file names
     out_dir = Path(state.fix) / family
-    am_dir, pamip_dir = Path(state.fix_src) / "am", Path(state.fix_src) / family
+    am_dir = Path(state.fix_src) / "am"
+    pamip_dir = Path(state.fix_src) / "external" / family
     # a field that pamip_fields leaves out comes from the control
     specs = {
         kind: (entry if fields in ("both", kind) else control)[kind]

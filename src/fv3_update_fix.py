@@ -122,7 +122,7 @@ HRRR_GEOGRID = "geo_em.d01.nc_HRRRX"
 # Files without a remote source; they must be staged in fix_src by hand.
 LOCAL_ONLY_HINTS = {
     "am/mld_DR003_c1m_reg2.0.grb": "GFDL fvGFS_INPUT_DATA (not in the NOAA bucket)",
-    "era5/": "fix_src/era5 (built locally from ERA5)",
+    "external/ERA5/": "fix_src/external/ERA5 (built locally from ERA5)",
     "carto/": "tools/update_fix.py (Cartopy Natural Earth download)",
 }
 

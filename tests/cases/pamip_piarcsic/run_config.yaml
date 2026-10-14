@@ -1,7 +1,7 @@
 # PAMIP 1.5 (pdSST-piArcSIC) on the native baseline: the native SHiELD SST and sea-ice
 # climatologies plus 1.5 minus 1.1 (preindustrial Arctic sea ice, stronger Arctic to mid-latitude
 # temperature gradient). Pair with pamip_ctrl (control) and pamip_futarcsic (1.6).
-# They differ only in pamip_experiment. Needs the PAMIP NetCDF files in <fix_src>/PAMIP
+# They differ only in pamip_experiment. Needs the PAMIP NetCDF files in <fix_src>/external/PAMIP
 # (tools/download_pamip_amip.py). ICs come from GFS, so the date must lie in the GFS archive.
 description: test PAMIP 1.5 native baseline
 archive_data: false # Tests do not archive outputs
