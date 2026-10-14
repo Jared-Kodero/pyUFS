@@ -1,6 +1,16 @@
 # Two telescoping nests initialized from GFS only (chgres_cube_nest02.yaml and
 # chgres_cube_nest03.yaml). Check that LOGS has one chgres_cube_nest0N_*.log per
 # nest (no HRRR run) and that state.yaml lists nest02/nest03_ic_source as GFS.
+
+# SBATCH OPTIONS
+constraint_node: "48core"
+exclusive_node: false
+walltime: 4
+n_nodes: 2
+n_cpus: 96
+partition: batch
+n_cpus_per_task: 1
+
 description: test nest gfs
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
@@ -17,10 +27,6 @@ lat_max: [60, 55]
 parent_tile: 6
 halo: 3
 generate_ic_data: true
-n_nodes: 2
-n_cpus: 96
-walltime: 4
-constraint_node: "48core"
 
 # Explicit time stepping: dt_atmos follows the finest nest (C768, 180 s); the
 # acoustic dt of each domain is dt_atmos / (k_split * n_split) = 60, 15 and 15 s.

@@ -174,11 +174,17 @@ class FV3State:
     # 10-11. Perturbations
     sm_perturbations: dict | None = None
     pamip_experiment: str | None = None
-    pamip_baseline: str | None = None  # pamip (default) or native
+    pamip_baseline: str | None = None  # pamip (default), native or external
     pamip_fields: str | None = None  # both (default), sst or sic
-    # Set by apply_pamip_experiment; when not None, namsfc uses these paths
+    # Own climatologies from run_config: a GRIB path, absolute or relative to fix_src
+    external_sst: str | None = None
+    external_sic: str | None = None
+    external_mask: str | None = None
+    # namsfc entries replacing the stock files: FIXED/external/<name> after
+    # stage_surface_files, then, for fntsfc and fnaisc, the PAMIP files set by apply_pamip_experiment
     fntsfc: str | None = None
     fnaisc: str | None = None
+    fnmskh: str | None = None
 
     # --- Runtime environment (fv3_utils.runtime_env_vars) ----------------
     n_cpus_per_node: int | None = None
