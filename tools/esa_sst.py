@@ -18,9 +18,9 @@ The 365 files ``D001..D365-ESACCI-L4_GHRSST-SSTdepth-Climatology-GLOB_CDR3.0-v02
 (about 41 MB each, 15 GB in all) are fetched from
 ``https://dap.ceda.ac.uk/neodc/eocis/data/global_and_regional/sea_surface_temperature/CDR_v3/Climatology/L4/v3.0.1/``
 with ``--workers`` parallel streams (default 4), each into a ``.part`` file that is
-renamed when complete, five attempts per file. Existing complete files are reused,
-so an interrupted run resumes. The daily files are deleted after they have been
-averaged unless ``--keep-daily`` is given.
+renamed when complete, five attempts per file, into ``/tmp/<user>/esa_sst``, which is
+emptied at the start of every run. The daily files are deleted after they have been
+averaged.
 
 How the files are built
 -----------------------
@@ -28,8 +28,8 @@ How the files are built
    365-day year (31, 28, 31, ... days) on their own grid, over the ocean days: land cells
    of the CCI mask (bit 2) are left out, so a cell has the mean of its valid days and
    is NaN where there is none. The twelve monthly means of SST and of sea-ice fraction
-   and the land mask (the same on every day) are cached as ``cache/monthly.npz`` (about
-   2.6 GB), so later runs only redo the steps below.
+   and the land mask (the same on every day) are kept as ``monthly.npz`` (about 2.6 GB)
+   in the temporary directory.
    They are then regridded in one call of ``ll_regrid`` of ``src/latlon_to_fv3.py`` (xESMF,
    bilinear, NaN-skipping, periodic in longitude, as for the PAMIP files) onto the 1/12
    degree grid (4320 x 2160) of ``fix_src/am/RTGSST.1982.2012.monthly.clim.grb``.
@@ -71,7 +71,7 @@ from the 99.9th percentile; the largest absolute difference is in the title. The
 stock sea ice and mask are sampled at the nearest 0.5 degree cell. Grids finer than
 720 points in longitude are block-averaged for drawing. Natural Earth coastlines come
 from ``<root>/external/CARTOPY`` as in ``fv3_plot_grid.py`` (without them the maps
-have no coastlines). ``--no-plots`` skips the figures.
+have no coastlines).
 
 Land values
 -----------
@@ -89,12 +89,11 @@ Output
     sst.ESACCI_1991_2020.monthly.clim.grb   SST, K, 12 months (format of the stock FNTSFC file)
     sic.ESACCI_1991_2020.monthly.clim.grb   sea ice, 12 months, 1.57 on land (stock FNAISC format)
     landmask.ESACCI.grb                     land mask, 1 = land (stock FNMSKH format)
-    cache/                                  daily files (removed) and monthly.npz
 
 The stock files must be in ``<root>/am`` (``tools/update_fix.py``). The three outputs
 go together: use all of them (FNTSFC, FNAISC and FNMSKH of namsfc), never a mix with
 stock files. Memory: the xESMF weights for this grid take about 15 GB, as for the PAMIP
-regridding (``README.md``), and the monthly means 3 GB; disk 3 GB (18 GB with ``--keep-daily``). Differences from the stock climatology (1982-2012, RTG SST, CFSR ice) are
+regridding (``README.md``), and the monthly means 3 GB; disk 3 GB in ``/tmp/<user>/esa_sst``. Differences from the stock climatology (1982-2012, RTG SST, CFSR ice) are
 dataset and period differences, not only climate change: CCI SST is a 20 cm depth
 analysis and its sea ice comes from a different product.
 
@@ -110,14 +109,15 @@ With ``pamip_experiment`` and ``pamip_baseline: external`` the PAMIP anomaly is 
 Usage::
 
     python tools/esa_sst.py --root <fix_src>
-    python tools/esa_sst.py --root <fix_src> --workers 8 --keep-daily
-    python tools/esa_sst.py --root <fix_src> --force       # download and aggregate again
+    python tools/esa_sst.py --root <fix_src> --workers 8
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
 import os
+import shutil
 import sys
 import time
 import warnings
@@ -133,6 +133,8 @@ from scipy import ndimage
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from grib_io import open_grib, save_grib
 from latlon_to_fv3 import ll_regrid
+
+script_dir = Path(__file__).resolve().parent
 
 BASE = (
     "https://dap.ceda.ac.uk/neodc/eocis/data/global_and_regional/"
@@ -151,7 +153,6 @@ OUT = {
     "sic": f"sic.{TAG}.monthly.clim.grb",
     "mask": "landmask.ESACCI.grb",
 }
-CACHE_VERSION = "esa-cci-v3.0.1-2"
 GRID_KEYS = (
     "Ni",
     "Nj",
@@ -185,10 +186,8 @@ MONTHS = [
 
 
 def download(day: int, cache: Path) -> Path:
-    """Fetch one daily file unless it is there (five attempts); ``CEDA_TOKEN`` is optional."""
+    """Fetch one daily file (five attempts); ``CEDA_TOKEN`` is optional."""
     path = cache / f"D{day:03d}.nc"
-    if path.exists() and path.stat().st_size > 0:
-        return path
     token = os.getenv("CEDA_TOKEN")
     headers = {"Authorization": f"Bearer {token}"} if token else {}
     for attempt in range(5):
@@ -210,7 +209,7 @@ def download(day: int, cache: Path) -> Path:
     raise RuntimeError(f"D{day:03d} could not be downloaded")
 
 
-def monthly_means(cache: Path, workers: int, keep_daily: bool) -> Path:
+def monthly_means(cache: Path, workers: int) -> Path:
     """Download the 365 daily files and write ``cache/monthly.npz``.
 
     It holds, on the 0.05 degree grid of the files, the mean of each calendar month of
@@ -239,8 +238,7 @@ def monthly_means(cache: Path, workers: int, keep_daily: bool) -> Path:
                 total[key][month] += np.where(valid, field, 0)
                 count[key][month] += valid
             ndays[month] += 1
-            if not keep_daily:
-                path.unlink()
+            path.unlink()
             if n % 20 == 0 or n == len(DAYS):
                 print(
                     f"{n}/{len(DAYS)} days, {time.time() - started:.0f} s", flush=True
@@ -250,9 +248,7 @@ def monthly_means(cache: Path, workers: int, keep_daily: bool) -> Path:
     for key, mean in total.items():
         mean[count[key] == 0] = np.nan
         mean /= np.maximum(count[key], 1)
-    np.savez(
-        out, version=CACHE_VERSION, ndays=ndays, land=land, lat=lat, lon=lon, **total
-    )
+    np.savez(out, ndays=ndays, land=land, lat=lat, lon=lon, **total)
     return out
 
 
@@ -414,7 +410,7 @@ def plot_change(
             plt.close(grid.fig)
             print(f"wrote {path}")
             return
-        except Exception as error:  # noqa: BLE001 - a plot never stops the build
+        except Exception as error:
             plt.close("all")
             print(f"{path.name}: {error}")
 
@@ -426,28 +422,21 @@ def main() -> None:
     parser.add_argument(
         "--root",
         type=Path,
-        required=True,
+        default=script_dir.parent / "fix",
         help="fix_src of the case; output goes to <root>/external/ESA",
     )
     parser.add_argument(
         "--workers", type=int, default=4, help="parallel downloads (default 4)"
     )
-    parser.add_argument(
-        "--keep-daily", action="store_true", help="keep the 365 daily files (15 GB)"
-    )
-    parser.add_argument(
-        "--force", action="store_true", help="download and aggregate again"
-    )
-    parser.add_argument(
-        "--no-plots", action="store_true", help="skip the difference figures"
-    )
-    parser.add_argument(
-        "--clean", action="store_true", help="remove the cache directory when done"
-    )
+
     args = parser.parse_args()
     root = args.root.resolve()
     am, out_dir = root / "am", root / "external" / "ESA"
-    cache = out_dir / "cache"
+    cache = Path(f"/tmp/{getpass.getuser()}/esa_sst")
+    # remove the cache directory if it exists
+    if cache.exists():
+        shutil.rmtree(cache)
+
     for name in STOCK.values():
         if not (am / name).is_file():
             raise FileNotFoundError(
@@ -473,14 +462,7 @@ def main() -> None:
     ):
         raise ValueError(f"{STOCK['sst']} is not the expected 1/12 degree grid")
 
-    monthly = cache / "monthly.npz"
-    if (
-        args.force
-        or not monthly.is_file()
-        or str(np.load(monthly)["version"]) != CACHE_VERSION
-    ):
-        monthly = monthly_means(cache, args.workers, args.keep_daily)
-    data = np.load(monthly)
+    data = np.load(monthly_means(cache, args.workers))
     if not np.array_equal(
         data["ndays"], [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     ):
@@ -593,53 +575,47 @@ def main() -> None:
         f"ocean SST {float(new_fields['sst'][:, ~land].min()):.2f}..{float(new_fields['sst'][:, ~land].max()):.2f} K"
     )
 
-    if (
-        not args.no_plots
-    ):  # new minus stock, where both are ocean (stock land cells are not SST)
-        both_ocean = ~land & ~old_land
-        carto = root / "external" / "CARTOPY"
-        order = {
-            k: np.argsort(stock[k]["time"].dt.month.values) for k in ("sst", "sic")
-        }  # calendar order
-        sea_ice_ok = both_ocean & (old_fields["sic"] <= 1.0).all(0)
-        for key, ok, title, label, cmap in (
-            (
-                "sst",
-                both_ocean,
-                "ESA CCI minus stock SHiELD SST",
-                "SST change (K)",
-                "RdBu_r",
-            ),
-            (
-                "sic",
-                sea_ice_ok,
-                "ESA CCI minus stock SHiELD sea ice",
-                "Sea-ice concentration change (fraction)",
-                "RdBu",
-            ),
-        ):
-            diff = np.where(ok, new_fields[key] - old_fields[key], np.nan)[order[key]]
-            plot_change(
-                out_dir / f"{key}_change_vs_stock.png",
-                diff,
-                lat,
-                lon,
-                title,
-                label,
-                cmap,
-                carto,
-            )
+    # new minus stock, where both are ocean (stock land cells are not SST)
+    both_ocean = ~land & ~old_land
+    carto = root / "external" / "CARTOPY"
+    order = {
+        k: np.argsort(stock[k]["time"].dt.month.values) for k in ("sst", "sic")
+    }  # calendar order
+    sea_ice_ok = both_ocean & (old_fields["sic"] <= 1.0).all(0)
+    for key, ok, title, label, cmap in (
+        (
+            "sst",
+            both_ocean,
+            "ESA CCI minus stock SHiELD SST",
+            "SST change (K)",
+            "RdBu_r",
+        ),
+        (
+            "sic",
+            sea_ice_ok,
+            "ESA CCI minus stock SHiELD sea ice",
+            "Sea-ice concentration change (fraction)",
+            "RdBu",
+        ),
+    ):
+        diff = np.where(ok, new_fields[key] - old_fields[key], np.nan)[order[key]]
         plot_change(
-            out_dir / "mask_change_vs_stock.png",
-            (land.astype("float32") - old_land)[None], lat, lon,
-            "ESA CCI minus stock SHiELD land mask",
-            "Land mask change (+1 land only in the new mask, -1 land only in the stock mask)",
-            "RdBu_r", carto, limit=1.0,
-        )  # fmt: skip
-    if args.clean:
-        for path in cache.iterdir():
-            path.unlink()
-        cache.rmdir()
+            out_dir / f"{key}_change_vs_stock.png",
+            diff,
+            lat,
+            lon,
+            title,
+            label,
+            cmap,
+            carto,
+        )
+    plot_change(
+        out_dir / "mask_change_vs_stock.png",
+        (land.astype("float32") - old_land)[None], lat, lon,
+        "ESA CCI minus stock SHiELD land mask",
+        "Land mask change (+1 land only in the new mask, -1 land only in the stock mask)",
+        "RdBu_r", carto, limit=1.0,
+    )  # fmt: skip
     print(f"wrote {', '.join(OUT.values())} to {out_dir}")
     # eccodes and cartopy (GEOS, PROJ) can abort together when the interpreter shuts down
     # ("double free or corruption") after all work is done: leave directly
