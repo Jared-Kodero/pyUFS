@@ -15,7 +15,7 @@
 #
 # File name of a dataset (as indexed on ESGF, checked against Table A1):
 #   <variable_id>_input4MIPs_SSTsAndSeaIce_PAMIP_<source_id>_gn_<period>.nc
-# Downloaded to <fix_src>/PAMIP/<source_id>/<variable_id>/ by tools/download_pamip_amip.py.
+# Downloaded to <fix_src>/external/PAMIP/<source_id>/<variable_id>/ by tools/download_pamip_amip.py.
 # source_id UCI-present-1-0 also holds other siconc files (1979-2014); the period
 # selects the 1979-2008 climatology.
 #
@@ -35,7 +35,7 @@
 # Set 5 runs 1 January 1979 to 31 December 2014 and set 6 runs 100 years from 1 April 2000.
 #
 # Keys per experiment
-#   family       data family: directory below FIXED and fix_src, tag of the generated file names
+#   family       data family: directory below FIXED and fix_src/external, tag of the generated file names
 #   sst, sic     source_id, variable_id and period of the input4MIPs file; the files hold
 #                filled values over land, which the code masks with seaice_newland.grb
 #

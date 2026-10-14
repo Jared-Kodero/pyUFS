@@ -274,7 +274,7 @@ make_gsl_orog: false # Generate GSL drag-suite orography files (oro_data_ls/ss);
 #   fill_value:        float | "mean"
 #   use_climo:         bool
 #   climo_file:        str      # global file; must contain target_var on the model soil layers.
-#                               # Defaults to fix/era5/sm_monthly_1950_2025.nc when use_climo is true.
+#                               # Defaults to fix/external/ERA5/sm_monthly_1950_2025.nc when use_climo is true.
 #                               # The month used is that of the start of the segment.
 #   do_nudge:          bool     # relax toward a reference on restart segments (index >= 1)
 #   tau_hours:         float    # nudging timescale; default 24. alpha = (hours in the previous segment) / tau_hours, clipped to [0, 1].
@@ -313,7 +313,7 @@ sm_perturbations: null
 # (namsfc FNTSFC, FNAISC) with the official PAMIP pair of one experiment (Smith et
 # al., 2019, Geosci. Model Dev. 12, 1139). The option only selects the experiment;
 # nothing is added to the PAMIP fields, whose pair already holds the ice-edge SST
-# adjustment. At cold start the PAMIP NetCDF files in <fix_src>/PAMIP (downloaded
+# adjustment. At cold start the PAMIP NetCDF files in <fix_src>/external/PAMIP (downloaded
 # with tools/download_pamip_amip.py --needed --root <fix_src>) are regridded onto the grids of
 # fix_src/am/RTGSST.* and CFSR.SEAICE.* and written to FIXED/PAMIP/ as
 # RTGSST.PAMIP_<exp>.monthly.clim.grb and CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb,
