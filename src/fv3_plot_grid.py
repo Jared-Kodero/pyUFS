@@ -922,7 +922,7 @@ def plot_grid():
     try:
         import cartopy
 
-        cartopy_data = state.fix_src / "carto"
+        cartopy_data = state.fix_src / "external" / "CARTOPY"
         cartopy.config["pre_existing_data_dir"] = cartopy_data
         cartopy.config["data_dir"] = cartopy_data
 

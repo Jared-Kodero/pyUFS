@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Update the fix directory: bash sync_noaa_fix.sh --dest /path/to/fix [--skip-carto]
-# Needs the AWS CLI (no credentials) and a Python with cartopy for carto/.
+# Needs the AWS CLI (no credentials) and a Python with cartopy for external/CARTOPY/.
 set -euo pipefail
 
 if command -v module >/dev/null 2>&1; then
