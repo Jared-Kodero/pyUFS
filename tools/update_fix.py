@@ -188,7 +188,7 @@ def main() -> None:
     print("=== FIX update complete ===")
 
     if not args.skip_carto:
-        download_cartopy_data(fix_dir / "carto")
+        download_cartopy_data(fix_dir / "external" / "CARTOPY")
 
 
 if __name__ == "__main__":

@@ -393,7 +393,8 @@ def plot_pamip_change(
     try:
         import cartopy
 
-        carto = Path(state.fix_src) / "carto"  # Natural Earth cache of fv3_plot_grid.py
+        # Natural Earth cache of fv3_plot_grid.py
+        carto = Path(state.fix_src) / "external" / "CARTOPY"
         if carto.is_dir():
             cartopy.config["pre_existing_data_dir"] = carto
             cartopy.config["data_dir"] = carto

@@ -359,15 +359,15 @@ whole tree in advance and is independent of the run-time lookup above. It mirror
 `am`, `orog` and `sfc_climo` directories of the NOAA bucket with `aws s3 sync`, keeps the
 newest version of each in `fix/`, removes the pre-generated `C<res>` directories, recreates
 the CO2 and volcanic-aerosol links without the `global_` prefix, and downloads the Cartopy
-Natural Earth data into `fix/carto`. It writes to the repository's `fix/` directory by
+Natural Earth data into `fix/external/CARTOPY`. It writes to the repository's `fix/` directory by
 default and replaces those three dataset directories. Use `--dest /path/to/fix` to
 choose a different destination, and
 `--skip-carto` to skip the Cartopy download. The destination is independent of the
 directory from which the helper is run.
 
-Data that does not come from the NOAA bucket is kept in `fix/external` (`ERA5`, `PAMIP` and
-`AMIP`), which `tools/update_fix.py` does not replace. The soil moisture climatology used by
-the perturbation module is `fix/external/ERA5/sm_monthly_1950_2025.nc`.
+Data that does not come from the NOAA bucket is kept in `fix/external` (`ERA5`, `PAMIP`,
+`AMIP` and `CARTOPY`). `tools/update_fix.py` writes only `CARTOPY` there. The soil moisture
+climatology used by the perturbation module is `fix/external/ERA5/sm_monthly_1950_2025.nc`.
 
 ## 8. Initial conditions and preprocessing
 
@@ -881,7 +881,7 @@ Merging concatenates records along time; it does not average (Section 22).
 The initial driver optionally renders the generated grid through
 `src/fv3_plot_grid.py`. Plotting is a diagnostic step: it reads the
 `C*_grid.tile*.nc` supergrid files from `state.grid`, requires `cartopy` and its Natural
-Earth cache under `fix_src/carto`, and writes to `state.run_dir`. Two figures are produced.
+Earth cache under `fix_src/external/CARTOPY`, and writes to `state.run_dir`. Two figures are produced.
 
 - `grid_faces.png` places one panel per global cubed-sphere face. Each panel is an
   orthographic view centred on the centroid of its own face, with every nest hosted by that
@@ -1102,7 +1102,7 @@ source value take the nearest valid value (ocean points only); one regridder ser
 weights for the 0.083 degree SST grid of 9.3 million points take about 3 minutes and 15 GB of memory; the land mask needs a second regridder of the same size, built after the first is released) and written to
 `slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
 so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, `newice` of `sfcsub.F` does not fire at points changing between ice and open water, so its resets are applied there instead: snow (`sheleg`, `snwdph`) 0, roughness `zorl` 1 cm and soil (sea-ice layer) temperature `stc` 271.2 K.
-At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_native_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the stock SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/carto`, as `fv3_plot_grid.py`.
+At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_native_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the stock SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/external/CARTOPY`, as `fv3_plot_grid.py`.
 Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
 `preprocess_only` exits before they are written. The option is validated when the case
 starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.
