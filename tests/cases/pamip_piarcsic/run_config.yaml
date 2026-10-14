@@ -3,6 +3,16 @@
 # temperature gradient). Pair with pamip_ctrl (control) and pamip_futarcsic (1.6).
 # They differ only in pamip_experiment. Needs the PAMIP NetCDF files in <fix_src>/external/PAMIP
 # (tools/download_pamip_amip.py). ICs come from GFS, so the date must lie in the GFS archive.
+
+# SBATCH OPTIONS
+constraint_node: "48core"
+exclusive_node: false
+walltime: 12
+n_nodes: 3
+n_cpus: 144
+partition: batch
+n_cpus_per_task: 1
+
 description: test PAMIP 1.5 native baseline
 archive_data: false # Tests do not archive outputs
 init_datetime: "2024040100Z"
@@ -14,10 +24,6 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
-n_nodes: 3
-n_cpus: 144
-walltime: 12
-constraint_node: "48core"
 dt_atmos: 1200 # same time step in all PAMIP tests
 dt_cpld: 1200
 k_split: [3]

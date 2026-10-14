@@ -39,6 +39,7 @@ are read from ``<fix_src>/external/PAMIP/<source_id>/<variable_id>/``
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -60,7 +61,17 @@ REGISTRY_FILE = (
     Path(__file__).resolve().parent.parent / "templates" / "pamip_experiments.yaml"
 )
 CONTROL = "1.1"  # the perturbation of the native baseline is experiment minus CONTROL
-BASELINES = ("pamip", "native")
+BASELINES = ("pamip", "native", "external")
+# run_config options of the climatologies a case provides, and the namsfc entry of each
+SURFACE_FILES = {
+    "external_sst": "fntsfc",
+    "external_sic": "fnaisc",
+    "external_mask": "fnmskh",
+}
+SURFACE_KEYS = tuple(SURFACE_FILES)
+EXTERNAL_DIR = (
+    "external"  # directory of FIXED that holds the copies of the provided files
+)
 FIELDS = ("both", "sst", "sic")
 
 # sfcsub.F: SST outside 271.2..313.0 K over open ocean is replaced by the surface
@@ -179,6 +190,12 @@ def validate_pamip_experiment(experiment: object) -> str | None:
         )
     if fields is not None and fields not in FIELDS:
         raise ValueError(f"`pamip_fields` must be one of {FIELDS}. Got {fields!r}")
+    if baseline == "external":
+        missing = [k for k in SURFACE_KEYS if not getattr(state, k)]
+        if missing:
+            raise ValueError(
+                f"`pamip_baseline: external` needs `external_sst`, `external_sic` and `external_mask` to be set to existing files. Not set: {missing}"
+            )
     if not isinstance(experiment, str):
         raise TypeError(
             f'`pamip_experiment` must be quoted text such as "1.6". Got {experiment!r}'
@@ -195,6 +212,59 @@ def validate_pamip_experiment(experiment: object) -> str | None:
             f"{REGISTRY_FILE.name}. Supported: {tuple(experiments)}"
         )
     return experiment
+
+
+def validate_surface_files() -> None:
+    """Check the ``external_sst``, ``external_sic`` and ``external_mask`` options before any file is written.
+
+    A relative path is taken from ``fix_src``. Raises TypeError for a value that
+    is not text and FileNotFoundError for a file that does not exist. Call it once,
+    at the cold start, before ``stage_surface_files`` replaces the paths.
+    """
+    for key in SURFACE_KEYS:
+        value = getattr(state, key)
+        if value is None or value == "":
+            setattr(state, key, None)
+            continue
+        if not isinstance(value, str):
+            raise TypeError(f"`{key}` must be a path as text. Got {value!r}")
+        if not surface_source(value).is_file():
+            raise FileNotFoundError(
+                f"`{key}`: {surface_source(value)} is not a file (a relative path is taken from fix_src)"
+            )
+    names = [Path(getattr(state, k)).name for k in SURFACE_KEYS if getattr(state, k)]
+    if len(set(names)) != len(names):
+        raise ValueError(
+            f"`external_sst`, `external_sic` and `external_mask` need different file names. Got {names}"
+        )
+
+
+def surface_source(value: str) -> Path:
+    """Path of a provided file: absolute, or relative to ``fix_src``."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else Path(state.fix_src) / path
+
+
+def stage_surface_files() -> None:
+    """Copy the files given by ``external_sst``, ``external_sic`` and ``external_mask`` to ``FIXED/external``.
+
+    Each is a copy, never a link, so the case does not depend on the original
+    and nothing is written to it. ``state.fntsfc``, ``state.fnaisc`` and
+    ``state.fnmskh`` (the namsfc entries) then hold ``FIXED/external/<name>``, which ``update_namsfc``
+    writes to namsfc; a PAMIP experiment with ``pamip_baseline: external`` adds
+    its perturbation to these copies. Files not given stay the stock ones.
+    """
+    for key, entry in SURFACE_FILES.items():
+        value = getattr(state, key)
+        if not value:
+            continue
+        source = surface_source(value)
+        destination = Path(state.fix) / EXTERNAL_DIR / source.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.unlink(missing_ok=True)
+        shutil.copyfile(source, destination)
+        setattr(state, entry, f"FIXED/{EXTERNAL_DIR}/{source.name}")
+        log.info(f"{key}: copied {source} to {destination}")
 
 
 def pamip_namelist() -> dict[str, dict]:
@@ -333,9 +403,13 @@ def write_pamip_grib(
     # SST grid (9.3 million points) in about 3 minutes and 15 GB.
     field = field.transpose("month", "lat", "lon")  # contiguous, as xESMF expects
     regridded = ll_regrid(field.copy(data=np.ascontiguousarray(field.values)), grid)
-    ocean = (
-        ll_regrid(land.copy(data=np.ascontiguousarray(land.values)), grid).values < 0.5
-    )
+    try:  # a mask on the grid of the template needs no regridding
+        ocean = land.sel(lat=grid["lat"], lon=grid["lon"]).values < 0.5
+    except KeyError:
+        ocean = (
+            ll_regrid(land.copy(data=np.ascontiguousarray(land.values)), grid).values
+            < 0.5
+        )
     for i, month in enumerate(months):
         data[i, 0] = combine_month(
             data[i, 0],
@@ -504,11 +578,14 @@ def apply_pamip_experiment() -> bool:
 
     The files go to ``FIXED/<family>`` (``FIXED/PAMIP``) as
     ``RTGSST.<family>_<exp>.monthly.clim.grb`` and
-    ``CFSR.SEAICE.<family>_<exp>.monthly.clim.grb`` (``<family>_native_<exp>``
-    for the native baseline, with ``_sst`` or ``_sic`` appended when
+    ``CFSR.SEAICE.<family>_<exp>.monthly.clim.grb`` (``<family>_native_<exp>`` or
+    ``<family>_external_<exp>`` for the native or external baseline, with ``_sst`` or ``_sic`` appended when
     ``pamip_fields`` selects one field); their paths are stored in
     ``state.fntsfc`` and ``state.fnaisc``, which ``update_namsfc`` writes to namsfc.
-    ``fix_src`` is only read. At the cold start the SST and sea ice of the surface
+    ``fix_src`` is only read. With ``pamip_baseline: external`` the perturbation
+    is added to the copies in ``FIXED/external`` of the files given by
+    ``external_sst``, ``external_sic`` and ``external_mask`` (``stage_surface_files``), and the
+    ocean of ``external_mask`` decides which points change. At the cold start the SST and sea ice of the surface
     files in ``state.input`` are also set to the fields of the start date.
 
     Returns True when files are written, False when no experiment is configured.
@@ -529,6 +606,27 @@ def apply_pamip_experiment() -> bool:
     out_dir = Path(state.fix) / family
     am_dir = Path(state.fix_src) / "am"
     pamip_dir = Path(state.fix_src) / "external" / family
+    # the files the anomaly is added to (native baseline: stock; external: the copies
+    # in FIXED/external of the files given by external_sst, external_sic and external_mask)
+    base = {
+        "sst": am_dir / SST_FILE,
+        "sic": am_dir / ICE_FILE,
+        "land": am_dir / LAND_FILE,
+    }
+    if baseline != "external" and any(getattr(state, k) for k in SURFACE_KEYS):
+        log.warning(
+            f"external_sst, external_sic and external_mask are not the baseline of pamip_baseline {baseline}; "
+            "the SST and sea-ice files of the experiment replace the SST and sea-ice files"
+        )
+    if baseline == "external":  # all three are set and exist (validation)
+        for kind, key in (
+            ("sst", "fntsfc"),
+            ("sic", "fnaisc"),
+            ("land", "fnmskh"),
+        ):  # staged copies
+            base[kind] = Path(state.fix) / Path(getattr(state, key)).relative_to(
+                "FIXED"
+            )
     # a field that pamip_fields leaves out comes from the control
     specs = {
         kind: (entry if fields in ("both", kind) else control)[kind]
@@ -538,8 +636,8 @@ def apply_pamip_experiment() -> bool:
         [read_pamip(pamip_dir, specs[kind], kind) for kind in ("sst", "sic")],
         join="exact",
     )
-    if baseline == "native":
-        # the PAMIP perturbation (experiment minus control), added to the native files
+    if baseline != "pamip":
+        # the PAMIP perturbation (experiment minus control), added to the native or external files
         src = src - xr.merge(
             [read_pamip(pamip_dir, control[kind], kind) for kind in ("sst", "sic")],
             join="exact",
@@ -548,7 +646,7 @@ def apply_pamip_experiment() -> bool:
 
     # The PAMIP files hold filled values over land: keep the ocean of the 0.5 degree land mask
     # (bilinear, threshold 0.5 as in sfcsub.F) and add one row at each pole for tile points beyond the last row.
-    node = open_grib(am_dir / LAND_FILE).leaves[0]
+    node = open_grib(base["land"]).leaves[0]
     land = node[next(iter(node.data_vars))]
     land = land.isel(
         {d: 0 for d in land.dims if d not in ("latitude", "longitude")}
@@ -581,7 +679,7 @@ def apply_pamip_experiment() -> bool:
     tag = (
         f"{family}_{experiment}"
         if baseline == "pamip"
-        else f"{family}_native_{experiment}"
+        else f"{family}_{baseline}_{experiment}"
     )
     if fields != "both":
         tag = f"{tag}_{fields}"
@@ -589,12 +687,12 @@ def apply_pamip_experiment() -> bool:
         key: file.replace("1982.2012", tag)
         for key, file in (("sst", SST_FILE), ("sic", ICE_FILE))
     }
-    perturbation = baseline == "native"
+    perturbation = baseline != "pamip"
     sst_out, sst_stock = write_pamip_grib(
-        am_dir / SST_FILE, out_dir / names["sst"], src["sst"], "sst", land, perturbation
+        base["sst"], out_dir / names["sst"], src["sst"], "sst", land, perturbation
     )
     sic_out, sic_stock = write_pamip_grib(
-        am_dir / ICE_FILE, out_dir / names["sic"], src["sic"], "sic", land, perturbation
+        base["sic"], out_dir / names["sic"], src["sic"], "sic", land, perturbation
     )
     sic_ocean = sic_out.values[sic_out.values <= LAND_FLAG]
     if (

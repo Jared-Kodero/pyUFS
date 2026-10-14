@@ -2,6 +2,15 @@
 # Check: both segments finish, OUTPUT/fv3_hist.global.nc holds hours 1-12 with
 # no gap or duplicate at hour 6.
 
+# SBATCH OPTIONS
+constraint_node: null
+exclusive_node: false
+walltime: 2
+n_nodes: 1
+n_cpus: 48
+partition: batch
+n_cpus_per_task: 1
+
 description: test hourly restart
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
@@ -13,9 +22,6 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
-n_nodes: 1
-n_cpus: 48
-walltime: 2
 
 # Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 12.5 s.
 dt_atmos: 150

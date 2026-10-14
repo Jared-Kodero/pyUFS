@@ -369,6 +369,16 @@ def update_namsfc(nml):
     if not ocean and not (am_dir / namsfc_files["fnmldc"]).exists():
         del namsfc_files["fnmldc"]
 
+    # fntsfc, fnaisc and fnmskh given in run_config were copied to FIXED/external
+    # (pamip_experiment.stage_surface_files) and replace the stock files
+    provided = {
+        key: getattr(state, key)
+        for key in ("fntsfc", "fnaisc", "fnmskh")
+        if getattr(state, key)
+    }
+    for key in provided:
+        namsfc_files.pop(key, None)
+
     require_fix_files([am_dir / f for f in namsfc_files.values()])
     for key, fname in namsfc_files.items():
         dst = state.fix / fname
@@ -377,15 +387,12 @@ def update_namsfc(nml):
 
         namsfc[key] = f"FIXED/{fname}"
 
+    namsfc.update(provided)
     nml["namsfc"] = namsfc
 
     if state.pamip_experiment:
-        # state.fntsfc and state.fnaisc are set by apply_pamip_experiment()
-        # to the PAMIP SST and sea-ice files; otherwise the native ones stay.
-        if state.fntsfc:
-            nml["namsfc"]["fntsfc"] = state.fntsfc
-        if state.fnaisc:
-            nml["namsfc"]["fnaisc"] = state.fnaisc
+        # state.fntsfc and state.fnaisc hold the PAMIP SST and sea-ice files set by
+        # apply_pamip_experiment() (the files provided in run_config otherwise).
 
         # SST, ice mask and ice concentration follow the PAMIP FIXED
         # climatologies at every surface cycle; fsicl covers points already
