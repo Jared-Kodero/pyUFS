@@ -1,4 +1,14 @@
 # Experiment pair with sm_dry: identical except the soil moisture perturbation.
+
+# SBATCH OPTIONS
+constraint_node: "48core"
+exclusive_node: false
+walltime: 4
+n_nodes: 1
+n_cpus: 48
+partition: batch
+n_cpus_per_task: 1
+
 description: test sm control
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
@@ -8,10 +18,6 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
-n_nodes: 1
-n_cpus: 48
-walltime: 4
-constraint_node: "48core"
 
 # Explicit time stepping for C96: acoustic dt = dt_atmos / (k_split * n_split) = 12.5 s.
 dt_atmos: 150
