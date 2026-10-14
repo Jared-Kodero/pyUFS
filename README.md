@@ -345,7 +345,7 @@ inputs of the preprocessing image, present only in `orog/20231027`) are still fo
 Downloads go to `fix_src` under the NOAA name, with a link under the name the workflow
 reads; `fix_src` must therefore be writable. The chgres_cube variable maps come from the
 UFS_UTILS fork of the preprocessing image. A run stops only for a required file found
-neither locally nor remotely; `mld_DR003_c1m_reg2.0.grb` and `fix/era5` are not in the
+neither locally nor remotely; `mld_DR003_c1m_reg2.0.grb` and `fix/external/ERA5` are not in the
 bucket and must be staged by hand. Set `UFS_PY_FIX_REMOTE=0` to disable remote lookups.
 
 For CO2 the observed record (`fix_co2_update`) is preferred over `co2dat_4a`, and both over
@@ -365,8 +365,9 @@ choose a different destination, and
 `--skip-carto` to skip the Cartopy download. The destination is independent of the
 directory from which the helper is run.
 
-The soil moisture climatology used by the perturbation module is
-`fix/era5/sm_monthly_1950_2025.nc`.
+Data that does not come from the NOAA bucket is kept in `fix/external` (`ERA5`, `PAMIP` and
+`AMIP`), which `tools/update_fix.py` does not replace. The soil moisture climatology used by
+the perturbation module is `fix/external/ERA5/sm_monthly_1950_2025.nc`.
 
 ## 8. Initial conditions and preprocessing
 
@@ -771,7 +772,7 @@ $$X' = (1 - \alpha)\,X + \alpha\,X_\mathrm{ref}$$
 
 Here $\Delta t$ is the length in hours of the previous segment and $\tau$ is `tau_hours`, default 24 hours. The reference
 is the previous perturbed segment, or the climatological mean of `climo_file` (default
-`fix/era5/sm_monthly_1950_2025.nc`) when `use_climo: true`. Holding, `do_hold: true`,
+`fix/external/ERA5/sm_monthly_1950_2025.nc`) when `use_climo: true`. Holding, `do_hold: true`,
 carries the perturbed `target_var` layers of the previous segment forward without
 recomputing; all other surface fields continue from the model restart.
 
@@ -1084,7 +1085,7 @@ quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arct
 `src/pamip_experiment.py`; those with SST and sea-ice boundary files are 1.1
 (control), 1.6, 1.5, 1.3 and 1.4, and their input4MIPs dataset identifiers are in
 `templates/pamip_experiments.yaml`. At the cold start `src/pamip_experiment.py` regrids the
-PAMIP monthly climatologies from `fix_src/PAMIP` (`python tools/download_pamip_amip.py --needed --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
+PAMIP monthly climatologies from `fix_src/external/PAMIP` (`python tools/download_pamip_amip.py --needed --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
 of the native SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
 `RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
 headers, packing, month stamps and land flags of the native files. Only ocean points of SHiELD's own land mask
@@ -1131,7 +1132,7 @@ model year. Volcanic aerosol and solar constant are not changed. The SHiELD name
 each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
 `templates/pamip_experiments.yaml`.
 
-Four test cases run twelve one-month segments from 1 April 2024 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_ctrl` (1.1), `tests/cases/pamip_piarcsic` (1.5) and `tests/cases/pamip_futarcsic` (1.6), which use `pamip_baseline: native` and differ only in `pamip_experiment`, and `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method). The first three need the PAMIP files in `fix_src/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
+Four test cases run twelve one-month segments from 1 April 2024 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_ctrl` (1.1), `tests/cases/pamip_piarcsic` (1.5) and `tests/cases/pamip_futarcsic` (1.6), which use `pamip_baseline: native` and differ only in `pamip_experiment`, and `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method). The first three need the PAMIP files in `fix_src/external/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
 
 ## 22. Monthly runs
 

@@ -25,6 +25,7 @@ REGISTRY = (
     Path(__file__).resolve().parent.parent / "templates" / "pamip_experiments.yaml"
 )
 FIELDS = ("mip_era", "source_id", "variable_id", "status", "file", "detail")
+EXTERNAL_DIR = "external"  # directory of fix_src that holds the PAMIP and AMIP files
 
 
 def search(era: str, target: str, variables: tuple[str, ...], amip: bool):
@@ -225,7 +226,7 @@ def main(argv: list[str] | None = None) -> None:
         "--root",
         type=Path,
         required=True,
-        help="fix_src directory of the case (fix_src in run_config.yaml) that receives PAMIP/ and AMIP/",
+        help="fix_src directory of the case (fix_src in run_config.yaml); PAMIP/ and AMIP/ are written to <root>/external/",
     )
     parser.add_argument(
         "--needed",
@@ -245,7 +246,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if (args.list or args.experiment) and not args.needed:
         parser.error("--list and --experiment require --needed")
-    root = args.root.resolve()
+    root = args.root.resolve() / EXTERNAL_DIR
     intake_esgf.conf.set(all_indices=True, confirm_download=False)
     if args.needed:
         errors = download_needed(root, args.experiment, args.list)
