@@ -16,7 +16,7 @@ generate_ic_data: true
 n_nodes: 3
 n_cpus: 144
 walltime: 12
-constraint_node: "48core"
+constraint_node: null
 dt_atmos: 1200 # same time step in all PAMIP tests
 dt_ocean: 1200
 k_split: [3]
