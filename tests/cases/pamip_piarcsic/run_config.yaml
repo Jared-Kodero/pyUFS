@@ -5,7 +5,7 @@
 # (tools/download_pamip_amip.py). ICs come from GFS, so the date must lie in the GFS archive.
 
 # SBATCH OPTIONS
-constraint_node: "48core"
+constraint_node: null
 exclusive_node: false
 walltime: 12
 n_nodes: 3

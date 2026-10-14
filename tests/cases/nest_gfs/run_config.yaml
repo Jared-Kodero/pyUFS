@@ -3,7 +3,7 @@
 # nest (no HRRR run) and that state.yaml lists nest02/nest03_ic_source as GFS.
 
 # SBATCH OPTIONS
-constraint_node: "48core"
+constraint_node: null
 exclusive_node: false
 walltime: 4
 n_nodes: 2

@@ -2,7 +2,7 @@
 # time. IC/perts holds the original and perturbed sfc_data for comparison.
 
 # SBATCH OPTIONS
-constraint_node: "48core"
+constraint_node: null
 exclusive_node: false
 walltime: 4
 n_nodes: 1

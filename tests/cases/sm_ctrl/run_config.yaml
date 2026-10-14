@@ -1,7 +1,7 @@
 # Experiment pair with sm_dry: identical except the soil moisture perturbation.
 
 # SBATCH OPTIONS
-constraint_node: "48core"
+constraint_node: null
 exclusive_node: false
 walltime: 4
 n_nodes: 1
