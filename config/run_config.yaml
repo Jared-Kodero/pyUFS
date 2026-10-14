@@ -43,19 +43,35 @@ modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules loaded before a na
 # -----------------------------------------------------------------------------
 # 1. JOB SUBMISSION (SLURM)
 # -----------------------------------------------------------------------------
-# Parameters forwarded to sbatch. Override defaults as required by the host.
+# Parameters forwarded to sbatch by launchers/case_submit.py and launchers/sbatch.sh
+# (README section 6.2). Override defaults as required by the host. Case files
+# conventionally group these keys at the top under "# SBATCH OPTIONS".
+#
+#   key              sbatch flag
+#   constraint_node  --constraint=<value>   (omitted when null)
+#   exclusive_node   --exclusive            (omitted when false)
+#   walltime         --time=<walltime>:00:00
+#   n_nodes          --nodes
+#   n_cpus           --ntasks and --ntasks-per-node (see below)
+#   n_cpus_per_task  --cpus-per-task
+#   partition        --partition
+#   mem              --mem=<mem>g on one node, --mem-per-cpu=<mem // tasks>g on several
+#   sbatch_options   appended to the sbatch call unchanged
+#
+# Tasks per node are n_cpus // n_nodes and the task count submitted is
+# (n_cpus // n_nodes) * n_nodes, so n_cpus is rounded down to a multiple of n_nodes.
+# Multi-node runs need a native shield_exe (section 0); single-node runs may use the container.
 
-constraint_node: null # Apply node constraint
-exclusive_node: false # Request exclusive node access
-walltime: 24 # Walltime in hours
+constraint_node: null # Node constraint passed as --constraint=<value>, for example a CPU architecture or feature tag defined by the host
+exclusive_node: false # true requests exclusive node access (--exclusive)
+walltime: 24 # Walltime in whole hours, submitted as <walltime>:00:00. Each restart segment is a separate job with this limit.
 n_nodes: 4 # Number of nodes to request
-n_cpus: 192 # Total number of tasks to request. At least 32 must be visible to the preprocess process.
+n_cpus: 192 # Total number of tasks to request, rounded down to a multiple of n_nodes. At least 32 must be visible to the preprocess process.
 partition: batch # Partition to submit the job to
 n_cpus_per_task: 1 # CPUs per task (for MPI or OpenMP)
-mem: 0 # Total job memory [GB]; 0 lets the scheduler apply its default
-sbatch_options: "" # Additional raw options passed directly to sbatch.
-logfile: shield_driver # Basename of the driver log written in the case directory
-# Tasks per node are computed as n_cpus // n_nodes.
+mem: 0 # Total job memory [GB]. Used only when above 2 GB per task (mem > 2 * tasks); otherwise, and for 0, the scheduler default applies.
+sbatch_options: "" # Additional raw options passed directly to sbatch, for example "--account=myproj --mail-type=END".
+logfile: shield_driver # Basename of the driver log written in the case directory (<logfile>.log, or <logfile>.<nn>.log for ensemble members)
 
 # -----------------------------------------------------------------------------
 # 2. CASE METADATA
