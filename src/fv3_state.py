@@ -174,7 +174,7 @@ class FV3State:
     # 10-11. Perturbations
     sm_perturbations: dict | None = None
     pamip_experiment: str | None = None
-    pamip_baseline: str | None = None  # pamip (default), native or external
+    pamip_baseline: str | None = None  # pamip (default), stock or external
     pamip_fields: str | None = None  # both (default), sst or sic
     # Own climatologies from run_config: a GRIB path, absolute or relative to fix_src
     external_sst: str | None = None

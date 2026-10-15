@@ -1,0 +1,36 @@
+# PAMIP 1.6 (pdSST-futArcSIC) on the external baseline: the ESA SST CCI climatology of tools/esa_sst.py (SST, sea ice, land mask,
+# land filled with ERA5-Land) plus the PAMIP perturbation of experiment 1.6 minus 1.1. The two PAMIP cases
+# differ only in pamip_experiment. Needs the PAMIP NetCDF files in <fix_src>/external/PAMIP
+# (tools/get_pamip.py) and the three ESA files in <fix_src>/external/ESA (python tools/esa_sst.py).
+# ICs come from GFS, so the date must lie in the GFS archive.
+
+# SBATCH OPTIONS
+constraint_node: null
+exclusive_node: false
+walltime: 12
+n_nodes: 3
+n_cpus: 144
+partition: batch
+n_cpus_per_task: 1
+
+description: test PAMIP 1.6 ESA baseline
+archive_data: false # Tests do not archive outputs
+init_datetime: "2023010100Z"
+run_length: 1
+run_length_units: months
+resubmit: 11 # 12 monthly segments, January to December 2023 (JJA are segments 6 to 8)
+merge_freq: -1
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+dt_atmos: 1200 # same time step in all PAMIP tests
+dt_cpld: 1200
+k_split: [3]
+n_split: [6]
+
+pamip_experiment: "1.6"
+pamip_baseline: external
+external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
+external_sic: external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb
+external_mask: external/ESA/landmask.ESACCI.grb

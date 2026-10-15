@@ -1,0 +1,29 @@
+# Stock reference: no PAMIP option, the stock RTGSST and CFSR.SEAICE climatologies with the
+# stock surface-cycle settings (90-day SST relaxation, GFS ice, mixed-layer ocean). The reference
+# for pamip_1.1_pdsst_pdsic and pamip_1.6_pdsst_futarcsic, which replace the climatologies with the ESA set.
+# ICs come from GFS, so the date must lie in the GFS archive.
+
+# SBATCH OPTIONS
+constraint_node: null
+exclusive_node: false
+walltime: 12
+n_nodes: 3
+n_cpus: 144
+partition: batch
+n_cpus_per_task: 1
+
+description: test PAMIP stock reference (no boundary replacement)
+archive_data: false # Tests do not archive outputs
+init_datetime: "2023010100Z"
+run_length: 1
+run_length_units: months
+resubmit: 11 # 12 monthly segments, January to December 2023 (JJA are segments 6 to 8)
+merge_freq: -1
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+dt_atmos: 1200 # same time step in all PAMIP tests
+dt_cpld: 1200
+k_split: [3]
+n_split: [6]
