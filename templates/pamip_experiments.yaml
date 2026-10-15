@@ -1,6 +1,6 @@
 # PAMIP Tier 1 and 2 SST and sea-ice boundary conditions (input4MIPs, target_mip PAMIP).
 #
-# Read by src/pamip_experiment.py and tools/download_pamip_amip.py; this file is
+# Read by src/pamip_experiment.py and tools/get_pamip.py; this file is
 # the only place that ties an experiment number to its forcing files. Every
 # experiment, the control 1.1 included, is a pair of absolute monthly climatologies
 # (twelve months on a 1 degree grid), and the pair already holds the ice-edge SST
@@ -15,7 +15,7 @@
 #
 # File name of a dataset (as indexed on ESGF, checked against Table A1):
 #   <variable_id>_input4MIPs_SSTsAndSeaIce_PAMIP_<source_id>_gn_<period>.nc
-# Downloaded to <fix_src>/external/PAMIP/<source_id>/<variable_id>/ by tools/download_pamip_amip.py.
+# Downloaded to <fix_src>/external/PAMIP/<source_id>/<variable_id>/ by tools/get_pamip.py.
 # source_id UCI-present-1-0 also holds other siconc files (1979-2014); the period
 # selects the 1979-2008 climatology.
 #

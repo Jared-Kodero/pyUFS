@@ -330,11 +330,13 @@ sm_perturbations: null
 # al., 2019, Geosci. Model Dev. 12, 1139). The option only selects the experiment;
 # nothing is added to the PAMIP fields, whose pair already holds the ice-edge SST
 # adjustment. At cold start the PAMIP NetCDF files in <fix_src>/external/PAMIP (downloaded
-# with tools/download_pamip_amip.py --needed --root <fix_src>) are regridded onto the grids of
+# with tools/get_pamip.py --root <fix_src>) are regridded onto the grids of
 # fix_src/am/RTGSST.* and CFSR.SEAICE.* and written to FIXED/PAMIP/ as
 # RTGSST.PAMIP_<exp>.monthly.clim.grb and CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb,
-# keeping the headers, packing, month stamps and land flags of the native files; only ocean points
-# of the SHiELD land mask change and land points keep the native values (sfcsub.F never reads them).
+# keeping the headers, packing, month stamps and land flags of the native files. With the pamip baseline
+# the SST is the PAMIP SST at every point, land included, because the PAMIP files hold filled values over land;
+# the sea ice changes only at the ocean points of the SHiELD land mask and keeps its land flag (values above 1),
+# which sfcsub.F needs to find land in the sea-ice file.
 # Their paths are stored in state.fntsfc and state.fnaisc, which update_namsfc
 # writes to namsfc when set. fix_src is only read. The option is validated when the
 # case starts, before grid and IC generation; restart segments keep the FIXED/PAMIP
@@ -370,29 +372,29 @@ sm_perturbations: null
 # the solar constant are not changed. The SHiELD settings of each experiment are
 # PAMIP_EXPERIMENTS in src/pamip_experiment.py; the protocol is in templates/pamip_experiments.yaml.
 #
-# pamip_baseline (null = pamip) chooses what the experiment is applied to (pamip, native or external):
+# pamip_baseline (null = pamip) chooses what the experiment is applied to (pamip, stock or external):
 #   pamip    the PAMIP fields as they are (the protocol).
-#   native   the native SHiELD climatologies (RTGSST 0.083 degree, CFSR sea ice 0.5 degree,
+#   stock    the stock SHiELD climatologies in fix_src/am (RTGSST 0.083 degree, CFSR sea ice 0.5 degree,
 #            1982-2012) plus the PAMIP perturbation, experiment minus 1.1, regridded from
-#            1 degree. Sea ice is clipped to 0..1; SST is perturbed where the native value lies
-#            in 271.2..313.0 K and kept between the native freezing value and 313.0 K. The
-#            control of this baseline is pamip_experiment "1.1" (no perturbation: the native
+#            1 degree. Sea ice is clipped to 0..1; SST is perturbed where the stock value lies
+#            in 271.2..313.0 K and kept between the stock freezing value and 313.0 K. The
+#            control of this baseline is pamip_experiment "1.1" (no perturbation: the stock
 #            fields with the surface-cycle settings of the PAMIP runs); pamip_experiment null
 #            keeps the stock settings and is not a control for it. Files:
-#            RTGSST.PAMIP_native_<exp>.monthly.clim.grb, CFSR.SEAICE.PAMIP_native_<exp>...
+#            RTGSST.PAMIP_stock_<exp>.monthly.clim.grb, CFSR.SEAICE.PAMIP_stock_<exp>...
 #   external the files given by external_sst, external_sic and external_mask (below) instead of the stock files:
-#            the same as native, with copies of those files as the baseline. All three must be
+#            the same as stock, with copies of those files as the baseline. All three must be
 #            set to existing files, or the case stops before grid generation. The ocean of external_mask decides which points change (land keeps the
 #            values of the file); a mask on the grid of the SST file is used without regridding.
 #            Files: RTGSST.PAMIP_external_<exp>.monthly.clim.grb, CFSR.SEAICE.PAMIP_external_<exp>...
 # pamip_fields (null = both) takes both fields, only the SST (sst) or only the sea ice
-# (sic) from the experiment; the other is the control (PAMIP 1.1, or the native field
-# with the native baseline) and "_sst" or "_sic" is added to the file names. The protocol
+# (sic) from the experiment; the other is the control (PAMIP 1.1, or the stock field
+# with the stock baseline) and "_sst" or "_sic" is added to the file names. The protocol
 # pairs hold the ice-edge SST adjustment, which sst or sic alone leaves out.
 #
-# Examples: native control       pamip_experiment: "1.1", pamip_baseline: native
-#           native + Arctic loss  pamip_experiment: "1.6", pamip_baseline: native
-#           ice perturbation only pamip_experiment: "1.6", pamip_baseline: native, pamip_fields: sic
+# Examples: stock control        pamip_experiment: "1.1", pamip_baseline: stock
+#           stock + Arctic loss   pamip_experiment: "1.6", pamip_baseline: stock
+#           ice perturbation only pamip_experiment: "1.6", pamip_baseline: stock, pamip_fields: sic
 
 pamip_experiment: null
 pamip_baseline: null
@@ -408,7 +410,7 @@ pamip_fields: null
 # the files of the experiment replace the SST and sea-ice files. With pamip_baseline: external the
 # PAMIP anomaly (experiment minus 1.1) is added to the copies, which also gives a control
 # with pamip_experiment "1.1". The ESA SST CCI set made by tools/esa_sst.py is in
-# <fix_src>/external/ESA:
+# <fix_src>/external/ESA (python tools/esa_sst.py, no options; fix_src is the fix directory next to tools/):
 #
 # external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
 # external_sic: external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb

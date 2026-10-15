@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+import numpy as np
 import xarray as xr
 import xesmf as xe
 
@@ -104,6 +105,24 @@ def ll_regrid(
         skipna=True,
         keep_attrs=True,
         output_chunks=output_chunks,
+    )
+
+
+def fill_nearest(da: xr.DataArray, limit: float = float("inf")) -> xr.DataArray:
+    """Fill NaN with the nearest valid cell (in cells) of the same lat/lon field, up to ``limit`` cells."""
+
+    from scipy.ndimage import distance_transform_edt
+
+    def fill(a: np.ndarray) -> np.ndarray:
+        dist, (iy, ix) = distance_transform_edt(np.isnan(a), return_indices=True)
+        return np.where(dist <= limit, a[iy, ix], np.nan)
+
+    return xr.apply_ufunc(
+        fill,
+        da,
+        input_core_dims=[["lat", "lon"]],
+        output_core_dims=[["lat", "lon"]],
+        vectorize=True,
     )
 
 
