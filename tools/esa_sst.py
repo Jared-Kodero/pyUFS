@@ -8,34 +8,34 @@ and are deleted after they have been averaged.
 Steps
 -----
 1. Monthly means over the days of each month of the 365-day year (31, 28, 31, ...), then ``ll_regrid`` (xESMF,
-   bilinear, NaN-skipping) of SST, sea ice and land share onto the 1/12 degree grid of the stock SST file.
+   bilinear, NaN-skipping) of SST, sea ice and land share onto the 1/12 degree grid of the SHiELD SST file.
    Land is where the regridded share is at least 0.5. Memory: the xESMF weights take about 15 GB.
-2. Lakes. The stock mask has lakes as water, the CCI as land. A stock water body that the CCI covers with land in
+2. Lakes. The SHiELD mask has lakes as water, the CCI as land. A SHiELD water body that the CCI covers with land in
    at least 90 % of its cells is a lake and stays water: ERA5-Land skin temperature (limited to the SST range of
-   ``sfcsub.F``, stock SST where ERA5-Land has none) and the stock ice. The stock ice marks the Great Lakes with the land flag 1.57; there
+   ``sfcsub.F``, SHiELD SST where ERA5-Land has none) and the SHiELD ice. The SHiELD ice marks the Great Lakes with the land flag 1.57; there
    a lake at freezing (below 273.15 K) is ice covered and any other is ice free.
 3. SST. Water takes the CCI value, limited to 271.2..313.0 K (``sfcsub.F``). GRIB1 has no missing value and SHiELD
    ignores a bitmap, so land is filled: land within 3 cells of water takes the nearest water value, so that the
    coastlines never mix a land value into an ocean point, and the rest takes the 1991-2020 monthly ERA5-Land skin
    temperature (limited to 173..353 K, the bare-land limits of ``sfcsub.F``), downloaded once by ``get_era5.py``.
-4. Sea ice. Water takes the CCI fraction (0..1), land the flag 1.57 of the stock file, which ``sfcsub.F`` needs to find
+4. Sea ice. Water takes the CCI fraction (0..1), land the flag 1.57 of the SHiELD file, which ``sfcsub.F`` needs to find
    the land of the ice file. The mask is 1 over land.
-5. GRIB. The files use the grid of the stock SST file, below the 5000 x 2500 limit of the readers of ``sfcsub.F``.
-   Each is written through the messages of a stock file (``grib_io.save_grib``), so headers, packing and month
+5. GRIB. The files use the grid of the SHiELD SST file, below the 5000 x 2500 limit of the readers of ``sfcsub.F``.
+   Each is written through the messages of a SHiELD file (``grib_io.save_grib``), so headers, packing and month
    stamps stay. Sea ice and mask are first cloned onto the 1/12 degree grid.
 
-Output, in ../fix/external/ESA (the stock files are read from ../fix/am), with the difference figures
-``*_change_vs_stock.png`` (new minus stock, Robinson panels)::
+Output, in ../fix/external/ESA (the SHiELD files are read from ../fix/am), with the difference figures
+``*_change_vs_shield.png`` (ESA_SST minus RTGSST, ESA_SST minus CFSR.SEAICE, Robinson panels)::
 
     sst.ESACCI_1991_2020.monthly.clim.grb   sic.ESACCI_1991_2020.monthly.clim.grb   landmask.ESACCI.grb
 
-The three go together (namsfc FNTSFC, FNAISC, FNMSKH), never mixed with stock files. In ``run_config.yaml``::
+The three go together (namsfc FNTSFC, FNAISC, FNMSKH), never mixed with SHiELD files. In ``run_config.yaml``::
 
     external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
     external_sic: external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb
     external_mask: external/ESA/landmask.ESACCI.grb
 
-Usage: ``python tools/esa_sst.py`` (no options). Differences from the stock set (RTG SST, CFSR ice, 1982-2012) are
+Usage: ``python tools/esa_sst.py`` (no options). Differences from the SHiELD set (RTG SST, CFSR ice, 1982-2012) are
 differences of data set and period, not only of climate.
 """
 
@@ -66,7 +66,7 @@ URL = (
     "https://dap.ceda.ac.uk/neodc/eocis/data/global_and_regional/sea_surface_temperature/"
     "CDR_v3/Climatology/L4/v3.0.1/D{:03d}-ESACCI-L4_GHRSST-SSTdepth-Climatology-GLOB_CDR3.0-v02.0-fv01.0.nc"
 )
-STOCK = {
+SHIELD = {
     "sst": FIX / "am" / "RTGSST.1982.2012.monthly.clim.grb",
     "sic": FIX / "am" / "CFSR.SEAICE.1982.2012.monthly.clim.grb",
     "mask": FIX / "am" / "seaice_newland.grb",
@@ -89,8 +89,8 @@ MONTH_OF_DAY = np.repeat(
 
 
 def read(path: Path) -> xr.DataArray:
-    """A stock GRIB file as ``(month, lat, lon)``."""
-    log.info("Reading stock GRIB: %s", path)
+    """A SHiELD GRIB file as ``(month, lat, lon)``."""
+    log.info("Reading SHiELD GRIB: %s", path)
     node = open_grib(path).leaves[0]
     da = next(iter(node.data_vars.values()))
     da = da.isel({da.dims[1]: 0}, drop=True)
@@ -100,7 +100,7 @@ def read(path: Path) -> xr.DataArray:
         .rename(latitude="lat", longitude="lon")
         .load()
     )
-    log.info("Loaded stock GRIB: %s", path)
+    log.info("Loaded SHiELD GRIB: %s", path)
     return result
 
 
@@ -164,9 +164,9 @@ def monthly_means() -> xr.Dataset:
 
 
 def write(values: xr.DataArray, template: Path, out: Path) -> None:
-    """Write ``(month, lat, lon)`` values on the stock SST grid through the messages of ``template``."""
+    """Write ``(month, lat, lon)`` values on the SHiELD SST grid through the messages of ``template``."""
     log.info("Writing GRIB %s: preparing reference grid", out.name)
-    with STOCK["sst"].open("rb") as handle:
+    with SHIELD["sst"].open("rb") as handle:
         gid = eccodes.codes_grib_new_from_file(handle)
         grid = {key: eccodes.codes_get(gid, key) for key in GRID_KEYS}
         eccodes.codes_release(gid)
@@ -202,8 +202,13 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
     log.info("Saved GRIB: %s", out)
 
 
-def plot(diff: xr.DataArray, path: Path, label: str, cmap: str) -> None:
-    """Robinson panels of ``(month, lat, lon)`` differences, NaN white, symmetric colour scale (99.9th percentile)."""
+def plot(diff: xr.DataArray, path: Path, title: str, label: str, cmap: str) -> None:
+    """Robinson panels of ``(month, lat, lon)`` differences, NaN white, symmetric colour scale (99.9th percentile).
+
+    ``title`` names the two fields, ``new - old``. Blocks of cells are reduced to their value of largest
+    magnitude, so single-cell differences (coastline, lakes, ice flag) are not averaged away and the
+    largest change in the title is that of the full grid.
+    """
     log.info("Plotting differences: %s", path.name)
     import cartopy
     import cartopy.crs as ccrs
@@ -214,13 +219,15 @@ def plot(diff: xr.DataArray, path: Path, label: str, cmap: str) -> None:
         FIX / "external" / "CARTOPY"
     )  # Natural Earth cache of fv3_plot_grid.py
     step = max(diff.sizes["lon"] // 720, 1)
-    diff = diff.coarsen(lat=step, lon=step, boundary="trim").mean()
+    blocks = diff.coarsen(lat=step, lon=step, boundary="trim")
+    high, low = blocks.max(), blocks.min()
+    diff = high.where(high >= -low, low)
     diff = diff.assign_coords(lon=(diff.lon + 180.0) % 360.0 - 180.0).sortby("lon")
     top = max(float(abs(diff).quantile(0.999)), 1e-3)
     unit = 10.0 ** np.floor(np.log10(top))
     limit = np.ceil(top / unit) * unit
     grid = diff.plot(
-        x="lon", y="lat", col="month", col_wrap=4,
+        x="lon", y="lat", col="month", col_wrap=min(4, diff.sizes["month"]),
         transform=ccrs.PlateCarree(), subplot_kws={"projection": ccrs.Robinson()},
         cmap=cmap, vmin=-limit, vmax=limit, size=2.4, aspect=1.55, rasterized=True, add_colorbar=False,
     )  # fmt: skip
@@ -234,7 +241,7 @@ def plot(diff: xr.DataArray, path: Path, label: str, cmap: str) -> None:
         label=label,
         shrink=0.5,
     )
-    grid.fig.suptitle(f"{path.stem}: largest change {float(abs(diff).max()):.3g}")
+    grid.fig.suptitle(f"{title}: largest change {float(abs(diff).max()):.3g}")
     grid.fig.savefig(path, dpi=300, bbox_inches="tight")
     log.info("Saved plot: %s", path)
 
@@ -247,23 +254,25 @@ def main() -> None:
         .rename(latitude="lat", longitude="lon")
         .sortby("lat")
     )
-    log.info("Loading stock SST, sea-ice and land-mask fields")
-    stock_sst, stock_sic = read(STOCK["sst"]), read(STOCK["sic"])
-    stock_land = read(STOCK["mask"]).isel(month=0, drop=True) > 0.5
-    grid = stock_sst.assign_coords(lon=stock_sst.lon % 360.0)
+    log.info("Loading SHiELD SST, sea-ice and land-mask fields")
+    shield_sst, shield_sic = read(SHIELD["sst"]), read(SHIELD["sic"])
+    shield_land = read(SHIELD["mask"]).isel(month=0, drop=True) > 0.5
+    grid = shield_sst.assign_coords(lon=shield_sst.lon % 360.0)
     esa = monthly_means()
     log.info("Monthly ESA SST, sea-ice and land-mask fields ready")
 
     def regrid(da: xr.DataArray) -> xr.DataArray:
-        log.info("Regridding %s to the stock SST grid", da.name)
-        result = ll_regrid(da, grid).assign_coords(lat=stock_sst.lat, lon=stock_sst.lon)
+        log.info("Regridding %s to the SHiELD SST grid", da.name)
+        result = ll_regrid(da, grid).assign_coords(
+            lat=shield_sst.lat, lon=shield_sst.lon
+        )
         log.info("Regridded %s", da.name)
         return result
 
     def on_grid(
         da: xr.DataArray,
-    ) -> xr.DataArray:  # a 0.5 degree stock field on the 1/12 degree grid
-        return da.reindex(lat=stock_sst.lat, lon=stock_sst.lon, method="nearest")
+    ) -> xr.DataArray:  # a 0.5 degree SHiELD field on the 1/12 degree grid
+        return da.reindex(lat=shield_sst.lat, lon=shield_sst.lon, method="nearest")
 
     sst, sic, share, skin = (
         regrid(da) for da in (esa["sst"], esa["sic"], esa["land"], skin)
@@ -271,19 +280,19 @@ def main() -> None:
     log.info("Applying ESA land threshold")
     land = share >= 0.5
 
-    log.info("Identifying lakes using the stock mask")
-    # stock water bodies that the CCI covers with land are lakes
-    coarse = share.reindex(lat=stock_land.lat, lon=stock_land.lon, method="nearest")
-    labels, count = ndimage.label(~stock_land.values)
+    log.info("Identifying lakes using the SHiELD mask")
+    # SHiELD water bodies that the CCI covers with land are lakes
+    coarse = share.reindex(lat=shield_land.lat, lon=shield_land.lon, method="nearest")
+    labels, count = ndimage.label(~shield_land.values)
     covered = ndimage.mean(coarse.values, labels, np.arange(1, count + 1)) >= LAKE_SHARE
     lake = (
-        on_grid(stock_land.copy(data=np.isin(labels, 1 + np.flatnonzero(covered))))
+        on_grid(shield_land.copy(data=np.isin(labels, 1 + np.flatnonzero(covered))))
         & land
     )
     water = ~land | lake
 
     log.info("Filling and constraining SST over ocean, lakes and land")
-    lake_sst = skin.clip(*SST_RANGE).fillna(stock_sst)
+    lake_sst = skin.clip(*SST_RANGE).fillna(shield_sst)
     sst = sst.where(~lake, lake_sst).where(water)
     sst = (
         fill_nearest(sst, BUFFER)
@@ -292,43 +301,47 @@ def main() -> None:
     )
     sst = xr.where(water, sst.clip(*SST_RANGE), sst.clip(*LAND_RANGE))
     log.info("Constructing sea-ice fractions and land mask")
-    # stock lake ice; the Great Lakes carry the land flag there, so ice is where the lake is at freezing
-    lake_ice = on_grid(stock_sic)
+    # SHiELD lake ice; the Great Lakes carry the land flag there, so ice is where the lake is at freezing
+    lake_ice = on_grid(shield_sic)
     lake_ice = lake_ice.where(lake_ice <= 1.0, (lake_sst < FREEZING).astype("float32"))
     sic = sic.where(~lake, lake_ice).where(water)
     sic = xr.where(water, fill_nearest(sic).clip(0.0, 1.0), LAND_FLAG)
     mask = (~water).astype("float32")
 
     log.info("Writing SST, sea-ice and land-mask GRIB outputs")
-    write(sst, STOCK["sst"], OUT / "sst.ESACCI_1991_2020.monthly.clim.grb")
-    write(sic, STOCK["sic"], OUT / "sic.ESACCI_1991_2020.monthly.clim.grb")
-    write(mask.expand_dims(month=[1]), STOCK["mask"], OUT / "landmask.ESACCI.grb")
+    write(sst, SHIELD["sst"], OUT / "sst.ESACCI_1991_2020.monthly.clim.grb")
+    write(sic, SHIELD["sic"], OUT / "sic.ESACCI_1991_2020.monthly.clim.grb")
+    write(mask.expand_dims(month=[1]), SHIELD["mask"], OUT / "landmask.ESACCI.grb")
 
-    log.info("Preparing difference fields relative to stock data")
-    both_ocean = water & on_grid(~stock_land)
-    both_land = ~water & on_grid(stock_land)
+    log.info("Preparing difference fields relative to SHiELD data")
+    both_ocean = water & on_grid(~shield_land)
+    both_land = ~water & on_grid(shield_land)
     plot(
-        (sst - stock_sst).where(both_ocean),
-        OUT / "sst_change_vs_stock.png",
-        "SST change (K)",
+        (sst - shield_sst).where(both_ocean),
+        OUT / "sst_change_vs_shield.png",
+        "ESA_SST - RTGSST (ocean)",
+        "SST difference (K)",
         "RdBu_r",
     )
     plot(
-        (sst - stock_sst).where(both_land),
-        OUT / "sst_land_change_vs_stock.png",
-        "Land SST change (K)",
+        (sst - shield_sst).where(both_land),
+        OUT / "sst_land_change_vs_shield.png",
+        "ESA_SST.ERA5_LAND - RTGSST (land)",
+        "Land SST difference (K)",
         "RdBu_r",
     )
     plot(
-        (sic - on_grid(stock_sic)).where(both_ocean),
-        OUT / "sic_change_vs_stock.png",
-        "Sea-ice change",
+        (sic - on_grid(shield_sic)).where(both_ocean),
+        OUT / "sic_change_vs_shield.png",
+        "ESA_SST - CFSR.SEAICE",
+        "Sea-ice fraction difference",
         "RdBu",
     )
     plot(
-        (mask - on_grid(stock_land.astype("float32"))).expand_dims(month=[1]),
-        OUT / "mask_change_vs_stock.png",
-        "Land mask change",
+        (mask - on_grid(shield_land.astype("float32"))).expand_dims(month=[1]),
+        OUT / "mask_change_vs_shield.png",
+        "ESA_SST land mask - seaice_newland (1 = land)",
+        "Land mask difference",
         "RdBu_r",
     )
     log.info("ESA SST climatology processing completed")
