@@ -112,7 +112,7 @@ compute node, or Apptainer does not start.
 | `config/` | Default `run_config.yaml` and the container Conda environment, `env.yaml`. |
 | `templates/` | Model namelists, diagnostic and tracer tables, and initial-condition conversion templates. |
 | `tables/` | CSV reference catalogs for diagnostic, GFS, HRRR, and ERA5 fields. |
-| `tools/` | SHiELD build, container build, shared fixed-dataset maintenance and boundary-condition dataset utilities (`download_pamip_amip.py`, `esa_sst.py`). |
+| `tools/` | SHiELD build, container build, shared fixed-dataset maintenance and boundary-condition dataset utilities (`get_pamip.py`, `get_amip.py`, `esa_sst.py`, `get_era5.py`). |
 | `config/examples/` | Example run configurations and overrides (Section 18). |
 | `tests/cases/` | Existing HPC regression cases, retaining their case-local files and directories. |
 | `tests/submit.sh` | Helper that submits the four PAMIP cases from the `tests/` directory; the other cases are commented out in it. |
@@ -1141,7 +1141,7 @@ quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arct
 `src/pamip_experiment.py`; those with SST and sea-ice boundary files are 1.1
 (control), 1.6, 1.5, 1.3 and 1.4, and their input4MIPs dataset identifiers are in
 `templates/pamip_experiments.yaml`. At the cold start `src/pamip_experiment.py` regrids the
-PAMIP monthly climatologies from `fix_src/external/PAMIP` (`python tools/download_pamip_amip.py --needed --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
+PAMIP monthly climatologies from `fix_src/external/PAMIP` (`python tools/get_pamip.py --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
 of the native SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
 `RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
 headers, packing, month stamps and land flags of the native files. Only ocean points of SHiELD's own land mask
@@ -1190,7 +1190,7 @@ model year. Volcanic aerosol and solar constant are not changed. The SHiELD name
 each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
 `templates/pamip_experiments.yaml`.
 
-Four test cases run twelve one-month segments from 1 January 2023 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_ctrl` (1.1), `tests/cases/pamip_piarcsic` (1.5) and `tests/cases/pamip_futarcsic` (1.6), which use `pamip_baseline: native` and differ only in `pamip_experiment`, and `tests/cases/pamip_native` (null, the stock climatologies and surface-cycle settings, a baseline of the stock method). The first three need the PAMIP files in `fix_src/external/PAMIP` (`tools/download_pamip_amip.py`). They are listed in `tests/submit.sh`.
+Three test cases run twelve one-month segments from 1 January 2023 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_1.1_pdsst_pdsic` (experiment 1.1, control) and `tests/cases/pamip_1.6_pdsst_futarcsic` (1.6, future Arctic sea ice), which use `pamip_baseline: external` (the ESA SST CCI set of `tools/esa_sst.py`: `external_sst`, `external_sic` and `external_mask` in `fix_src/external/ESA`) and differ only in `pamip_experiment`, and `tests/cases/pamip_ctrl` (no PAMIP option, the stock climatologies and surface-cycle settings, the reference of the stock method). The two ESA cases need the PAMIP files in `fix_src/external/PAMIP` (`tools/get_pamip.py`) and the ESA files. They are listed in `tests/submit.sh`.
 
 ## 22. Monthly runs
 
