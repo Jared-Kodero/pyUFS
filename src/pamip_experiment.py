@@ -366,8 +366,8 @@ def write_boundary_files() -> xr.Dataset | None:
                         shrink=0.5,
                     )
                     grid.fig.suptitle(
-                        f"{names[kind].removesuffix('.monthly.clim.grb')}"
-                        f"{(base_files[kind]).name.removesuffix('.monthly.clim.grb')}: "
+                        f"{names[kind].removesuffix('.monthly.clim.grb')} - "
+                        f"{base_files[kind].name.removesuffix('.monthly.clim.grb')}: "
                         f"largest change {float(abs(out[kind] - base[kind]).max()):.3g}"
                     )
                     grid.fig.savefig(figure, dpi=300, bbox_inches="tight")
