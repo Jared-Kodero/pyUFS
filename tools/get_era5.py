@@ -8,14 +8,18 @@
 Needs ``pip install cdsapi``, a CDS account with the dataset licences accepted and ~/.cdsapirc.
 Output, in ../fix/external/ERA5: monthly_skin_1991-2020.nc and monthly_sst_1991-2020.nc
 (variables skt and sst, dimensions month, latitude, longitude, K). Existing files are not downloaded again.
+The yearly downloads are temporary files in /tmp/<user> and are deleted after the average is saved.
 """
 
+import getpass
+import tempfile
 from pathlib import Path
 
 import cdsapi
 import xarray as xr
 
 OUT = Path(__file__).resolve().parent.parent / "fix" / "external" / "ERA5"
+TMP = Path(tempfile.gettempdir()) / getpass.getuser()
 YEARS = range(1991, 2021)
 DATASETS = {  # key: (CDS dataset, CDS variable, variable in the file)
     "skin": ("reanalysis-era5-land-monthly-means", "skin_temperature", "skt"),
@@ -30,12 +34,13 @@ DATASETS = {  # key: (CDS dataset, CDS variable, variable in the file)
 def get_era5() -> dict[str, Path]:
     """Paths of the two climatologies; the missing ones are downloaded year by year and averaged."""
     OUT.mkdir(parents=True, exist_ok=True)
+    TMP.mkdir(parents=True, exist_ok=True)
     paths = {}
     for key, (dataset, variable, name) in DATASETS.items():
         paths[key] = target = OUT / f"monthly_{key}_{YEARS[0]}-{YEARS[-1]}.nc"
         if target.exists():
             continue
-        files = [OUT / f"{key}_{year}.nc" for year in YEARS]
+        files = [TMP / f"{key}_{year}.nc" for year in YEARS]
         for year, file in zip(YEARS, files, strict=True):
             if not file.exists():
                 request = {
