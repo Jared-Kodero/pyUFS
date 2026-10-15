@@ -39,6 +39,7 @@ Usage: ``python tools/esa_sst.py`` (no options). Differences from the stock set 
 differences of data set and period, not only of climate.
 """
 
+import logging
 import os
 import sys
 import tempfile
@@ -56,6 +57,8 @@ from scipy import ndimage
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from grib_io import open_grib, save_grib
 from latlon_to_fv3 import fill_nearest, ll_regrid
+
+log = logging.getLogger(__name__)
 
 FIX = Path(__file__).resolve().parent.parent / "fix"
 OUT = FIX / "external" / "ESA"
@@ -87,59 +90,82 @@ MONTH_OF_DAY = np.repeat(
 
 def read(path: Path) -> xr.DataArray:
     """A stock GRIB file as ``(month, lat, lon)``."""
+    log.info("Reading stock GRIB: %s", path)
     node = open_grib(path).leaves[0]
     da = next(iter(node.data_vars.values()))
     da = da.isel({da.dims[1]: 0}, drop=True)
-    return (
+    result = (
         da.assign_coords(month=da.time.dt.month)
         .swap_dims(time="month")
         .rename(latitude="lat", longitude="lon")
         .load()
     )
+    log.info("Loaded stock GRIB: %s", path)
+    return result
 
 
 def download(day: int, folder: Path) -> Path:
     file = folder / f"D{day:03d}.nc"
-    for _ in range(5):
+    for attempt in range(1, 6):
         try:
             urllib.request.urlretrieve(URL.format(day), f"{file}.part")
             return Path(f"{file}.part").replace(file)
-        except OSError:
+        except OSError as exc:
+            log.warning("Download D%03d failed (%d/5): %s", day, attempt, exc)
             time.sleep(5)
     raise RuntimeError(f"D{day:03d} could not be downloaded")
 
 
 def monthly_means() -> xr.Dataset:
     """SST and sea-ice fraction as ``(month, lat, lon)`` on the 0.05 degree grid, and the land mask."""
+    log.info("Building ESA SST CCI monthly climatologies")
     months = []
     with tempfile.TemporaryDirectory(dir=OUT) as folder, ThreadPoolExecutor(4) as pool:
         for month in range(1, 13):
             days = np.flatnonzero(MONTH_OF_DAY == month) + 1
-            files = list(pool.map(lambda day: download(day, Path(folder)), days))
+            log.info("Month %02d/12: downloading %d daily files", month, len(days))
+            files = []
+            for i, file in enumerate(
+                pool.map(lambda day: download(day, Path(folder)), days), 1
+            ):
+                files.append(file)
+                log.info(
+                    "Month %02d/12: downloaded %d/%d (%s)",
+                    month,
+                    i,
+                    len(days),
+                    file.name,
+                )
+
+            log.info("Month %02d/12: computing monthly means (chunks=auto)", month)
             with xr.open_mfdataset(
                 files,
                 combine="nested",
                 concat_dim="time",
                 data_vars="all",
-                chunks={"lat": 900},
+                chunks="auto",
             ) as ds:
                 months.append(
                     ds[["analysed_sst", "sea_ice_fraction"]].mean("time").compute()
                 )
                 if month == 1:
+                    log.info("Extracting ESA land mask")
                     land = (
                         ((ds["mask"].isel(time=0).astype("int16") & 2) > 0)
                         .astype("float32")
                         .compute()
                     )
+            log.info("Month %02d/12: mean computed; removing daily files", month)
             for file in files:
                 file.unlink()
+    log.info("Combining 12 monthly means")
     ds = xr.concat(months, dim=xr.Variable("month", np.arange(1, 13)))
     return ds.rename(analysed_sst="sst", sea_ice_fraction="sic").assign(land=land)
 
 
 def write(values: xr.DataArray, template: Path, out: Path) -> None:
     """Write ``(month, lat, lon)`` values on the stock SST grid through the messages of ``template``."""
+    log.info("Writing GRIB %s: preparing reference grid", out.name)
     with STOCK["sst"].open("rb") as handle:
         gid = eccodes.codes_grib_new_from_file(handle)
         grid = {key: eccodes.codes_get(gid, key) for key in GRID_KEYS}
@@ -159,6 +185,7 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
             )
             eccodes.codes_write(gid, dst)
             eccodes.codes_release(gid)
+    log.info("Writing GRIB %s: populating monthly fields", out.name)
     tree = open_grib(skeleton)
     node = tree.leaves[0]
     name = next(iter(node.data_vars))
@@ -172,10 +199,12 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
     out.unlink(missing_ok=True)
     save_grib(tree, out, skeleton)
     skeleton.unlink()
+    log.info("Saved GRIB: %s", out)
 
 
 def plot(diff: xr.DataArray, path: Path, label: str, cmap: str) -> None:
     """Robinson panels of ``(month, lat, lon)`` differences, NaN white, symmetric colour scale (99.9th percentile)."""
+    log.info("Plotting differences: %s", path.name)
     import cartopy
     import cartopy.crs as ccrs
     import matplotlib
@@ -207,22 +236,29 @@ def plot(diff: xr.DataArray, path: Path, label: str, cmap: str) -> None:
     )
     grid.fig.suptitle(f"{path.stem}: largest change {float(abs(diff).max()):.3g}")
     grid.fig.savefig(path, dpi=300, bbox_inches="tight")
+    log.info("Saved plot: %s", path)
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
+    log.info("Preparing ERA5-Land skin temperature climatology")
     skin = (
         xr.open_dataset(get_era5()["skin"])["skt"]
         .rename(latitude="lat", longitude="lon")
         .sortby("lat")
     )
+    log.info("Loading stock SST, sea-ice and land-mask fields")
     stock_sst, stock_sic = read(STOCK["sst"]), read(STOCK["sic"])
     stock_land = read(STOCK["mask"]).isel(month=0, drop=True) > 0.5
     grid = stock_sst.assign_coords(lon=stock_sst.lon % 360.0)
     esa = monthly_means()
+    log.info("Monthly ESA SST, sea-ice and land-mask fields ready")
 
     def regrid(da: xr.DataArray) -> xr.DataArray:
-        return ll_regrid(da, grid).assign_coords(lat=stock_sst.lat, lon=stock_sst.lon)
+        log.info("Regridding %s to the stock SST grid", da.name)
+        result = ll_regrid(da, grid).assign_coords(lat=stock_sst.lat, lon=stock_sst.lon)
+        log.info("Regridded %s", da.name)
+        return result
 
     def on_grid(
         da: xr.DataArray,
@@ -232,8 +268,10 @@ def main() -> None:
     sst, sic, share, skin = (
         regrid(da) for da in (esa["sst"], esa["sic"], esa["land"], skin)
     )
+    log.info("Applying ESA land threshold")
     land = share >= 0.5
 
+    log.info("Identifying lakes using the stock mask")
     # stock water bodies that the CCI covers with land are lakes
     coarse = share.reindex(lat=stock_land.lat, lon=stock_land.lon, method="nearest")
     labels, count = ndimage.label(~stock_land.values)
@@ -244,6 +282,7 @@ def main() -> None:
     )
     water = ~land | lake
 
+    log.info("Filling and constraining SST over ocean, lakes and land")
     lake_sst = skin.clip(*SST_RANGE).fillna(stock_sst)
     sst = sst.where(~lake, lake_sst).where(water)
     sst = (
@@ -252,6 +291,7 @@ def main() -> None:
         .fillna(fill_nearest(skin))
     )
     sst = xr.where(water, sst.clip(*SST_RANGE), sst.clip(*LAND_RANGE))
+    log.info("Constructing sea-ice fractions and land mask")
     # stock lake ice; the Great Lakes carry the land flag there, so ice is where the lake is at freezing
     lake_ice = on_grid(stock_sic)
     lake_ice = lake_ice.where(lake_ice <= 1.0, (lake_sst < FREEZING).astype("float32"))
@@ -259,10 +299,12 @@ def main() -> None:
     sic = xr.where(water, fill_nearest(sic).clip(0.0, 1.0), LAND_FLAG)
     mask = (~water).astype("float32")
 
+    log.info("Writing SST, sea-ice and land-mask GRIB outputs")
     write(sst, STOCK["sst"], OUT / "sst.ESACCI_1991_2020.monthly.clim.grb")
     write(sic, STOCK["sic"], OUT / "sic.ESACCI_1991_2020.monthly.clim.grb")
     write(mask.expand_dims(month=[1]), STOCK["mask"], OUT / "landmask.ESACCI.grb")
 
+    log.info("Preparing difference fields relative to stock data")
     both_ocean = water & on_grid(~stock_land)
     both_land = ~water & on_grid(stock_land)
     plot(
@@ -289,9 +331,16 @@ def main() -> None:
         "Land mask change",
         "RdBu_r",
     )
+    log.info("ESA SST climatology processing completed")
     sys.stdout.flush()
+    logging.shutdown()
     os._exit(0)  # eccodes and cartopy can abort together at interpreter shutdown
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+        datefmt="%H:%M:%S",
+    )
     main()
