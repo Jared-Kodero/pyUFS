@@ -1,5 +1,5 @@
-# Stock reference: no PAMIP option, the stock RTGSST and CFSR.SEAICE climatologies with the
-# stock surface-cycle settings (90-day SST relaxation, GFS ice, mixed-layer ocean). The reference
+# SHiELD reference: no PAMIP option, the SHiELD RTGSST and CFSR.SEAICE climatologies with the
+# SHiELD surface-cycle settings (90-day SST relaxation, GFS ice, mixed-layer ocean). The reference
 # for pamip_1.1_pdsst_pdsic and pamip_1.6_pdsst_futarcsic, which replace the climatologies with the ESA set.
 # ICs come from GFS, so the date must lie in the GFS archive.
 
@@ -12,7 +12,7 @@ n_cpus: 144
 partition: batch
 n_cpus_per_task: 1
 
-description: test PAMIP stock reference (no boundary replacement)
+description: test PAMIP SHiELD reference (no boundary replacement)
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023010100Z"
 run_length: 1

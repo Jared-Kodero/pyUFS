@@ -370,7 +370,7 @@ def update_namsfc(nml):
         del namsfc_files["fnmldc"]
 
     # fntsfc, fnaisc and fnmskh given in run_config were copied to FIXED/external
-    # (pamip_experiment.stage_surface_files) and replace the stock files
+    # (pamip_experiment.stage_external_files) and replace the SHiELD files
     provided = {
         key: getattr(state, key)
         for key in ("fntsfc", "fnaisc", "fnmskh")
@@ -392,7 +392,7 @@ def update_namsfc(nml):
 
     if state.pamip_experiment:
         # state.fntsfc and state.fnaisc hold the PAMIP SST and sea-ice files set by
-        # apply_pamip_experiment() (the files provided in run_config otherwise).
+        # write_boundary_files() (the files provided in run_config otherwise).
 
         # SST, ice mask and ice concentration follow the PAMIP FIXED
         # climatologies at every surface cycle; fsicl covers points already
@@ -406,9 +406,11 @@ def update_namsfc(nml):
         phys["nstf_name"] = [0, 0, 1, 0, 5]
 
         # Experiment settings (PAMIP_EXPERIMENTS), e.g. ictm = 20000 for the radiative forcing of year 2000
-        from pamip_experiment import pamip_namelist
+        from pamip_experiment import PAMIP_EXPERIMENTS
 
-        for group, values in pamip_namelist().items():
+        for group, values in PAMIP_EXPERIMENTS[state.pamip_experiment][
+            "namelist"
+        ].items():
             nml.setdefault(group, {}).update(values)
 
     return nml
