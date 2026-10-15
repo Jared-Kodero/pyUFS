@@ -12,5 +12,5 @@ levels: 64
 generate_ic_data: true
 
 pamip_experiment: "1.6"
-pamip_baseline: null # null or pamip: the PAMIP fields; stock: stock climatologies + (1.6 - 1.1)
+pamip_baseline: null # null or pamip: the PAMIP fields; shield: SHiELD climatologies + (1.6 - 1.1)
 pamip_fields: null # null or both; sst or sic takes one field from the experiment

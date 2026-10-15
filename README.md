@@ -1135,48 +1135,53 @@ run it there so the workflow reads the local `run_config.yaml` and any case-loca
 
 ## 21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
 
+`src/pamip_experiment.py` has four functions, called in this order by `fv3_init_driver` at the cold start: `validate_pamip_options` (checks `pamip_experiment`, `pamip_baseline`, `pamip_fields` and the `external_*` files before any file is written), `stage_external_files` (copies the `external_*` files to `FIXED/external` and points namsfc at the copies; with `pamip_baseline: external` they are the baseline), `write_boundary_files` (regrids the PAMIP fields onto the grid of the baseline files and writes the SST and sea-ice climatologies to `FIXED/PAMIP`) and `set_cold_start_surface` (sets SST and sea ice of the surface files of every tile to the fields of the start date).
+
 `pamip_experiment` selects a PAMIP experiment (Smith et al., 2019, GMD 12, 1139) by its number as
 quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arctic sea ice), or is
-`null` for the native climatologies. The names of all PAMIP experiments are `PAMIP_EXPERIMENTS` in
+`null` for the SHiELD climatologies. The names of all PAMIP experiments are `PAMIP_EXPERIMENTS` in
 `src/pamip_experiment.py`; those with SST and sea-ice boundary files are 1.1
 (control), 1.6, 1.5, 1.3 and 1.4, and their input4MIPs dataset identifiers are in
 `templates/pamip_experiments.yaml`. At the cold start `src/pamip_experiment.py` regrids the
 PAMIP monthly climatologies from `fix_src/external/PAMIP` (`python tools/get_pamip.py --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
-of the native SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
+of the SHiELD SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
 `RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
-headers, packing, month stamps and land flags of the native files. Only ocean points of SHiELD's own land mask
-(`seaice_newland.grb`, 0.5 degree, regridded to the file grid and thresholded at 0.5 as in `sfcsub.F`) change; land
-points keep the native values, because the surface cycle weights the source fields by that mask and never reads land
-values at ocean points. The paths are stored in
+headers, packing, month stamps and land flags of the SHiELD files. The sea-ice file changes only at the ocean points of
+SHiELD's own land mask (`seaice_newland.grb`, 0.5 degree, regridded to the file grid and thresholded at 0.5 as in `sfcsub.F`)
+and keeps its land flag (values above 1), because `sfcsub.F` takes the land mask of the sea-ice field from the data itself
+(no flag, no masking, and land values would mix into coastal ice). The PAMIP files hold filled values over land (ocean values spread inland, 271 to 306 K, not land temperatures), and with the
+`pamip` baseline the SST file keeps them: it is the PAMIP SST at every point, land included. The perturbed baselines (`shield`,
+`external`) change ocean points only and keep the land values of their files. In all baselines the lakes and inland seas (water bodies of the 0.5 degree mask below 500 cells: Great Lakes, Baikal, Victoria, Baltic, Black Sea, Caspian) keep the SHiELD SST and ice, because PAMIP has no lake data and its values there are filled from the ocean. At ocean points the surface cycle weights the source
+fields by the land mask and never reads land values; at model land points it reads the SST file and limits it to 173 to 353 K. The paths are stored in
 `state.fntsfc` and `state.fnaisc`, which `update_namsfc` writes to `namsfc`. With the option set,
 `update_namsfc` also sets `ftsfs = faiss = fsics = fsicl = 0` (the surface cycle replaces SST and
 ice by the climatology at each cycle) and `do_ocean = false` (no mixed-layer ocean), `use_ext_sst = false` and `nstf_name = [0, 0, 1, 0, 5]` (NSST off, the model default). The surface cycle runs every `fhcyc` = 24 h, so the climatology is applied at the first step and then daily, interpolated linearly between mid-month values. The AMIP II processing that the protocol asks for (monthly means of the model equal to the means of the files) is not applied. At the cold start
 the same fields, interpolated to the start date with the mid-month weights of the surface cycle, are
 also regridded onto every tile with `to_fv3_grid` of `src/latlon_to_fv3.py` (shared with `sm_perturbations`, xESMF). The PAMIP grid is regridded onto
-the native GRIB grids with `ll_regrid` of the same module (bilinear xESMF with NaN-skipping weights and a periodic longitude; points with no valid
+the SHiELD GRIB grids with `ll_regrid` of the same module (bilinear xESMF with NaN-skipping weights and a periodic longitude; points with no valid
 source value take the nearest valid value (ocean points only); one regridder serves the twelve months of a file, and its
 weights for the 0.083 degree SST grid of 9.3 million points take about 3 minutes and 15 GB of memory; the land mask needs a second regridder of the same size, built after the first is released) and written to
 `slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
 so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, `newice` of `sfcsub.F` does not fire at points changing between ice and open water, so its resets are applied there instead: snow (`sheleg`, `snwdph`) 0, roughness `zorl` 1 cm and soil (sea-ice layer) temperature `stc` 271.2 K.
-At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_native_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the stock SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/external/CARTOPY`, as `fv3_plot_grid.py`.
+At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_shield_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/external/CARTOPY`, as `fv3_plot_grid.py`.
 Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
 `preprocess_only` exits before they are written. The option is validated when the case
 starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.
 
 `pamip_baseline` (null or `pamip`, the default) applies the experiment to the PAMIP fields as they are.
-With `pamip_baseline: native` the PAMIP perturbation, experiment minus 1.1, is regridded from 1 degree and added to
-the native SHiELD climatologies (`RTGSST.1982.2012`, 0.083 degree, and `CFSR.SEAICE.1982.2012`, 0.5 degree):
-sea ice is clipped to 0 to 1 and the land flags kept; SST is perturbed where the native value lies in the
-271.2 to 313.0 K range of the surface cycle and kept between the native freezing value and 313.0 K. The files are
-`RTGSST.PAMIP_native_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_native_<exp>.monthly.clim.grb`, and the
+With `pamip_baseline: shield` the PAMIP perturbation, experiment minus 1.1, is regridded from 1 degree and added to
+the SHiELD climatologies (`RTGSST.1982.2012`, 0.083 degree, and `CFSR.SEAICE.1982.2012`, 0.5 degree):
+sea ice is clipped to 0 to 1 and the land flags kept; SST is perturbed where the SHiELD value lies in the
+271.2 to 313.0 K range of the surface cycle and kept between the SHiELD freezing value and 313.0 K. The files are
+`RTGSST.PAMIP_shield_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_shield_<exp>.monthly.clim.grb`, and the
 cold-start surface files take the written fields. The control of this baseline is experiment 1.1 (no
-perturbation: the native fields with the surface-cycle settings of the PAMIP runs); `pamip_experiment: null`
-keeps the stock settings and is not a control for it. `pamip_fields` (null or `both`, `sst`, `sic`) takes only
-the SST or only the sea ice from the experiment; the other field is the control (PAMIP 1.1, or the native field
-with the native baseline) and `_sst` or `_sic` is added to the file names. The protocol pairs hold the
+perturbation: the SHiELD fields with the surface-cycle settings of the PAMIP runs); `pamip_experiment: null`
+keeps the SHiELD settings and is not a control for it. `pamip_fields` (null or `both`, `sst`, `sic`) takes only
+the SST or only the sea ice from the experiment; the other field is the control (PAMIP 1.1, or the SHiELD field
+with the shield baseline) and `_sst` or `_sic` is added to the file names. The protocol pairs hold the
 ice-edge SST adjustment, which `sst` or `sic` alone leaves out. Both keys are part of the restart checksum when set.
 
-`external_sst`, `external_sic` and `external_mask` (null by default) give the SST, sea-ice and land-mask climatologies that replace namsfc `FNTSFC`, `FNAISC` and `FNMSKH`, as GRIB paths, absolute or relative to `fix_src`, in the format of the stock files they replace (`am/RTGSST.1982.2012`, `am/CFSR.SEAICE.1982.2012`, `am/seaice_newland.grb`). They can be used without a PAMIP experiment. At the cold start each is copied (the original is neither linked nor changed) to `FIXED/external`, and namsfc points to the copy; a file not given stays the stock one. The three files of one set go together, because the land mask decides which source cells the surface cycle uses and the sea-ice land flags must agree with it. With `pamip_baseline: external` the PAMIP perturbation, experiment minus 1.1, is added to these copies as for `native`: SST and sea ice change at the ocean points of `external_mask` only (a mask on the grid of the SST file needs no regridding; a different grid is regridded and thresholded at 0.5), land keeps the values of the file, and the files are `RTGSST.PAMIP_external_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_external_<exp>.monthly.clim.grb`. The baseline needs all three files set to existing files, otherwise the case stops before grid generation. With `pamip_baseline` `pamip` or `native` the files of the experiment replace the SST and sea-ice files and a warning is logged. The paths are not part of the restart checksum. `tools/esa_sst.py` builds a set from the ESA SST CCI v3.0 climatology in `fix_src/external/ESA` (download, regridding and format are in its module docstring), for example `external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb`.
+`external_sst`, `external_sic` and `external_mask` (null by default) give the SST, sea-ice and land-mask climatologies that replace namsfc `FNTSFC`, `FNAISC` and `FNMSKH`, as GRIB paths, absolute or relative to `fix_src`, in the format of the SHiELD files they replace (`am/RTGSST.1982.2012`, `am/CFSR.SEAICE.1982.2012`, `am/seaice_newland.grb`). They can be used without a PAMIP experiment. At the cold start each is copied (the original is neither linked nor changed) to `FIXED/external`, and namsfc points to the copy; a file not given stays the SHiELD one. The three files of one set go together, because the land mask decides which source cells the surface cycle uses and the sea-ice land flags must agree with it. With `pamip_baseline: external` the PAMIP perturbation, experiment minus 1.1, is added to these copies as for `shield`: SST and sea ice change at the ocean points of `external_mask` only (a mask on the grid of the SST file needs no regridding; a different grid is regridded and thresholded at 0.5), land keeps the values of the file, and the files are `RTGSST.PAMIP_external_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_external_<exp>.monthly.clim.grb`. The baseline needs all three files set to existing files, otherwise the case stops before grid generation. With `pamip_baseline` `pamip` or `shield` the files of the experiment replace the SST and sea-ice files and a warning is logged. The paths are not part of the restart checksum. `python tools/esa_sst.py` (no options) builds a set from the ESA SST CCI v3.0 climatology in `fix/external/ESA` (download, regridding and format are in its module docstring), for example `external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb`. ESA has no values over land, so land and lake cells of the SST file take the 1991 to 2020 monthly skin temperature of ERA5-Land (0.1 degree) regridded to the file grid, except the land cells within three cells of water, which take the nearest ocean value. The regridding of the 0.05 degree ESA fields to the 1/12 degree grid needs a large-memory node (the xESMF weights take about 15 GB). `tools/get_era5.py` downloads it once (needs a Copernicus CDS account and `~/.cdsapirc`) and saves it as `fix/external/ERA5/monthly_skin_1991-2020.nc` together with `monthly_sst_1991-2020.nc`, the ERA5 SST; existing files are not downloaded again. Lakes of the SHiELD mask stay water with the ERA5-Land lake skin temperature and the SHiELD ice (the SHiELD ice marks the Great Lakes with the land flag 1.57, so a lake at freezing is ice covered and any other is ice free). The sea-ice file keeps the land flag 1.57 over land.
 
 Run 1.1 and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing), then 1.5 and 1.3; 1.4 is a Tier 2
 experiment. A run of days only checks that the files are read. The PAMIP protocol is a 14-month
@@ -1190,7 +1195,7 @@ model year. Volcanic aerosol and solar constant are not changed. The SHiELD name
 each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
 `templates/pamip_experiments.yaml`.
 
-Three test cases run twelve one-month segments from 1 January 2023 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_1.1_pdsst_pdsic` (experiment 1.1, control) and `tests/cases/pamip_1.6_pdsst_futarcsic` (1.6, future Arctic sea ice), which use `pamip_baseline: external` (the ESA SST CCI set of `tools/esa_sst.py`: `external_sst`, `external_sic` and `external_mask` in `fix_src/external/ESA`) and differ only in `pamip_experiment`, and `tests/cases/pamip_ctrl` (no PAMIP option, the stock climatologies and surface-cycle settings, the reference of the stock method). The two ESA cases need the PAMIP files in `fix_src/external/PAMIP` (`tools/get_pamip.py`) and the ESA files. They are listed in `tests/submit.sh`.
+Three test cases run twelve one-month segments from 1 January 2023 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_1.1_pdsst_pdsic` (experiment 1.1, control) and `tests/cases/pamip_1.6_pdsst_futarcsic` (1.6, future Arctic sea ice), which use `pamip_baseline: external` (the ESA SST CCI set of `tools/esa_sst.py`: `external_sst`, `external_sic` and `external_mask` in `fix_src/external/ESA`) and differ only in `pamip_experiment`, and `tests/cases/pamip_ctrl` (no PAMIP option, the SHiELD climatologies and surface-cycle settings, the reference of the SHiELD method). The two ESA cases need the PAMIP files in `fix_src/external/PAMIP` (`tools/get_pamip.py`) and the ESA files. They are listed in `tests/submit.sh`.
 
 ## 22. Monthly runs
 
