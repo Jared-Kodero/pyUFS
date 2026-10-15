@@ -61,9 +61,15 @@ def update_fixed_files():
         fix_file(f"am/{name}")
         link_fixed_file(fix_dir / name)
 
-    from pamip_experiment import pamip_namelist
+    from pamip_experiment import PAMIP_EXPERIMENTS
 
-    ictm = pamip_namelist().get("gfs_physics_nml", {}).get("ictm")
+    ictm = None
+    if state.pamip_experiment:
+        ictm = (
+            PAMIP_EXPERIMENTS[state.pamip_experiment]["namelist"]
+            .get("gfs_physics_nml", {})
+            .get("ictm")
+        )
     if ictm is not None:
         forcing_year = ictm // 10
         # ictm = yyyy0: the model stops if the table of exactly this year is missing
