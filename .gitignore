@@ -1,13 +1,6 @@
 # Root-level directories: ignore all contents
-/bins/**
 /containers/**
-/fix/**
-
-# Preserve directories
-!/bins/.gitkeep
 !/containers/.gitkeep
-!/fix/.gitkeep
-!/fix/varmap_tables
 
 # Ignore recursively at any depth
 **/.ruff_cache/

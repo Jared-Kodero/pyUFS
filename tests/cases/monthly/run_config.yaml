@@ -1,5 +1,5 @@
 # SBATCH OPTIONS
-constraint_node: "48core"
+constraint_node: null
 exclusive_node: false
 walltime: 12
 n_nodes: 3
@@ -10,9 +10,9 @@ n_cpus_per_task: 1
 description: test monthly validation
 archive_data: false # Tests do not archive outputs
 init_datetime: "2023070100Z"
-run_length: 1
+run_length: 2
 run_length_units: months
-resubmit: 1
+resubmit: 2
 merge_freq: -1
 c_res: C96
 gtype: uniform

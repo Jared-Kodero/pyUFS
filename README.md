@@ -57,7 +57,7 @@ The workflow uses three Apptainer images referenced from `run_config.yaml`; SHiE
 may instead run from a native executable:
 
 - `preprocess_image` (`docker://gfdlfv3/preprocessing`, with UFS_UTILS at
-  `/UFS_UTILS/exec`, plus the Python environment of `config/env.yaml`) runs the
+  `/UFS_UTILS/exec`, plus the Python environment of `tools/env.yaml`) runs the
   preprocessing driver `src/driver.py`.
 - `shield_image` (`docker://gfdlfv3/shield`) runs `SHiELD_nh.prod.64bit.x` when no
   native `shield_exe` is given.
@@ -86,7 +86,7 @@ internet access (Docker Hub, repo.anaconda.com, conda-forge) and several GB in `
 The `modules` key lists the host modules loaded before a native `shield_exe` is launched
 (default `hpcx-mpi`, `netcdf-mpi`, `libyaml`, `netcdf`); it is not used with the
 container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
-dependencies used inside the preprocessing container are listed in `config/env.yaml`
+dependencies used inside the preprocessing container are listed in `tools/env.yaml`
 and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
 `cartopy`, and `wgrib2`. The scheduler is SLURM. `launchers/sbatch.sh` submits
 `launchers/case_run.sh` and forwards the resolved environment. The driver creates the
@@ -116,9 +116,9 @@ compute node, or Apptainer does not start.
 | `config/examples/` | Example run configurations and overrides (Section 18). |
 | `tests/cases/` | Existing HPC regression cases, retaining their case-local files and directories. |
 | `tests/submit.sh` | Helper that submits the four PAMIP cases from the `tests/` directory; the other cases are commented out in it. |
-| `bins/` | Default directory for generated native executables. |
+| `bin/` | Link to `../bin`, the flat directory that holds every compiled SHiELD executable. `tools/build_shield.py` creates `../bin` and the link. |
 | `containers/` | Default directory for generated container images. |
-| `fix/` | Default directory for static runtime datasets. |
+| `fix/` | Link to `../fix`, the static runtime datasets. `tools/update_fix.py` creates `../fix` and the link; `case_submit.sh` stops if `fix_src` is missing, and the link is then made by hand with `ln -s /path/to/fix ../fix`. |
 | `README.md` | Run guide. |
 
 The default configuration and its inline comments are in
@@ -253,7 +253,7 @@ block at the top of the file, so the request of a case is read in one place.
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 | `preprocess_dask_scheduler` | Dask scheduler for the parallel per-tile preprocessing and regridding steps: `processes` (default, spawned worker processes) or `synchronous` (one task at a time in the driver process, for debugging). `threads` is not supported because the tasks change the working directory. |
 
-`c_res` is a string starting with C: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`.
+`c_res` is a string that starts with `C`: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`.
 
 ### 6.5 Initial conditions and preprocessing
 
@@ -381,8 +381,8 @@ whole tree in advance and is independent of the run-time lookup above. It mirror
 `am`, `orog` and `sfc_climo` directories of the NOAA bucket with `aws s3 sync`, keeps the
 newest version of each in `fix/`, removes the pre-generated `C<res>` directories, recreates
 the CO2 and volcanic-aerosol links without the `global_` prefix, and downloads the Cartopy
-Natural Earth data into `fix/external/CARTOPY`. The default destination is the repository's `fix/`
-directory, independent of the working directory. Pass `--dest /path/to/fix` to select a
+Natural Earth data into `fix/external/CARTOPY`. The default destination is `fix` in the parent of the repository,
+linked as `fix/` in the repository, independent of the working directory. Pass `--dest /path/to/fix` to select a
 shared dataset directory and `--skip-carto` to omit the Cartopy download. The utility
 replaces the `am`, `orog`, and `sfc_climo` directories within the selected destination.
 
@@ -672,7 +672,7 @@ corresponding UFS_UTILS `ush` scripts.
 - `run_emcsfc_ice_blend` blends `ims_ice_file` into the MMAB 5-minute concentration
   `five_min_ice_file` with `emcsfc_ice_blend` (`emcsfc_ice_blend.sh`) and passes the GRIB1
   result to `global_cycle`. The script's `cnvgrib`, `copygb2` and `copygb` (NCEP
-  grib_util) must be on `PATH`; they are not part of `config/env.yaml`.
+  grib_util) must be on `PATH`; they are not part of `tools/env.yaml`.
 - `run_cpld_gridgen` writes the MOM6/CICE6 grids, SCRIP files and the ocean mask mapped to
   this cubed sphere with `cpld_gridgen` (`cpld_gridgen.sh`) into `IC/cpld_gridgen`, for
   MOM6 resolution `cpld_gridgen_res` (`500`, `100`, `050`, `025`). The MOM6 inputs are
@@ -1029,7 +1029,7 @@ case-local `run_config.yaml`), so edit them there first. It then:
 4. Writes `site/environment.gnu.sh` from the `modules` list, checks the toolchain
    (`gfortran` 10 or later, MPI compilers, NetCDF, `libyaml`, `cmake`), and runs
    `./COMPILE shield nh <comp> <bit> gnu [pic] <clean>`.
-5. Copies the executable to the `shield_exe` path and writes `<executable>.manifest` next to
+5. Copies the executable to `bin/` (the link to `../bin`, flat, no subdirectories) under the file name of `shield_exe` and writes `<executable>.manifest` next to
    it, with the commits of all source repositories, the modules, the compile options, the
    toolchain versions and the SHA-256 of the executable.
 

@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from pyufs_links import link_parent_dir
+
 # =============================
 # Configuration
 # =============================
@@ -157,8 +159,8 @@ def main() -> None:
     parser.add_argument(
         "--dest",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "fix",
-        help="Destination directory (default: the repository's fix directory).",
+        default=None,
+        help="Destination directory (default: fix in the parent of pyUFS, linked as pyUFS/fix).",
     )
     parser.add_argument(
         "--skip-carto", action="store_true", help="Skip the Cartopy data download."
@@ -169,7 +171,11 @@ def main() -> None:
 
     pwd = Path.cwd()
     fix_raw = pwd / ".fix_raw"
-    fix_dir = args.dest.expanduser().resolve()
+    fix_dir = (
+        args.dest.expanduser().resolve()
+        if args.dest
+        else link_parent_dir("fix", create=True)
+    )
 
     fix_raw.mkdir(exist_ok=True)
     fix_dir.mkdir(parents=True, exist_ok=True)
