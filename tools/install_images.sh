@@ -15,7 +15,7 @@ set -euo pipefail
 TMP_DIR="${TMP_DIR:-${TMPDIR:-/tmp}}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="$SCRIPT_DIR/../tools/env.yaml"
+ENV_FILE="$SCRIPT_DIR/env.yaml"
 MANIFEST_DIR="$CONTAINERS_DIR/manifest"
 
 declare -A SOURCES=(
@@ -34,7 +34,7 @@ fail() {
 # --- 1. Checks and scratch space ---
 command -v apptainer >/dev/null || fail "apptainer not found"
 command -v wget >/dev/null || fail "wget not found"
-[ -f "$ENV_FILE" ] || fail "environment file not found: $ENV_FILE"
+[ -f "$ENV_FILE" ] || fail "env.yaml not found in $SCRIPT_DIR"
 
 mkdir -p "$CONTAINERS_DIR" "$MANIFEST_DIR" "$TMP_DIR"
 WORK="$(mktemp -d "$TMP_DIR/apptainer.XXXXXX")"

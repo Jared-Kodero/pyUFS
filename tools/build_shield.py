@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 
 import yaml
+from pyufs_links import link_parent_dir
 
 COMP_MODES = ("repro", "prod", "debug")
 REPO = Path(__file__).resolve().parent.parent
@@ -309,7 +310,10 @@ echo "prefix: $NETCDF_DIR  hdf5: $HDF5_DIR"
         if args.pic:
             compile_cmd.append("pic")
         compile_cmd.append(args.clean)
-        dest = installed_path(dest, args.comp, args.bit)
+        dest = (
+            link_parent_dir("bin", create=True)
+            / installed_path(dest, args.comp, args.bit).name
+        )
 
         if args.no_compile:
             (tree / "manifest.txt").write_text("\n".join(manifest) + "\n")

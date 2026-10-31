@@ -179,7 +179,7 @@ cpld_gridgen_postwgts: false # true: also write the rectilinear post-processing 
 #   C96   ~ 100 km     C192 ~ 50 km      C384 ~ 25 km
 #   C768  ~ 13 km      C3072 ~ 3 km
 
-c_res: C96 # Cubed-sphere face resolution, a string starting with C: C48, C96, C192, C384, C768, C1152 or C3072.
+c_res: C96 # Cubed-sphere face resolution, a string that starts with C: C48, C96, C192, C384, C768, C1152 or C3072.
 gtype: uniform # Options: uniform | stretch | nest | regional_gfdl | regional_esg
 target_lon: -96 # Grid centre longitude [degrees] for stretch and regional_esg. For nest and regional_gfdl it is replaced by the centre of the (first) box.
 target_lat: 35.0 # Grid centre latitude [degrees] for stretch and regional_esg. For nest and regional_gfdl it is replaced by the centre of the (first) box.
@@ -348,7 +348,7 @@ sm_perturbations: null
 # regridded onto the tiles (to_fv3_grid in latlon_to_fv3.py, as sm_perturbations) and written to
 # slmsk, tsea, fice, hice and tisfc of sfc_data over non-land points at the cold start.
 # At cold start, pamip_<tag>_sst_change.png and pamip_<tag>_sic_change.png (written minus SHiELD
-# SHiELD file, twelve Robinon panels) are saved to run_dir next to grid_faces.png.
+# SHiELD file, twelve Robinson panels) are saved to run_dir next to grid_faces.png.
 # Leave it null to keep the native climatologies.
 #
 # pamip_experiment: "1.6"   # null, or the experiment number as quoted text

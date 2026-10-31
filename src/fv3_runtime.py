@@ -15,6 +15,7 @@ import yaml
 
 from fv3_paths import paths
 from fv3_update_fix import ensure_fix_file, missing_message
+from fv3_utils import parse_resolution
 
 log = logging.getLogger("PREPROCESS")
 
@@ -120,7 +121,14 @@ STAGED_RECORD = ".grid_settings.yaml"
 
 def _grid_settings(keys: tuple = OROGRAPHY_KEYS) -> dict:
     cfg = merged_run_config()
-    return {k: to_builtin(cfg.get(k)) for k in keys}
+    settings = {k: to_builtin(cfg.get(k)) for k in keys}
+    if "c_res" in settings:
+        # "C96" and 96 name the same grid; staged records store the integer.
+        try:
+            settings["c_res"] = parse_resolution(settings["c_res"])
+        except (TypeError, ValueError):
+            pass
+    return settings
 
 
 def staged_files(mod_dir: Path | None) -> list[Path]:

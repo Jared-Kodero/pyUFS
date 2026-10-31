@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -223,34 +224,34 @@ def deg_to_cres(ddeg):
     return C
 
 
-def parse_resolution(c_res: str | None) -> int | None:
-    """Cubed-sphere face resolution as an integer, from a C-prefixed string such
-    as "C96" (the run_config.yaml form)."""
+def parse_resolution(c_res: str | int | None) -> int | None:
+    """Cubed-sphere face resolution as an integer, from a label such as "C96".
+
+    run_config.yaml gives c_res as a string that starts with C (C48, C96, C192,
+    C384, C768, C1152, C3072). A plain integer such as 96 is still accepted.
+    The rest of the workflow uses the integer.
+    """
 
     if c_res is None:
         return None
 
     valid_cres = (48, 96, 192, 384, 768, 1152, 3072)
-    expected = ", ".join(f"C{c}" for c in valid_cres)
+    labels = ", ".join(f"C{v}" for v in valid_cres)
 
-    if not isinstance(c_res, str):
-        raise TypeError(
-            f"c_res must be a string starting with C, e.g. C96; got {c_res!r}"
-        )
-
-    text = "".join(c_res.split()).upper()
-    if not text.startswith("C"):
-        raise ValueError(
-            f"Invalid resolution format: {c_res!r}. Expected one of ({expected})"
-        )
-
-    try:
-        value = int(text[1:])
-    except ValueError:
-        raise ValueError(f"Invalid C-resolution format: {c_res!r}") from None
+    if isinstance(c_res, bool):
+        raise TypeError(f"c_res must be a string such as C96; got {c_res!r}")
+    if isinstance(c_res, str):
+        match = re.fullmatch(r"\s*[Cc](\d+)\s*", c_res)
+        if not match:
+            raise ValueError(f"c_res must start with C, for example C96; got {c_res!r}")
+        value = int(match.group(1))
+    elif isinstance(c_res, int):
+        value = c_res
+    else:
+        raise TypeError(f"c_res must be a string such as C96; got {c_res!r}")
 
     if value not in valid_cres:
-        raise ValueError(f"c_res {c_res!r} not supported; use one of ({expected})")
+        raise ValueError(f"c_res {c_res!r} not supported; use one of {labels}")
 
     return value
 

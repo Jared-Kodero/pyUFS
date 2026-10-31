@@ -349,6 +349,14 @@ def get_config():
         logger.error("Multi-node runs need a native shield_exe (README section 19).")
         sys.exit(1)
 
+    if not Path(os.path.expandvars(cfg["fix_src"])).is_dir():
+        logger.error(
+            f"fix_src not found: {cfg['fix_src']}. Link the fix directory next to "
+            + "pyUFS with: ln -s /path/to/fix ../fix && ln -s ../fix fix, or create it "
+            + "with tools/update_fix.py (README section 7)."
+        )
+        sys.exit(1)
+
     # Raw extra sbatch arguments, appended to the call after the flags above.
     sbatch_options = cfg["sbatch_options"] or ""
 
