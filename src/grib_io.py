@@ -90,6 +90,8 @@ def get_grib_codes(
                 "shortName",
                 "name",
                 "units",
+                "typeOfLevel",
+                "levtype",
             )
         }
     finally:
