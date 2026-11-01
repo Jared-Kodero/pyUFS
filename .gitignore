@@ -1,5 +1,5 @@
 # Root-level directories: ignore all contents
-/containers/**
+/containers/*
 !/containers/.gitkeep
 
 # Ignore recursively at any depth
