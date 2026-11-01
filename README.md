@@ -6,11 +6,35 @@ shell wrapper hands off to Python, which validates the case configuration, assem
 launch environment, generates or stages the grid and initial conditions, runs SHiELD,
 regrids the output, and synchronizes results back to the case directory.
 
-## SHiELD profile
+## SHiELD releases
 
-The default branch is configured for SHiELD `FV3-202411-public` (FMS `2024.03`). Support
-for `FV3-202604-public` (FMS `2026.01`) is under development and is not validated here.
-Section 19.1 lists the differences between the two profiles.
+One checkout supports two SHiELD releases. `202411` (`FV3-202411-public`, FMS `2024.03`) is
+the stable release and the default. `202604` (`FV3-202604-public`, FMS `2026.01`, FMSCoupler
+`full` driver) is supported alongside it.
+
+| | `202411` (default) | `202604` |
+| --- | --- | --- |
+| Core, physics, drivers | `FV3-202411-public` | `FV3-202604-public` |
+| FMS / FMSCoupler | `2024.03` / `2024.03.01` | `2026.01` / `2026.01` |
+| Coupler driver | `FMSCoupler/SHiELD` (`coupler_main.F90`) | `FMSCoupler/full` |
+| `coupler_nml` time-step key | `dt_ocean` | `dt_cpld` |
+| Default configuration | `config/202411/run_config.yaml` | `config/202604/run_config.yaml` |
+| Namelist templates | `templates/202411/` | `templates/202604/` |
+
+Select the release in the case `run_config.yaml`; leave the key out for the default:
+
+```yaml
+shield_release: "202604"   # "202411" or "202604"
+```
+
+The key selects the repository defaults and valid keys (`config/<release>/run_config.yaml`), the
+namelist templates (`templates/<release>/`), the `coupler_nml` time-step key and the restart
+checksum overrides, all resolved in `src/release.py`. The run configuration key is `dt_cpld`
+for both releases; it is written as `dt_ocean` for `202411`. `shield_exe` may contain the
+placeholder `{shield_release}`, which is replaced by the selected release, so one default path
+serves both. The release must match the executable: build it with
+`python tools/build_shield.py --release <release>` (Section 19). Case files written for the
+former `202411` branch need `dt_ocean` renamed to `dt_cpld`.
 
 ## Contents
 
@@ -105,24 +129,23 @@ compute node, or Apptainer does not start.
 
 ## 3. Repository layout
 
-| Path | Purpose |
+| Path | Contents |
 | --- | --- |
-| `launchers/` | Case submission, SLURM runtime scripts, container-stage entrypoints, and `shield.launcher`. |
-| `src/` | Flat Python workflow implementation. |
-| `config/` | Default `run_config.yaml` and the container Conda environment, `env.yaml`. |
-| `templates/` | Model namelists, diagnostic and tracer tables, and initial-condition conversion templates. |
-| `tables/` | CSV reference catalogs for diagnostic, GFS, HRRR, and ERA5 fields. |
-| `tools/` | SHiELD build, container build, shared fixed-dataset maintenance and boundary-condition dataset utilities (`get_pamip.py`, `get_amip.py`, `esa_sst.py`, `get_era5.py`). |
-| `config/examples/` | Example run configurations and overrides (Section 18). |
-| `tests/cases/` | Existing HPC regression cases, retaining their case-local files and directories. |
-| `tests/submit.sh` | Helper that submits the four PAMIP cases from the `tests/` directory; the other cases are commented out in it. |
+| `case_submit.sh` | Root entrypoint; calls `launchers/case_submit.py`. |
+| `config/` | `<release>/run_config.yaml` (defaults and valid keys for `202411` and `202604`) and `examples/` case configurations. |
+| `launchers/` | Submission, runtime and container entrypoints, plus `shield.launcher`. |
+| `src/` | Python workflow implementation; `release.py` resolves the release. |
+| `templates/` | `<release>/` namelist templates (`input_nml.yaml`, `input_nestXX_nml.yaml`, `C3072.template.yaml`); shared tracer tables, diagnostic tables and chgres templates. |
+| `tables/` | Diagnostic field reference and GFS, HRRR and ERA5 variable maps. |
+| `tools/` | SHiELD build, dataset download (`get_pamip.py`, `get_amip.py`, `esa_sst.py`, `get_era5.py`) and container helpers, plus `env.yaml`. |
+| `tests/cases/` | HPC case configurations, submitted with `tests/submit.sh`. |
 | `bin/` | Link to `../bin`, the flat directory that holds every compiled SHiELD executable. `tools/build_shield.py` creates `../bin` and the link. |
-| `containers/` | Default directory for generated container images. |
 | `fix/` | Link to `../fix`, the static runtime datasets. `tools/update_fix.py` creates `../fix` and the link; `case_submit.sh` stops if `fix_src` is missing, and the link is then made by hand with `ln -s /path/to/fix ../fix`. |
-| `README.md` | Run guide. |
+| `containers/` | Container images; its contents are ignored by Git. |
+| `README.md` | Setup and workflow documentation. |
 
 The default configuration and its inline comments are in
-[config/run_config.yaml](config/run_config.yaml). The launcher reads the case-local
+[config/202411/run_config.yaml](config/202411/run_config.yaml) (or `config/202604/`). The launcher reads the case-local
 `run_config.yaml` from the current working directory and fills any unset key from the
 default file.
 
@@ -171,7 +194,7 @@ and at the archived case after archiving. Ensemble members use `memNN` symlinks 
 ## 6. Configuration reference (`run_config.yaml`)
 
 Each case directory must include a `run_config.yaml`. Start from
-[config/run_config.yaml](config/run_config.yaml) and override only the keys you need. The
+[config/202411/run_config.yaml](config/202411/run_config.yaml) (or `config/202604/`) and override only the keys you need. The
 configuration parser rejects unknown keys, so keep the case file aligned with the template.
 
 ### 6.1 System paths
@@ -187,7 +210,8 @@ configuration parser rejects unknown keys, so keep the case file aligned with th
 | `container_bindpath` | Host paths bound into the containers: a list or a comma-separated string; variables are expanded. Each path must exist on the compute nodes. |
 | `shield_root` | Reserved configuration key; it is not consumed by the current launcher. |
 | `archive_root` | Root of the archive tree. |
-| `shield_exe` | Path to a native SHiELD executable, built with `tools/build_shield.py` (Section 19). Required for any multi-node run; an empty value selects the container path for single-node runs. |
+| `shield_release` | SHiELD release, `"202411"` (default) or `"202604"`; selects `config/<release>/`, `templates/<release>/` and the `coupler_nml` time-step key (Section "SHiELD releases"). |
+| `shield_exe` | Path to a native SHiELD executable; `{shield_release}` in the path is replaced by the release. Required for any multi-node run; an empty value selects the container path for single-node runs. |
 | `modules` | Host modules loaded before a native `shield_exe` is launched; unused with the container image. |
 
 Environment variables such as `$USER` and `$HOME` are expanded.
@@ -253,7 +277,7 @@ block at the top of the file, so the request of a case is read in one place.
 | `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
 | `preprocess_dask_scheduler` | Dask scheduler for the parallel per-tile preprocessing and regridding steps: `processes` (default, spawned worker processes) or `synchronous` (one task at a time in the driver process, for debugging). `threads` is not supported because the tasks change the working directory. |
 
-`c_res` is a string that starts with `C`: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`.
+`c_res` is a string that starts with `C`: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`. A plain integer such as `96` is still read as the same resolution, and checksums and staged-grid records treat the two spellings alike.
 
 ### 6.5 Initial conditions and preprocessing
 
@@ -322,7 +346,7 @@ Regional ESG grids, active when `gtype: regional_esg`, additionally use:
 | Key | Meaning |
 | --- | --- |
 | `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
-| `dt_ocean` | Coupling time step in seconds. Null uses `dt_atmos`; written as `coupler_nml dt_ocean` for the FV3-202411 driver. |
+| `dt_cpld` | Coupling time step in seconds, written as `coupler_nml dt_cpld` (`dt_ocean` for `202411`). Null uses `dt_atmos`. |
 | `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
 | `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
 
@@ -381,10 +405,11 @@ whole tree in advance and is independent of the run-time lookup above. It mirror
 `am`, `orog` and `sfc_climo` directories of the NOAA bucket with `aws s3 sync`, keeps the
 newest version of each in `fix/`, removes the pre-generated `C<res>` directories, recreates
 the CO2 and volcanic-aerosol links without the `global_` prefix, and downloads the Cartopy
-Natural Earth data into `fix/external/CARTOPY`. The default destination is `fix` in the parent of the repository,
-linked as `fix/` in the repository, independent of the working directory. Pass `--dest /path/to/fix` to select a
-shared dataset directory and `--skip-carto` to omit the Cartopy download. The utility
-replaces the `am`, `orog`, and `sfc_climo` directories within the selected destination.
+Natural Earth data into `fix/external/CARTOPY`. It writes to `fix` in the parent of the repository (linked as `fix/`) by
+default and replaces those three dataset directories. Use `--dest /path/to/fix` to
+choose a different destination, and
+`--skip-carto` to skip the Cartopy download. The destination is independent of the
+directory from which the helper is run.
 
 Data that does not come from the NOAA bucket is kept in `fix/external` (`ERA5`, `PAMIP`,
 `AMIP` and `CARTOPY`). `tools/update_fix.py` writes only `CARTOPY` there. The soil moisture
@@ -653,7 +678,7 @@ The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
 
 Four UFS_UTILS programs of the preprocessing image can run after `chgres_cube` on a cold
 start with `generate_ic_data: true`, each when its `run_*` key is true (all false by
-default; `config/run_config.yaml` section 5a lists the keys). They follow the
+default; `config/<release>/run_config.yaml` section 5a lists the keys). They follow the
 corresponding UFS_UTILS `ush` scripts.
 
 - `run_global_cycle` runs `global_cycle` on `INPUT/sfc_data*` (`global_cycle_driver.sh`,
@@ -819,9 +844,9 @@ table indexed by resolution.
 | 3072 | 90 | 2 | 10 |
 
 Resolutions outside the table are estimated by a log-log fit of `dt_atmos` against `c_res`
-and snapped to a value that divides 3600 seconds. `dt_ocean` defaults to `dt_atmos`. Before
-the model is launched, `dt_ocean` is checked to be a multiple of `dt_atmos` and the segment
-length a multiple of `dt_ocean`, the checks the SHiELD coupler applies. For nested runs the
+and snapped to a value that divides 3600 seconds. `dt_cpld` defaults to `dt_atmos`. Before
+the model is launched, `dt_cpld` is checked to be a multiple of `dt_atmos` and the segment
+length a multiple of `dt_cpld`, the checks the SHiELD coupler applies. For nested runs the
 finest domain sets
 `dt_atmos`, and each domain receives split counts sized to its resolution. The dynamics and
 acoustic time steps follow
@@ -981,8 +1006,9 @@ location.
 
 ## 18. Example cases
 
-Example case files are in [config/examples/](examples). Copy a `run_config.<case>.yaml` into the
-case directory as `run_config.yaml`; unset keys come from the defaults.
+Example case files are in [config/examples/](config/examples). Copy a
+`run_config.<case>.yaml` into the case directory as `run_config.yaml`; unset keys come
+from the defaults.
 
 | File | Case |
 | --- | --- |
@@ -997,100 +1023,90 @@ case directory as `run_config.yaml`; unset keys come from the defaults.
 
 ## 19. Compiling a custom SHiELD executable
 
-If you need a custom binary, build it with `tools/build_shield.py` and point `shield_exe` at
-the result. The workflow uses the native executable when the resolved `shield_exe` value is
-non-empty.
-An empty value selects the container image for a single-node run; all multi-node runs require
-a native `shield_exe`. Because the non-null repository default is restored when a case sets
-`shield_exe: null`, use `shield_exe: ""` to force the single-node container path.
-`case_submit.sh` stops when the configured `shield_exe` does not exist.
+Build a native executable with `tools/build_shield.py`. It reads `modules` and
+`shield_exe` from `config/<release>/run_config.yaml` (the repository default file, not a
+case-local one). `--release` selects the release and defaults to `202411`: `--release 202604`
+builds `FV3-202604-public`, `--release 202411` builds `FV3-202411-public`. The release no
+longer depends on the checked-out branch.
 
 ```bash
-python tools/build_shield.py                      # repro, 64bit, pic, cleanall
-python tools/build_shield.py --comp prod
-python tools/build_shield.py --comp debug --fflags "-fcheck=all"
-python tools/build_shield.py --no-compile         # checks only, no compilation
-python tools/build_shield.py --force              # replace an existing build tree
+python tools/build_shield.py                                       # default release, repro, 64bit, pic, cleanall
+python tools/build_shield.py --release 202604
+python tools/build_shield.py --release 202604 --comp prod
+python tools/build_shield.py --release 202604 --comp debug --fflags "-fcheck=all"
+python tools/build_shield.py --release 202604 --no-compile         # source and toolchain checks
+python tools/build_shield.py --release 202604 --force              # replace an existing build tree
 ```
 
-The script builds the release of the checked-out pyUFS branch: a branch named `202411` builds
-`FV3-202411-public` (profile in 19.1), and the branch name must be six digits. It reads
-`modules` and `shield_exe` from `config/run_config.yaml` (the repository default file, not a
-case-local `run_config.yaml`), so edit them there first. It then:
+The helper creates `/tmp/$USER/FV3-<release>-public` and stops if it exists unless `--force` is given,
+clones `SHiELD_build`, checks out the release, runs `CHECKOUT_code`, and verifies the
+tagged component repositories. It writes `site/environment.gnu.sh` using the configured
+host modules and validates the GNU/MPI/netCDF/libyaml toolchain. Compilation needs
+gfortran 10 or later. The temporary FMS source has the duplicate `static` qualifier
+removed from its local `gettid` definition to support newer glibc.
 
-1. Loads the listed host modules and clones `SHiELD_build` into
-   `/tmp/$USER/FV3-<release>-public`, checks out the release tag, runs `CHECKOUT_code`, and
-   initializes the `mkmf` submodule. The machine needs network access to GitHub, and the
-   build directory must not exist unless `--force` is given.
-2. Verifies that `GFDL_atmos_cubed_sphere`, `SHiELD_physics`, `atmos_drivers`, `FMS` and
-   `FMSCoupler` are at the tags that `CHECKOUT_code` selects.
-3. Removes the duplicate `static` qualifier from the local `gettid` in
-   `SHiELD_SRC/FMS/affinity/affinity.c` (newer glibc), in the temporary source only.
-4. Writes `site/environment.gnu.sh` from the `modules` list, checks the toolchain
-   (`gfortran` 10 or later, MPI compilers, NetCDF, `libyaml`, `cmake`), and runs
-   `./COMPILE shield nh <comp> <bit> gnu [pic] <clean>`.
-5. Copies the executable to `bin/` (the link to `../bin`, flat, no subdirectories) under the file name of `shield_exe` and writes `<executable>.manifest` next to
-   it, with the commits of all source repositories, the modules, the compile options, the
-   toolchain versions and the SHA-256 of the executable.
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--release` | `202411` | Select `202411` or `202604`. |
+| `--comp` | `repro` | Select `repro`, `prod` or `debug`. |
+| `--bit` | `64bit` | Select `64bit` or `32bit` precision. |
+| `--pic` / `--no-pic` | enabled | Enable or disable position-independent code. |
+| `--clean` | `cleanall` | Select `cleanall`, `clean` or `noclean`. |
+| `--avx-level` | `-march=native` | Set `AVX_LEVEL`; use `--avx-level=<value>` for values starting with `-`. |
+| `--fflags` | empty | Add Fortran flags. |
+| `--no-compile` | disabled | Stop after fetching sources and checking the toolchain. |
 
-Options: `--comp` (`repro`, `prod`, `debug`; default `repro`), `--bit` (`64bit`, `32bit`),
-`--pic` or `--no-pic`, `--clean` (`cleanall`, `clean`, `noclean`), `--avx-level` (default
-`-march=native`) and `--fflags` for extra Fortran flags, which are appended after the
-optimization mode. The default `repro` mode uses the optimization of `prod` (`-O2`) plus
-`-ggdb`, so a crash backtrace names functions and lines.
-
-The installed file name carries the mode and the precision. The `shield_exe` default,
-`FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x`, is rewritten for the mode that was built, so
-the default `repro` build installs `FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x`. The script
-prints the final path; set it in `run_config.yaml`, or build with `--comp prod` to install
-under the default name:
+The helper runs `COMPILE shield nh <comp> <bit> gnu [pic] <clean>`, verifies that a new,
+non-empty executable was produced, and installs it at the configured path with the
+build mode and precision reflected in the filename. Its adjacent `.manifest` records
+component commits, the executable SHA-256, toolchain and build directory. It prints
+the installed path; set `shield_exe` in the case configuration to that path when it
+differs from the repository default. The helper does not edit `run_config.yaml`.
 
 ```yaml
-shield_exe: /path/to/FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x
+shield_exe: /path/to/FV3-<release>-public_SHiELD_nh.repro.64bit.gnu.x
 ```
 
-A `shield_exe` name that begins with another release tag, for example `FV3-202604-public_`,
-is refused. To build by hand instead, follow `SHiELD_build`: check out the release tag, run
-`./CHECKOUT_code`, apply the `gettid` change above, load the same modules in
-`site/environment.gnu.sh`, and run `cd Build && ./COMPILE shield nh prod 64bit gnu pic`.
+The workflow uses a non-empty `shield_exe` as the native model executable.
+`case_submit.sh` rejects a missing executable, and all multi-node runs require one.
+Use `shield_exe: ""` for the single-node container path; `null` restores the non-null
+repository default. Validate a new build with your case on the target HPC system.
 
 ### 19.1 Build profiles
 
-| Component | This branch | `FV3-202604-public` (under development) |
+| Component | `202411` | `202604` |
 | --- | --- | --- |
 | Core, physics, drivers | `FV3-202411-public` | `FV3-202604-public` |
 | FMS / FMSCoupler | `2024.03` / `2024.03.01` | `2026.01` / `2026.01` |
-| `ice_param`, `*_null` | unpinned | unpinned |
-| Executable (`shield_exe` default) | `FV3-202411-public_SHiELD_nh.prod.64bit.gnu.x` | `FV3-202604-public_SHiELD_nh.prod.64bit.gnu.x` |
+| `ice_param`, `*_null` | as cloned (untagged) | as cloned (untagged) |
+| Executable (`shield_exe` default) | `FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x` | `FV3-202604-public_SHiELD_nh.repro.64bit.gnu.x` |
 
-The two profiles compile different coupler drivers. The tagged `FV3-202411-public`
-`shield` build uses `FMSCoupler/SHiELD/coupler_main.F90`, which reads `dt_ocean`.
-The `FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld`
-and rejects `coupler_nml dt_ocean`. The templates and timestep assignment of this
-repository target the `FMSCoupler/SHiELD` driver.
-For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename
-alone does not identify its coupler interface. The workflow retains `dt_ocean`
-as the run configuration key and writes its value directly to `dt_ocean`.
-Case-local `input.nml` or `input.yaml` overrides are passed through normally;
-the model reports incompatible namelist keys.
+The profiles compile different coupler drivers. The `FV3-202411-public` `shield` build uses
+`FMSCoupler/SHiELD/coupler_main.F90`, which reads `coupler_nml dt_ocean`. The
+`FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld` and rejects
+`dt_ocean`. The workflow key `dt_cpld` is written to the variable of the selected release.
+For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename alone does
+not identify its coupler interface. Case-local `input.nml` or `input.yaml` overrides are
+passed through normally; the model reports incompatible namelist keys.
 
-The `coupler_nml` keys of the `FMSCoupler/full` driver (`do_flux`, `do_ice`, `do_land`,
-`do_ocean`, `do_chksum`, `do_endpoint_chksum`, `ice_npes`, `land_npes`) are not read by the
-`FMSCoupler/SHiELD` driver and are not set here. The templates set
-`fms_io_nml` (`checksum_required`, `max_files_r`, `max_files_w`), which FMS `2024.03`
-still reads.
+The templates differ accordingly. `templates/202411/` sets `fms_io_nml` and
+`gfs_physics_nml sfc_coupled`, and a restart forces `checksum_required` and
+`restart_checksums_required` to false. `templates/202604/` has neither, because they are not
+namelist variables in that release. It instead sets the full-coupler flags: `coupler_nml
+do_land = false` skips the separate land component linked from `land_null`, while Noah still
+runs inside SHiELD physics with `gfs_physics_nml lsm = 1` (the standard `shield` build defines
+`_USE_LEGACY_LAND_`, and `atmos_model_nml fullcoupler_fluxes` defaults to 0). Likewise,
+`do_ocean = false` skips the external ocean component, while `gfs_physics_nml do_ocean = true`
+retains the internal slab ocean. `do_flux = false` skips the coupler's component-exchange flux
+calculation; surface fluxes are still calculated by the atmospheric physics. `ice_npes` and
+`land_npes` follow the upstream SHiELD regression cases. These defaults describe the standard
+`shield` build, not a coupled `shiemom_lm4` experiment.
 
-The remaining namelist templates use variables declared in this profile, except
+The `202604` templates use variables declared in `FV3-202604-public`, except
 `interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
-SHiELD_build test cases also set. The templates set `gfs_physics_nml sfc_coupled = false`:
-in `FV3-202411-public` it selects the ocean surface fluxes supplied by a coupled ocean,
-which this uncoupled configuration does not use. In `FV3-202604-public` it is no longer a
-namelist variable and templates for that profile omit it.
-
-Untagged `SHiELD_build` checkouts from 2025-04 to 2026-01 paired `FV3-202411-public` with
-FMS 2025.01. Record the commits in `SHiELD_SRC`, the executable checksum, the modules
-(`modules` key) and the container digests for each production profile, and validate a
-newer profile separately before use.
+SHiELD_build test cases also set. Record the commits in `SHiELD_SRC`, the executable
+checksum, the modules (`modules` key) and the container digests, and validate any newer
+release separately before use.
 
 ### 19.2 UFS_UTILS and containers
 
@@ -1166,7 +1182,7 @@ so the initial state agrees with the forcing; the surface cycle repeats this at 
 At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_shield_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/external/CARTOPY`, as `fv3_plot_grid.py`.
 Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
 `preprocess_only` exits before they are written. The option is validated when the case
-starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/run_config.yaml`.
+starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/<release>/run_config.yaml`.
 
 `pamip_baseline` (null or `pamip`, the default) applies the experiment to the PAMIP fields as they are.
 With `pamip_baseline: shield` the PAMIP perturbation, experiment minus 1.1, is regridded from 1 degree and added to

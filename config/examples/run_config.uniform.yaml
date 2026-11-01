@@ -1,7 +1,8 @@
 # Global uniform C96, hourly output, one 6 h segment.
 # Copy to the case directory as run_config.yaml; unset keys come from
-# config/run_config.yaml.
+# config/<release>/run_config.yaml.
 description: C96 control run
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
 run_length: 6
 run_length_units: hours

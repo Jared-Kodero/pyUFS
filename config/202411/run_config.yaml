@@ -7,6 +7,7 @@
 # rejected at submission time, so keep case files aligned with the keys below.
 #
 # Sections (functional order):
+#   -  SHiELD release (shield_release)
 #   0. Job environment (system)
 #   1. Job submission (SLURM)
 #   2. Case metadata
@@ -22,6 +23,17 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# SHiELD RELEASE
+# -----------------------------------------------------------------------------
+# "202411" (FV3-202411-public, FMS 2024.03; default) or "202604" (FV3-202604-public,
+# FMS 2026.01). Set it in the case run_config.yaml to switch release. It selects
+# config/<release>/run_config.yaml (these defaults and valid keys), templates/<release>/
+# and the coupler_nml time-step key, and must match the build of shield_exe.
+# README: SHiELD releases.
+
+shield_release: "202411"
+
+# -----------------------------------------------------------------------------
 # 0. JOB ENVIRONMENT (SYSTEM)
 # -----------------------------------------------------------------------------
 # Environment variables such as $USER and $HOME are expanded.
@@ -35,7 +47,7 @@ fregrid_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/fregrid.sif
 preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing image
 shield_root: /oscar/data/deeps/shared/gfdl_shield
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bin/FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x # Native executable built from SHiELD_build FV3-202411-public with tools/build_shield.py (README section 19; the default repro mode installs a repro-named file, so set this to the printed path or build with --comp prod). Required for multi-node runs; "" selects the container image for single-node runs.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bin/FV3-{shield_release}-public_SHiELD_nh.repro.64bit.gnu.x # Native executable built with tools/build_shield.py --release {shield_release} (README section 19); {shield_release} is replaced by shield_release. Required for multi-node runs; "" selects the container image for single-node runs.
 containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Where tools/install_images.sh writes {shield,fregrid,preprocess}.sif. When any image is missing, a job builds all three here, so the three image paths above must point into this directory.
 container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Paths bound inside the containers (a list or a comma-separated string; variables are expanded). Must include every directory used by the workflow, and each must exist on the compute nodes.
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules loaded before a native shield_exe is launched (the libraries it was built with). Not used with the container image.
@@ -238,7 +250,7 @@ do_deep: false # false: deep convection is switched off on domains with dx <= 4 
 #   resolution or refinement ratio.
 
 dt_atmos: null # Atmospheric timestep [s]. Null triggers automatic selection.
-dt_ocean: null # Coupling timestep [s]; written as coupler_nml dt_ocean (FV3-202411). Null uses dt_atmos.
+dt_cpld: null # Coupling timestep [s]; written as coupler_nml dt_cpld (dt_ocean for 202411). Must be a multiple of dt_atmos and divide the segment length. Null uses dt_atmos.
 
 # When set, k_split and n_split must be lists of length n_nests + 1, with the
 # first value for the global grid and the remaining values for the nests in

@@ -62,13 +62,13 @@ class FV3State:
     misspelled key fails at the point of use instead of reading as None.
 
     Fields in the configuration group default to None; their default values
-    are defined once, in config/run_config.yaml, and merged by the init
+    are defined once, in config/<release>/run_config.yaml, and merged by the init
     driver. The remaining fields are derived during the run and carry typed
     defaults. Mapping-style access (state["key"], get, update, items) is kept
     for the existing call sites.
     """
 
-    # --- Configuration (config/run_config.yaml) --------------------------
+    # --- Configuration (config/<release>/run_config.yaml) --------------------------
     # 0. Job environment
     case_root: str | None = None
     jobtmp: str | None = None
@@ -80,6 +80,7 @@ class FV3State:
     containers_root: str | None = None
     shield_root: str | None = None
     archive_root: str | None = None
+    shield_release: str | None = None
     shield_exe: str | None = None
     container_bindpath: list[str] | None = None
     modules: list[str] | None = None
@@ -162,7 +163,7 @@ class FV3State:
     do_deep: bool | None = None
     # 8. Time stepping & Diagnostics
     dt_atmos: int | None = None
-    dt_ocean: int | None = None
+    dt_cpld: int | None = None
     k_split: list[int] | None = None
     n_split: list[int] | None = None
     diagnostic_interval_hours: int | None = None

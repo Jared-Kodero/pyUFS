@@ -2,6 +2,7 @@
 # atmosphere inside HRRR coverage; add chgres_cube_nest02.yaml (and _nest03)
 # to force GFS.
 description: Nested SHiELD case
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
 run_length: 24
 run_length_units: hours

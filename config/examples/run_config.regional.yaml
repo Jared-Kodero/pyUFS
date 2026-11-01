@@ -4,6 +4,7 @@
 # c_res is replaced by the equivalent global resolution of the ESG grid
 # (global_equiv_resol); regional grids require halo: 3.
 description: Regional ESG domain
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
 run_length: 12
 run_length_units: hours

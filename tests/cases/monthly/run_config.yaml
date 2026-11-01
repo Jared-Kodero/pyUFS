@@ -19,7 +19,7 @@ gtype: uniform
 levels: 64
 generate_ic_data: true
 dt_atmos: 1800
-dt_ocean: 1800
+dt_cpld: 1800
 k_split: [3]
 n_split: [6]
 
