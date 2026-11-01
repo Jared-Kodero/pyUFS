@@ -1,5 +1,6 @@
 # Stretched global C96 refined over central North America.
 description: Stretched C96 over central North America
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
 run_length: 24
 run_length_units: hours

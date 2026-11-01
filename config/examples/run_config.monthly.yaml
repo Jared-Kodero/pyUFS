@@ -2,6 +2,7 @@
 # diag_table, month segments use templates/diag_table.monthly. Segments must
 # start at 00 UTC on day 1 (day <= 28 is required for month segments).
 description: C96 monthly
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2020010100Z"
 run_length: 1
 run_length_units: months

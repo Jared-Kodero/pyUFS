@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Build SHiELD for the current pyUFS release using the Oscar toolchain.
 
-    python tools/build_shield.py                    # repro, 64bit, pic, cleanall
-    python tools/build_shield.py --comp prod
-    python tools/build_shield.py --comp debug --fflags "-fcheck=all"
-    python tools/build_shield.py --no-compile
-    python tools/build_shield.py --force
+    python tools/build_shield.py                    # default release, repro, 64bit, pic, cleanall
+    python tools/build_shield.py --release 202411 --comp prod
+    python tools/build_shield.py --release 202604 --comp debug --fflags "-fcheck=all"
+    python tools/build_shield.py --release 202604 --no-compile
+    python tools/build_shield.py --release 202604 --force
 
-Read modules and the final executable path from config/run_config.yaml. Build in
+Read modules and the final executable path from config/<release>/run_config.yaml. Build in
 /tmp/$USER/FV3-<release>-public and install only the executable and its manifest.
 
 The default compiler mode is repro: the optimization of prod (-O2) plus -ggdb, so a
@@ -35,6 +35,9 @@ from pyufs_links import link_parent_dir
 COMP_MODES = ("repro", "prod", "debug")
 REPO = Path(__file__).resolve().parent.parent
 CONFIG_DIR = REPO / "config"
+sys.path.insert(0, str(REPO / "src"))
+from release import DEFAULT_RELEASE
+
 BUILD_ROOT = Path("/tmp") / (os.environ.get("USER") or Path.home().name)
 SHIELD_BUILD_URL = "https://github.com/NOAA-GFDL/SHiELD_build.git"
 
@@ -102,6 +105,12 @@ def installed_path(dest: Path, comp: str, bit: str) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
+        "--release",
+        choices=sorted(p.parent.name for p in CONFIG_DIR.glob("*/run_config.yaml")),
+        default=DEFAULT_RELEASE,
+        help=f"SHiELD release to build (default: {DEFAULT_RELEASE}); selects config/<release>/run_config.yaml",
+    )
+    parser.add_argument(
         "--force", action="store_true", help="Replace existing build tree"
     )
     parser.add_argument("--no-compile", action="store_true", help="Stop after checks")
@@ -142,7 +151,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        config_path = CONFIG_DIR / "run_config.yaml"
+        config_path = CONFIG_DIR / args.release / "run_config.yaml"
         config = yaml.safe_load(config_path.read_text()) or {}
         modules = config.get("modules")
         if (
@@ -154,13 +163,12 @@ def main() -> int:
         raw_dest = config.get("shield_exe")
         if not isinstance(raw_dest, str) or not raw_dest.strip():
             raise BuildError(f"{config_path}: shield_exe must be a nonempty path")
-        dest = Path(os.path.expandvars(raw_dest)).expanduser()
+        dest = Path(
+            os.path.expandvars(raw_dest.replace("{shield_release}", args.release))
+        ).expanduser()
         config_dest = dest
 
-        branch = git(REPO, "branch", "--show-current")
-        if not re.fullmatch(r"\d{6}", branch):
-            raise BuildError(f"pyUFS branch '{branch}' is not a six-digit release")
-        tag = f"FV3-{branch}-public"
+        tag = f"FV3-{args.release}-public"
         named_release = re.match(r"(FV3-\d{6}-public)_", dest.name)
         if named_release and named_release.group(1) != tag:
             raise BuildError(

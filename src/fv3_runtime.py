@@ -16,6 +16,7 @@ import yaml
 from fv3_paths import paths
 from fv3_update_fix import ensure_fix_file, missing_message
 from fv3_utils import parse_resolution
+from release import DEFAULT_RELEASE, expand_shield_exe
 
 log = logging.getLogger("PREPROCESS")
 
@@ -81,17 +82,18 @@ def get_newres(gridfile: Path) -> int:
 
 
 def merged_run_config() -> dict:
-    """The case run_config.yaml, with unset or null keys from config/run_config.yaml.
+    """The case run_config.yaml, with unset or null keys from config/<release>/run_config.yaml.
 
     The same merge is applied by launchers/case_submit.py at submission.
     """
-    default = read_namelist(Path(paths["configs"]) / "run_config.yaml")
     case = read_namelist(Path(paths["run_dir"]) / "run_config.yaml") or {}
+    release = case.get("shield_release") or DEFAULT_RELEASE
+    default = read_namelist(Path(paths["configs"]) / release / "run_config.yaml")
     merged = dict(case)
     for key, value in default.items():
         if merged.get(key) is None and value is not None:
             merged[key] = value
-    return merged
+    return expand_shield_exe(merged)
 
 
 # run_config.yaml keys that determine the grid and its orography. Files staged

@@ -1,6 +1,7 @@
 # Global C96 with the top three soil layers dried by 20% at the initial time.
-# Methods and options: config/run_config.yaml section 10, src/sm_perturbations.py.
+# Methods and options: config/<release>/run_config.yaml section 10, src/sm_perturbations.py.
 description: C96 dry soil
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
 run_length: 24
 run_length_units: hours

@@ -85,13 +85,19 @@ except ImportError:
 # SCRIPT_DIR is the resolved path of this file (not its directory); the
 # repository root is therefore SCRIPT_DIR.parent.parent.
 SCRIPT_DIR = Path(__file__).resolve()
-DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "config" / "run_config.yaml"
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
+from release import case_release, expand_shield_exe
+
 # The case file is always taken from the directory the command is run in.
 RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
 
 if not RUN_CFG_PATH.exists():
     logger.error(f"File not found: {RUN_CFG_PATH}")
     sys.exit(1)
+
+DEFAULT_CFG_PATH = (
+    SCRIPT_DIR.parent.parent / "config" / case_release(RUN_CFG_PATH) / "run_config.yaml"
+)
 
 
 with open(DEFAULT_CFG_PATH, "r") as f:
@@ -311,7 +317,9 @@ def get_config():
 
     # Unset or null case keys take the repository default, as in the init
     # driver (fv3_init_driver._load_initial_state).
-    cfg = {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
+    cfg = expand_shield_exe(
+        {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
+    )
 
     preprocess_grid_only = int(bool(cfg["preprocess_grid_only"]))
     preprocess_orog_only = int(bool(cfg["preprocess_orog_only"]))

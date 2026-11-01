@@ -12,6 +12,7 @@ from fv3_timings import get_timings
 from fv3_update_fix import NAMSFC_FILES
 from fv3_utils import cp, cres_to_deg, env_setup
 from regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
+from release import coupling_step_key, restart_overrides, template
 
 
 def restart_config():
@@ -29,12 +30,8 @@ def restart_config():
         nml["fv_core_nml"]["na_init"] = 0
         nml["fv_core_nml"]["make_nh"] = False
 
-        # Restart-read checksum overrides. The cold-start namelist does not
-        # carry them; the pre-refactor restart_config set the same four keys.
-        for group in ("fms_io_nml", "fms2_io_nml"):
-            nml.setdefault(group, {})
-            nml[group]["checksum_required"] = False
-            nml[group]["restart_checksums_required"] = False
+        for group, keys in restart_overrides(state.shield_release).items():
+            nml.setdefault(group, {}).update(keys)
 
         with open(f, "w") as nml_out:
             f90nml.write(nml, nml_out)
@@ -77,7 +74,7 @@ def update_nml_configs():
 
     # Update state with the calculated timings
     state.dt_atmos = timings["dt_atmos"]
-    state.dt_ocean = timings["dt_ocean"]
+    state.dt_cpld = timings["dt_cpld"]
     state.k_split = timings["k_split"]
     state.n_split = timings["n_split"]
 
@@ -158,7 +155,7 @@ def update_global_nml(
     timings: dict,
 ):
 
-    nml_template_path = state.ufs_utils / "templates" / "input_nml.yaml"
+    nml_template_path = template(state.shield_release, "input_nml.yaml")
     parent_save_path = state.work_dir / "input.nml"
     user_nml = state.run_dir / "input"
 
@@ -174,7 +171,7 @@ def update_global_nml(
 
     # Use first-guess timings unless overridden by user
     nml["coupler_nml"]["dt_atmos"] = timings["dt_atmos"]
-    nml["coupler_nml"]["dt_ocean"] = timings["dt_ocean"]
+    nml["coupler_nml"][coupling_step_key(state.shield_release)] = timings["dt_cpld"]
 
     # FIX: Pull explicitly from the global keys
     nml["fv_core_nml"]["n_split"] = timings["n_split"][0]
@@ -239,7 +236,7 @@ def update_nest_nml(
     if n_nests == 0:
         return
 
-    nest_nml_template_path = state.ufs_utils / "templates" / "input_nestXX_nml.yaml"
+    nest_nml_template_path = template(state.shield_release, "input_nestXX_nml.yaml")
     save_paths = [
         state.work_dir / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
     ]
