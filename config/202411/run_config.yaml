@@ -107,9 +107,11 @@ merge_freq: -1 # Merge frequency for regridded output, in restart segments.
 # run_length_units: months from 00Z on the 1st). Time means need .true. in the
 # time-sampling column (reduction: average in YAML); for averaged precipitation set
 # gfs_physics_nml fhzero = atmos_model_nml fdiag so each sample is a full fdiag mean.
-# Hour and day segments use fdiag = fhzero = 1 h. Month and year segments use the
-# monthly profile: fdiag = fhzero = 6 h, fhswr = fhlwr = 3600 s, ldiag3d and fprint
-# off, print_freq 24 h. For C96 use dt_atmos 600 s, k_split 2, n_split 6. An input.yaml override replaces any of these;
+# Every segment length uses fdiag = fhzero = diagnostic_interval_hours (default 1 h;
+# 6 h is recommended for monthly means, see README Section 22). Month and year segments
+# differ from the others only in fhswr = fhlwr >= 3600 s (1800 s otherwise). ldiag3d keeps
+# the template value (true), print_freq is fv3_print_freq and fprint is off. For monthly
+# C96 runs use dt_atmos 600 s, k_split 2, n_split 6. An input.yaml override replaces any of these;
 # fdiag and fhzero must be multiples of dt_atmos.
 use_modern_diag: false # true: use a case-local diag_table.yaml (required) and data_table.yaml
 # (optional) with diag_manager_nml use_modern_diag and data_override_nml use_data_table_yaml.
@@ -122,6 +124,7 @@ pack_output: false # Pack only the final output files as int16 with scale_factor
 diagnostic_interval_hours: 1 # Interval (simulated hours) for reporting physics diagnostics (fdiag)
 #and resetting accumulated fields (fhzero). Both use the same value to ensure precipitation and other
 #accumulated diagnostics represent the same averaging period (e.g., 1 = hourly, 6 = six-hourly).
+#The model computes its diagnostics only at these intervals, so a larger value is cheaper; use 6 for monthly means.
 
 fv3_print_freq: 0 # FV3 min/max and mass diagnostics: 0 disables; -1 every timestep;
 # positive values set the interval in simulated hours.
@@ -342,12 +345,12 @@ sm_perturbations: null
 # al., 2019, Geosci. Model Dev. 12, 1139). The option only selects the experiment;
 # nothing is added to the PAMIP fields, whose pair already holds the ice-edge SST
 # adjustment. At cold start the PAMIP NetCDF files in <fix_src>/external/PAMIP (downloaded
-# with tools/get_pamip.py --root <fix_src>) are regridded onto the grids of
-# fix_src/am/RTGSST.* and CFSR.SEAICE.* and written to FIXED/PAMIP/ as
+# with tools/get_pamip.py --root <fix_src>) are regridded onto the grids of the baseline
+# SST and sea-ice files (fix_src/am/RTGSST.*, CFSR.SEAICE.* or the external files) and written to FIXED/PAMIP/ as
 # RTGSST.PAMIP_<exp>.monthly.clim.grb and CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb,
-# keeping the headers, packing, month stamps and land flags of the native files. With the pamip baseline
+# keeping the headers, packing, month stamps and land flags of the baseline files. With the pamip baseline
 # the SST is the PAMIP SST at every point, land included, because the PAMIP files hold filled values over land;
-# the sea ice changes only at the ocean points of the SHiELD land mask and keeps its land flag (values above 1),
+# the sea ice changes only at the ocean points of the land mask of the baseline and keeps its land flag (values above 1),
 # which sfcsub.F needs to find land in the sea-ice file.
 # Their paths are stored in state.fntsfc and state.fnaisc, which update_namsfc
 # writes to namsfc when set. fix_src is only read. The option is validated when the
@@ -359,9 +362,9 @@ sm_perturbations: null
 # applied. The same fields, interpolated to the start date, are also
 # regridded onto the tiles (to_fv3_grid in latlon_to_fv3.py, as sm_perturbations) and written to
 # slmsk, tsea, fice, hice and tisfc of sfc_data over non-land points at the cold start.
-# At cold start, pamip_<tag>_sst_change.png and pamip_<tag>_sic_change.png (written minus SHiELD
-# SHiELD file, twelve Robinson panels) are saved to run_dir next to grid_faces.png.
-# Leave it null to keep the native climatologies.
+# At cold start, pamip_<tag>_sst_change.png and pamip_<tag>_sic_change.png (written file minus
+# its baseline file, twelve Robinson panels) are saved to run_dir next to grid_faces.png.
+# Leave it null to keep the SHiELD climatologies.
 #
 # pamip_experiment: "1.6"   # null, or the experiment number as quoted text
 #
@@ -400,8 +403,8 @@ sm_perturbations: null
 #            values of the file); a mask on the grid of the SST file is used without regridding.
 #            Files: RTGSST.PAMIP_external_<exp>.monthly.clim.grb, CFSR.SEAICE.PAMIP_external_<exp>...
 # pamip_fields (null = both) takes both fields, only the SST (sst) or only the sea ice
-# (sic) from the experiment; the other is the control (PAMIP 1.1, or the SHiELD field
-# with the shield baseline) and "_sst" or "_sic" is added to the file names. The protocol
+# (sic) from the experiment; the other is the control (PAMIP 1.1 with the pamip baseline, or the
+# unperturbed baseline field with shield and external) and "_sst" or "_sic" is added to the file names. The protocol
 # pairs hold the ice-edge SST adjustment, which sst or sic alone leaves out.
 #
 # Examples: shield control        pamip_experiment: "1.1", pamip_baseline: shield
@@ -415,11 +418,12 @@ pamip_fields: null
 # Own SST, sea-ice and land-mask climatologies (replacing namsfc FNTSFC, FNAISC and FNMSKH).
 # Each is the path of a GRIB file, absolute or relative to fix_src, in the format of
 # the SHiELD file it replaces (am/RTGSST.1982.2012..., am/CFSR.SEAICE.1982.2012...,
-# am/seaice_newland.grb: twelve monthly fields, sea-ice land flag above 1; the three
+# am/seaice_newland.grb: RTGSST and CFSR.SEAICE hold twelve monthly fields, the mask one; sea-ice land flag above 1; the three
 # files of one set go together). At the cold start each is copied to FIXED/external
 # (the original is not touched or linked) and namsfc points to the copy; a file not
-# given stays the SHiELD file. With pamip_experiment and pamip_baseline null or pamip,
-# the files of the experiment replace the SST and sea-ice files. With pamip_baseline: external the
+# given stays the SHiELD file. With a PAMIP experiment and pamip_baseline null, pamip or shield,
+# the PAMIP files replace external_sst and external_sic (external_mask still replaces FNMSKH:
+# leave it null). With pamip_baseline: external the
 # PAMIP anomaly (experiment minus 1.1) is added to the copies, which also gives a control
 # with pamip_experiment "1.1". The ESA SST CCI set made by tools/esa_sst.py is in
 # <fix_src>/external/ESA (python tools/esa_sst.py, no options; fix_src is the fix directory next to tools/):
