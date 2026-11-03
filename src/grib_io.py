@@ -1,3 +1,7 @@
+"""
+GRIB I/O utilities using ecCodes.
+"""
+
 import os
 import sys
 from pathlib import Path
@@ -157,7 +161,7 @@ def grid_coordinates(gid, tolerance: float = 1e-3) -> tuple[np.ndarray, np.ndarr
     return lat, lon
 
 
-def open_grib(path: str | Path) -> xr.DataTree:
+def open(path: str | Path) -> xr.DataTree:
     """Lazily open a GRIB file as a DataTree with one node per level type and grid.
 
     Variables are named by ``shortName`` with dimensions
@@ -362,7 +366,7 @@ def open_grib(path: str | Path) -> xr.DataTree:
     return tree
 
 
-def save_grib(
+def save(
     tree: xr.DataTree, path: str | Path, template: str | Path | None = None
 ) -> None:
     """Write an xarray DataTree from open_grib back to GRIB using template messages.

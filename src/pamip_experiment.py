@@ -11,10 +11,10 @@ import xarray as xr
 import yaml
 from scipy import ndimage
 
+import grib_io
 from fv3_runtime import log
 from fv3_state import state
 from fv3_utils import cp
-from grib_io import open_grib, save_grib
 from latlon_to_fv3 import fill_nearest, ll_regrid, load_grid, sfc_filename, to_fv3_grid
 
 SST_FILE = "RTGSST.1982.2012.monthly.clim.grb"
@@ -222,7 +222,7 @@ def write_boundary_files() -> xr.Dataset | None:
             with xr.set_options(arithmetic_join="exact"):
                 pamip[kind] = read["experiment"] - read["control"]
 
-    node = open_grib(base_files["land"]).leaves[0]
+    node = grib_io.open(base_files["land"]).leaves[0]
     land = next(iter(node.data_vars.values())).squeeze(drop=True)
     land = land.rename(latitude="lat", longitude="lon")
     land = land.assign_coords(lon=land.lon % 360.0).sortby(["lat", "lon"]).load()
@@ -254,7 +254,7 @@ def write_boundary_files() -> xr.Dataset | None:
     out, base, names = {}, {}, {}
 
     for kind, template in (("sst", base_files["sst"]), ("sic", base_files["sic"])):
-        tree = open_grib(template)
+        tree = grib_io.open(template)
         node = tree.leaves[0]
         variable = next(iter(node.data_vars))
         native = node[variable]
@@ -303,7 +303,7 @@ def write_boundary_files() -> xr.Dataset | None:
         node[variable] = native.copy(data=out[kind].values[:, np.newaxis])
         destination = out_dir / names[kind]
         destination.unlink(missing_ok=True)
-        save_grib(tree, destination, template)
+        grib_io.save(tree, destination, template)
 
     if state.restart_no == 0:
         try:
