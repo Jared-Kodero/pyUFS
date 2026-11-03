@@ -55,6 +55,7 @@ from get_era5 import get_era5
 from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import grib_io
 from latlon_to_fv3 import fill_nearest, ll_regrid
 
 log = logging.getLogger(__name__)
@@ -90,7 +91,7 @@ MONTH_OF_DAY = np.repeat(
 def read(path: Path) -> xr.DataArray:
     """A SHiELD GRIB file as ``(month, lat, lon)``."""
     log.info("Reading SHiELD GRIB: %s", path)
-    node = grib_io.open(path).leaves[0]
+    node = grib_io.open_grib(path).leaves[0]
     da = next(iter(node.data_vars.values()))
     da = da.isel({da.dims[1]: 0}, drop=True)
     result = (
@@ -185,7 +186,7 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
             eccodes.codes_write(gid, dst)
             eccodes.codes_release(gid)
     log.info("Writing GRIB %s: populating monthly fields", out.name)
-    tree = grib_io.open(skeleton)
+    tree = grib_io.open_grib(skeleton)
     node = tree.leaves[0]
     name = next(iter(node.data_vars))
     native = node[name]

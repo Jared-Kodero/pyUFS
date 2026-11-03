@@ -161,7 +161,7 @@ def grid_coordinates(gid, tolerance: float = 1e-3) -> tuple[np.ndarray, np.ndarr
     return lat, lon
 
 
-def open(path: str | Path) -> xr.DataTree:
+def open_grib(path: str | Path) -> xr.DataTree:
     """Lazily open a GRIB file as a DataTree with one node per level type and grid.
 
     Variables are named by ``shortName`` with dimensions

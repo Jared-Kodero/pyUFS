@@ -222,7 +222,7 @@ def write_boundary_files() -> xr.Dataset | None:
             with xr.set_options(arithmetic_join="exact"):
                 pamip[kind] = read["experiment"] - read["control"]
 
-    node = grib_io.open(base_files["land"]).leaves[0]
+    node = grib_io.open_grib(base_files["land"]).leaves[0]
     land = next(iter(node.data_vars.values())).squeeze(drop=True)
     land = land.rename(latitude="lat", longitude="lon")
     land = land.assign_coords(lon=land.lon % 360.0).sortby(["lat", "lon"]).load()
@@ -254,7 +254,7 @@ def write_boundary_files() -> xr.Dataset | None:
     out, base, names = {}, {}, {}
 
     for kind, template in (("sst", base_files["sst"]), ("sic", base_files["sic"])):
-        tree = grib_io.open(template)
+        tree = grib_io.open_grib(template)
         node = tree.leaves[0]
         variable = next(iter(node.data_vars))
         native = node[variable]
