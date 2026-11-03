@@ -303,7 +303,7 @@ def write_boundary_files() -> xr.Dataset | None:
         node[variable] = native.copy(data=out[kind].values[:, np.newaxis])
         destination = out_dir / names[kind]
         destination.unlink(missing_ok=True)
-        grib_io.save(tree, destination, template)
+        grib_io.save_grib(tree, destination, template)
 
     if state.restart_no == 0:
         try:

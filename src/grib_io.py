@@ -366,7 +366,7 @@ def open_grib(path: str | Path) -> xr.DataTree:
     return tree
 
 
-def save(
+def save_grib(
     tree: xr.DataTree, path: str | Path, template: str | Path | None = None
 ) -> None:
     """Write an xarray DataTree from open_grib back to GRIB using template messages.
