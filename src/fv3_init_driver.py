@@ -5,23 +5,28 @@ from pathlib import Path
 
 import pandas as pd
 
+import fv3_plugins
 from chgres_cube import run_chgres_cube
 from cpld_gridgen import gridgen_res, run_cpld_gridgen
+from fv3_diag_files import update_table_files
 from fv3_driver_grid import run_driver
 from fv3_ensemble_driver import ensemble_config
 from fv3_external_ic import init_external_ic
+from fv3_fixed_files import update_fixed_files
 from fv3_ic_data import preprocess_only
 from fv3_namelists import update_nml_configs
 from fv3_nesting import get_centers, nest_info, validate_nests
 from fv3_paths import configure_directories, paths
-from fv3_pes_config import calc_cpu_alloc
+from fv3_pes_config import calc_cpu_alloc, get_grid_info
 from fv3_plot_grid import plot_grid
+from fv3_restart_driver import restart_driver, stage_restart, verify_restart_config
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import log, merged_run_config, to_list
 from fv3_state import compute_checksum, save_fv3_state, state
 from fv3_utils import (
     cres_to_deg,
     format_forecast_length,
+    get_allocated_nodes,
     parse_datetime,
     parse_resolution,
     require_minimum_cpus,
@@ -29,26 +34,32 @@ from fv3_utils import (
     segment_hours,
 )
 from global_cycle_driver import GLOBAL_GTYPES, run_surface_cycle
-from pamip_experiment import (
-    set_cold_start_surface,
-    stage_external_files,
-    validate_pamip_options,
-    write_boundary_files,
-)
 from regional_bc import BC_INTERVAL_HOURS
-from sm_perturbations import apply_sm_perturbations
+from release import resolve_shield_exe
+
+# Files the user may supply; logged with their full path when set.
+USER_FILES = {
+    "external_ic_dir": "External IC directory",
+    "external_sst": "External SST",
+    "external_sic": "External ice",
+    "external_mask": "External mask",
+    "ims_snow_file": "IMS snow file",
+    "ims_ice_file": "IMS ice file",
+    "five_min_ice_file": "Five-minute ice file",
+    "global_cycle_sst_file": "Global cycle SST file",
+    "global_cycle_ice_file": "Global cycle ice file",
+    "global_cycle_snow_file": "Global cycle snow file",
+}
 
 
 def _log_initial_state() -> None:
     log.info("Configuration file: %s", state.run_config)
     log.info("Case directory: %s", state.case_dir)
     log.info("Current directory: %s", state.run_dir)
-    log.info("Working directory: %s", state.work_dir)
     log.info("Archive directory: %s", state.archive_dir)
     log.info("Fixed/static directory: %s", state.fix_src)
 
-    log_path = str(state.logs).replace(str(state.work_dir), str(state.case_dir))
-    log.info("Logs directory: %s", log_path)
+    log.info("Logs directory: %s", state.logs)
 
     if state.shield_exe:
         log.info("Model executable: %s", state.shield_exe)
@@ -57,7 +68,12 @@ def _log_initial_state() -> None:
 
     log.info("Description: %s", state.description)
     log.info("Initial run mode selected")
-    log.info("Full Grid/IC regeneration will be performed.")
+    if state.generate_ic_data:
+        log.info("Full Grid/IC regeneration will be performed.")
+    else:
+        log.info(
+            "Grid and initial conditions are taken from external_ic_dir or the case directory."
+        )
 
     if state.preprocess_only:
         log.info(
@@ -92,12 +108,7 @@ def _log_initial_state() -> None:
     log.info("Grid type: %s", state.gtype)
     log.info("Global cubed-sphere resolution: C%s", state.c_res)
 
-    for tile in range(1, 7):
-        log.info(
-            "Global tile %s resolution: %.2f km",
-            tile,
-            state.res_km[0],
-        )
+    log.info("Global tiles 1-6 resolution: %.2f km", state.res_km[0])
 
     if state.gtype == "nest":
         for message in nest_info:
@@ -108,6 +119,12 @@ def _log_initial_state() -> None:
 
     log.info("Target longitude: %s", state.target_lon)
     log.info("Target latitude: %s", state.target_lat)
+
+    for key, label in USER_FILES.items():
+        if state[key]:
+            path = Path(os.path.expandvars(str(state[key]))).expanduser().resolve()
+            modified = pd.Timestamp(path.stat().st_mtime, unit="s")
+            log.info("%s: %s (%s)", label, path, modified.strftime("%Y-%m-%d"))
 
 
 def validate_ufs_utils_options() -> None:
@@ -155,6 +172,14 @@ def _load_initial_state() -> None:
     # keys of run_config.yaml after the cold start are caught.
     state.config_checksum = compute_checksum(merged_config)
     state.update(runtime_env)
+    # The same decision as at submission: a missing shield_exe runs the container
+    # (single node, matching release) or stops here.
+    shield_exe, exe_message = resolve_shield_exe(
+        state.shield_exe, state.shield_release, bool(state.multi_node)
+    )
+    state.shield_exe = shield_exe or None
+    if exe_message:
+        log.warning(exe_message)
     for key in ("init_datetime", "run_length"):
         if state[key] is None:
             raise ValueError(f"run_config.yaml must set {key}")
@@ -172,7 +197,7 @@ def _load_initial_state() -> None:
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
     # Fail before grid and IC generation; files are written after preprocessing.
-    validate_pamip_options()
+    fv3_plugins.validate()
     if state.generate_ic_data:
         validate_ufs_utils_options()
     state.continue_run = False
@@ -180,6 +205,7 @@ def _load_initial_state() -> None:
     state.restart_no = 0
     state.resubmit_idx = 0
     state.total_restarts = state.resubmit + 1
+    state.node_list = {0: get_allocated_nodes()}
 
     state.total_run_hours = sum(
         segment_hours(
@@ -269,7 +295,12 @@ def _load_initial_state() -> None:
 def init_driver() -> None:
     _load_initial_state()
 
-    os.chdir(state.work_dir)
+    restart_dir = os.environ.get("CASE_RESTART_DIR")
+    restart_state = os.environ.get("CASE_RESTART_STATE")
+    if restart_dir:
+        verify_restart_config(Path(restart_state))
+
+    os.chdir(state.case_dir)
 
     if not state.generate_ic_data:
         init_external_ic()
@@ -307,6 +338,7 @@ def init_driver() -> None:
             fix_dir=state.fix_src,
         )
 
+        get_grid_info(state.tmp / "grid")
         run_chgres_cube()
         run_surface_cycle()
         run_cpld_gridgen()
@@ -320,16 +352,18 @@ def init_driver() -> None:
             return
 
     state.checksum = compute_checksum(state)
-    os.chdir(state.work_dir)
+    os.chdir(state.case_dir)
     calc_cpu_alloc(state.grid)
-    apply_sm_perturbations()
-    stage_external_files()
-    pamip_fields = write_boundary_files()
-    if pamip_fields is not None and state.restart_no == 0:
-        set_cold_start_surface(pamip_fields)
     update_nml_configs()
+    update_table_files()
+    update_fixed_files()
     gen_shield_run_sh()
+    fv3_plugins.do_plugins(restart=False)
 
     save_fv3_state()
 
     log.info("Preprocessing complete")
+
+    if restart_dir:
+        stage_restart(Path(restart_dir), Path(restart_state))
+        restart_driver()

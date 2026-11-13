@@ -1,14 +1,12 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pandas as pd
 import xarray as xr
 
-from fv3_runtime import log
-from fv3_state import state
-from fv3_utils import cp, segment_hours
-from latlon_to_fv3 import load_grid, sfc_filename, to_fv3_grid
+log = logging.getLogger("PLUGINS")
 
 # Physical bounds for valid volumetric soil moisture (m3 m-3). Used for both
 # the validity mask and the clip so the two are guaranteed consistent.
@@ -36,7 +34,7 @@ def _valid_mask(ds: xr.Dataset, v: str, z: int) -> xr.DataArray:
     return (layer >= SM_MIN) & (layer <= SM_MAX)
 
 
-def segment_start(restart_no: int) -> pd.Timestamp:
+def segment_start(restart_no: int, *, state, segment_hours) -> pd.Timestamp:
     """Start time of segment `restart_no` (0 is the cold start)."""
     hours = segment_hours(
         state.init_datetime, state.run_length, state.run_length_units, restart_no
@@ -44,7 +42,7 @@ def segment_start(restart_no: int) -> pd.Timestamp:
     return state.init_datetime + pd.Timedelta(hours=sum(hours))
 
 
-def load_climo(path: Path, data_var: str) -> xr.Dataset:
+def load_climo(path: Path, data_var: str, *, state, segment_hours) -> xr.Dataset:
     """Climatology of the calendar month in which the current segment starts.
 
     Points outside the valid soil-moisture range (ocean, missing) become NaN
@@ -53,7 +51,7 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
     if not path.exists():
         raise FileNotFoundError(f"Climatology file not found: {path}")
 
-    cdate = segment_start(state.restart_no)
+    cdate = segment_start(state.restart_no, state=state, segment_hours=segment_hours)
     ds = xr.open_dataset(path, engine="netcdf4")
 
     if data_var not in ds.data_vars:
@@ -73,7 +71,13 @@ def load_climo(path: Path, data_var: str) -> xr.Dataset:
 
 
 def _write_layers(
-    ds: xr.Dataset, p: dict, in_path: Path, backup_path: Path, ice: xr.DataArray | None
+    ds: xr.Dataset,
+    p: dict,
+    in_path: Path,
+    backup_path: Path,
+    ice: xr.DataArray | None,
+    *,
+    cp,
 ) -> None:
     """Rebuild slc after an smc edit, then write the backup and the input.
 
@@ -101,7 +105,9 @@ def _write_layers(
     cp(backup_path, in_path)
 
 
-def _open_input(tile: int, backup_dir: Path, restart_no: int):
+def _open_input(
+    tile: int, backup_dir: Path, restart_no: int, *, state, sfc_filename, cp
+):
     """Open a tile's surface input after saving an unmodified copy."""
     filename = sfc_filename(tile)
     in_path = Path(state.input) / filename
@@ -119,7 +125,7 @@ def _open_input(tile: int, backup_dir: Path, restart_no: int):
     return filename, in_path, backup_path, ds, ice
 
 
-def do_hold(p: dict, backup_dir: Path, restart_no: int):
+def do_hold(p: dict, backup_dir: Path, restart_no: int, *, state, sfc_filename, cp):
     """Carry the perturbed target layers of the previous segment forward.
 
     Only target_var in soil_layers is replaced; every other surface field
@@ -135,7 +141,12 @@ def do_hold(p: dict, backup_dir: Path, restart_no: int):
 
     for tile in p["tiles"]:
         filename, in_path, backup_path, ds, ice = _open_input(
-            tile, backup_dir, restart_no
+            tile,
+            backup_dir,
+            restart_no,
+            state=state,
+            sfc_filename=sfc_filename,
+            cp=cp,
         )
         prev_path = backup_dir / f"{filename.stem}.r{prev_restart:03d}.perturbed.nc"
         if not prev_path.exists():
@@ -153,11 +164,21 @@ def do_hold(p: dict, backup_dir: Path, restart_no: int):
             coord_val = ds.zaxis_1.values[z]
             ds[v].loc[{"zaxis_1": coord_val}] = xr.where(is_valid, held, layer)
 
-        _write_layers(ds, p, in_path, backup_path, ice)
+        _write_layers(ds, p, in_path, backup_path, ice, cp=cp)
 
 
 def do_nudge_soil_moisture(
-    p: dict, backup_dir: Path, restart_no: int, sm_clim_path: Path
+    p: dict,
+    backup_dir: Path,
+    restart_no: int,
+    sm_clim_path: Path,
+    *,
+    state,
+    segment_hours,
+    sfc_filename,
+    cp,
+    load_grid,
+    to_fv3_grid,
 ):
     """Relax target_var toward the previous segment or the climatology."""
     tau_hours = p.get("tau_hours", 24)
@@ -178,13 +199,18 @@ def do_nudge_soil_moisture(
 
     for tile in p["tiles"]:
         filename, in_path, backup_path, ds, ice = _open_input(
-            tile, backup_dir, restart_no
+            tile,
+            backup_dir,
+            restart_no,
+            state=state,
+            sfc_filename=sfc_filename,
+            cp=cp,
         )
         grid = load_grid(filename, tile)
 
         if use_climo:
             log.info(f"Nudging {v} towards the climatological mean: {climo_path}")
-            ds_ref = load_climo(climo_path, v)
+            ds_ref = load_climo(climo_path, v, state=state, segment_hours=segment_hours)
             ds_ref = ds_ref.mean(dim="time", skipna=True)
             ds_ref = ds_ref.squeeze(drop=True)
             ds_ref = to_fv3_grid(ds_ref, grid)
@@ -216,7 +242,7 @@ def do_nudge_soil_moisture(
 
         # Persist the nudged state so that a subsequent restart can use it as
         # its reference, then overwrite the live input.
-        _write_layers(ds, p, in_path, backup_path, ice)
+        _write_layers(ds, p, in_path, backup_path, ice, cp=cp)
 
 
 def std_shift(
@@ -231,10 +257,14 @@ def std_shift(
     n_sigma: float,
     constant_value: float,
     pert_logs: list,
+    *,
+    state,
+    segment_hours,
+    to_fv3_grid,
 ) -> xr.DataArray:
 
     if climo_path is not None:
-        climo_ds = load_climo(climo_path, v)
+        climo_ds = load_climo(climo_path, v, state=state, segment_hours=segment_hours)
         climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
         std = climo_layer.std(dim="time", skipna=True).load()
         std = to_fv3_grid(std, grid)
@@ -262,12 +292,16 @@ def climo_mean(
     n_sigma: float,
     constant_value: float,
     pert_logs: list,
+    *,
+    state,
+    segment_hours,
+    to_fv3_grid,
 ) -> xr.DataArray:
 
     if climo_path is None:
         raise ValueError("`climo_file` must be provided when using `climo_mean` method")
 
-    climo_ds = load_climo(climo_path, v)
+    climo_ds = load_climo(climo_path, v, state=state, segment_hours=segment_hours)
     climo_layer = climo_ds[v].isel(zaxis_1=z, drop=False)
     climo = climo_layer.mean(dim="time", skipna=True).load()
     climo = to_fv3_grid(climo, grid)
@@ -291,6 +325,7 @@ def anom_shift(
     n_sigma: float,
     constant_value: float,
     pert_logs: list,
+    **_,
 ) -> xr.DataArray:
 
     data = layer.where(is_valid)
@@ -319,6 +354,7 @@ def mean_shift(
     n_sigma: float,
     constant_value: float,
     pert_logs: list,
+    **_,
 ) -> xr.DataArray:
 
     data = layer.where(is_valid)
@@ -344,6 +380,7 @@ def constant_fill(
     n_sigma: float,
     constant_value: float,
     pert_logs: list,
+    **_,
 ) -> xr.DataArray:
 
     if constant_value == "mean":
@@ -359,7 +396,18 @@ def constant_fill(
 
 
 def adjust_soil_moisture(
-    p: dict, backup_dir: Path, methods, restart_no: int, sm_clim_path: Path
+    p: dict,
+    backup_dir: Path,
+    methods,
+    restart_no: int,
+    sm_clim_path: Path,
+    *,
+    state,
+    segment_hours,
+    sfc_filename,
+    cp,
+    load_grid,
+    to_fv3_grid,
 ):
     pert_logs = []
     mean_scale = p.get("mean_scale")
@@ -391,7 +439,12 @@ def adjust_soil_moisture(
     v = p["target_var"]
     for tile in p["tiles"]:
         filename, in_path, backup_path, ds, ice = _open_input(
-            tile, backup_dir, restart_no
+            tile,
+            backup_dir,
+            restart_no,
+            state=state,
+            sfc_filename=sfc_filename,
+            cp=cp,
         )
         grid = load_grid(filename, tile)
 
@@ -417,6 +470,9 @@ def adjust_soil_moisture(
                     n_sigma,
                     constant_value,
                     pert_logs,
+                    state=state,
+                    segment_hours=segment_hours,
+                    to_fv3_grid=to_fv3_grid,
                 )
 
             # Points without climatological data keep their value.
@@ -426,13 +482,15 @@ def adjust_soil_moisture(
             coord_val = ds.zaxis_1.values[z]
             ds[v].loc[{"zaxis_1": coord_val}] = new_layer
 
-        _write_layers(ds, p, in_path, backup_path, ice)
+        _write_layers(ds, p, in_path, backup_path, ice, cp=cp)
 
     for log_entry in dict.fromkeys(pert_logs):
         log.info(log_entry)
 
 
-def apply_sm_perturbations():
+def apply_sm_perturbations(
+    *, state, cp, segment_hours, load_grid, sfc_filename, to_fv3_grid
+):
     """Apply soil moisture perturbations to the current input state according to the `sm_perturbations` config in the state."""
 
     perturbations = state.sm_perturbations
@@ -530,6 +588,7 @@ def apply_sm_perturbations():
         )
 
     if restart_no not in apply_on_restarts:
+        log.info(f"sm_perturbations skipped for restart {restart_no}")
         return
 
     log.info(
@@ -541,12 +600,49 @@ def apply_sm_perturbations():
 
     if restart_no >= 1:
         if do_nudge:
-            do_nudge_soil_moisture(p, backup_dir, restart_no, sm_clim_path)
+            do_nudge_soil_moisture(
+                p,
+                backup_dir,
+                restart_no,
+                sm_clim_path,
+                state=state,
+                segment_hours=segment_hours,
+                sfc_filename=sfc_filename,
+                cp=cp,
+                load_grid=load_grid,
+                to_fv3_grid=to_fv3_grid,
+            )
         elif hold:
-            do_hold(p, backup_dir, restart_no)
+            do_hold(
+                p, backup_dir, restart_no, state=state, sfc_filename=sfc_filename, cp=cp
+            )
         else:
-            adjust_soil_moisture(p, backup_dir, methods, restart_no, sm_clim_path)
+            adjust_soil_moisture(
+                p,
+                backup_dir,
+                methods,
+                restart_no,
+                sm_clim_path,
+                state=state,
+                segment_hours=segment_hours,
+                sfc_filename=sfc_filename,
+                cp=cp,
+                load_grid=load_grid,
+                to_fv3_grid=to_fv3_grid,
+            )
     else:
-        adjust_soil_moisture(p, backup_dir, methods, restart_no, sm_clim_path)
+        adjust_soil_moisture(
+            p,
+            backup_dir,
+            methods,
+            restart_no,
+            sm_clim_path,
+            state=state,
+            segment_hours=segment_hours,
+            sfc_filename=sfc_filename,
+            cp=cp,
+            load_grid=load_grid,
+            to_fv3_grid=to_fv3_grid,
+        )
 
     log.info("Finished applying soil moisture perturbations")

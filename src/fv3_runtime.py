@@ -16,7 +16,7 @@ import yaml
 from fv3_paths import paths
 from fv3_update_fix import ensure_fix_file, missing_message
 from fv3_utils import parse_resolution
-from release import DEFAULT_RELEASE, expand_shield_exe
+from release import resolve_release, resolve_shield_exe
 
 log = logging.getLogger("PREPROCESS")
 
@@ -27,8 +27,8 @@ def log_release() -> None:
     Called before any other driver output of the initial run (not on restarts,
     which would repeat it in every segment). The branch is read from .git/HEAD of
     the pyUFS checkout (no git binary is needed inside the containers) and the
-    SHiELD build from shield_exe and its .manifest, or the container image when
-    shield_exe is not set.
+    shield_exe with the shield_release from the run configuration, or the container
+    image when shield_exe is not set.
     """
     branch = "unknown"
     try:
@@ -42,17 +42,17 @@ def log_release() -> None:
 
     config = merged_run_config()
     shield_exe = config.get("shield_exe")
+    try:
+        # A missing executable that the container replaces is logged as the container.
+        shield_exe, _ = resolve_shield_exe(
+            shield_exe,
+            config["shield_release"],
+            multi_node=os.environ.get("CASE_MULTI_NODE_FLAG", "0") == "1",
+        )
+    except FileNotFoundError:
+        pass  # reported, with the reason, when the run script is generated
     if shield_exe:
-        exe = Path(os.path.expandvars(str(shield_exe)))
-        version = exe.name
-        try:
-            manifest = exe.with_name(exe.name + ".manifest").read_text()
-            for line in manifest.splitlines():
-                if line.startswith("release:"):
-                    version = f"{exe.name} ({line.strip()})"
-                    break
-        except OSError:
-            pass
+        version = f"{Path(shield_exe).name} (release: {config['shield_release']})"
     else:
         image = config.get("shield_image")
         name = Path(str(image)).name if image else "(SHiELD)"
@@ -87,13 +87,14 @@ def merged_run_config() -> dict:
     The same merge is applied by launchers/case_submit.py at submission.
     """
     case = read_namelist(Path(paths["run_dir"]) / "run_config.yaml") or {}
-    release = case.get("shield_release") or DEFAULT_RELEASE
+    release = resolve_release(case.get("shield_release"))
     default = read_namelist(Path(paths["configs"]) / release / "run_config.yaml")
     merged = dict(case)
     for key, value in default.items():
         if merged.get(key) is None and value is not None:
             merged[key] = value
-    return expand_shield_exe(merged)
+    merged["shield_release"] = release  # always the validated string
+    return merged
 
 
 # run_config.yaml keys that determine the grid and its orography. Files staged
@@ -219,6 +220,11 @@ def open_nml(path: Path) -> dict:
     return nml_to_dict(f90nml.read(path))
 
 
+def write_nml(nml: dict, path: Path) -> None:
+    with open(path, "w") as f:
+        f90nml.write(nml, f)
+
+
 def read_namelist(path: Path) -> dict:
     if re.search(r"\.(?:nml|\d+)$", str(path)):
         data = open_nml(path)
@@ -275,7 +281,7 @@ def require_fix_files(files: list[Path], sub_dir: str = "") -> None:
 
 @contextmanager
 def tmp_cwd(path: Path | str):
-    cwd = paths["work_dir"]
+    cwd = paths["case_dir"]
     try:
         os.chdir(path)
         yield

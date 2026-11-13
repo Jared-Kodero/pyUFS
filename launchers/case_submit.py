@@ -15,12 +15,12 @@ Usage
 -----
 Run ``case_submit.sh`` from the case directory, the directory that holds the
 case-local ``run_config.yaml``. Nothing is read from the repository copy of
-``config/run_config.yaml`` except the defaults and the list of valid keys.
+``config/<release>/run_config.yaml`` except the defaults and the list of valid keys.
 
 What this script does
 ---------------------
 1. Reads ``<cwd>/run_config.yaml`` and rejects any key that is not in
-   ``config/run_config.yaml`` (a close match is suggested). YAML syntax errors
+   ``config/<release>/run_config.yaml`` (a close match is suggested). YAML syntax errors
    are reported with line and column.
 2. Fills every unset or null key from the default file, so a case file lists
    only what differs from the defaults.
@@ -56,7 +56,7 @@ Case identity and control
     CASE_DATA_SYMLINK        ``run`` (single case) or ``memNN`` (ensemble) link
                              created in the case directory
 Paths
-    UFS_UTILS_DIR, FIX_SRC, JOBTMP_DIR, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
+    UFS_UTILS_DIR, FIX_SRC, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
     SHIELD_SIF, FREGRID_SIF, PREPROCESS_SIF, CONTAINERS_DIR,
     CONTAINER_BINDPATH (base64 encoded, see ``get_paths``)
 
@@ -86,7 +86,7 @@ except ImportError:
 # repository root is therefore SCRIPT_DIR.parent.parent.
 SCRIPT_DIR = Path(__file__).resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
-from release import case_release, expand_shield_exe
+from release import case_release, resolve_shield_exe
 
 # The case file is always taken from the directory the command is run in.
 RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
@@ -95,9 +95,13 @@ if not RUN_CFG_PATH.exists():
     logger.error(f"File not found: {RUN_CFG_PATH}")
     sys.exit(1)
 
-DEFAULT_CFG_PATH = (
-    SCRIPT_DIR.parent.parent / "config" / case_release(RUN_CFG_PATH) / "run_config.yaml"
-)
+try:
+    RELEASE = case_release(RUN_CFG_PATH)
+except ValueError as error:
+    logger.error(f"{RUN_CFG_PATH}: {error}")
+    sys.exit(1)
+
+DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "config" / RELEASE / "run_config.yaml"
 
 
 with open(DEFAULT_CFG_PATH, "r") as f:
@@ -180,8 +184,6 @@ def get_paths(cfg: dict):
     expanded entry by entry and base64 encoded, because the value is passed to
     sbatch through ``--export`` where a comma would split it; case_run.sh
     decodes it. ``case_root`` and ``archive_root`` are created when absent.
-    ``jobtmp`` is only checked on the compute node (case_run.sh), since it can
-    exist there and not on the login node.
     """
 
     paths = {}
@@ -189,22 +191,20 @@ def get_paths(cfg: dict):
     # environment variable name -> run_config.yaml key
 
     path_mapping = {
-        "JOBTMP_DIR": "jobtmp",
         "CASE_ROOT_DIR": "case_root",
         "FIX_SRC": "fix_src",
-        "UFS_UTILS_DIR": "ufs_utils",
-        "ARCHIVE_ROOT_DIR": "archive_root",
         "SHIELD_SIF": "shield_image",
         "FREGRID_SIF": "fregrid_image",
         "PREPROCESS_SIF": "preprocess_image",
         "CONTAINERS_DIR": "containers_root",
+        "ARCHIVE_ROOT_DIR": "archive_root",
         "CONTAINER_BINDPATH": "container_bindpath",
     }
 
     for k, v in path_mapping.items():
         value = cfg.get(v)
         if value is None:  # unset or null in the case file
-            value = DEFAULT_CFG[v]
+            value = DEFAULT_CFG[v] or ""
 
         if v == "container_bindpath":
             # A list or a comma-separated string; variables are expanded in
@@ -218,7 +218,6 @@ def get_paths(cfg: dict):
 
         if v in ("case_root", "archive_root") and not Path(value).exists():
             Path(value).mkdir(parents=True, exist_ok=True)
-        # jobtmp availability is checked on the compute node by case_run.sh.
 
         paths[k] = value
 
@@ -292,8 +291,9 @@ def get_config():
     default file. The checks below stop the submission before anything is
     queued, so a bad request fails at the prompt rather than in the queue:
 
-    * ``shield_exe`` must exist when set, and is required for multi-node runs
-      (the container image is single-node only);
+    * ``shield_exe`` is required for multi-node runs (the container image is
+      single-node only). When set but missing, a single-node 202411 case warns
+      and uses the container; any other case stops (``release.resolve_shield_exe``);
     * ``ensemble_run`` and ``n_ensembles`` must agree.
 
     Derived values:
@@ -317,9 +317,7 @@ def get_config():
 
     # Unset or null case keys take the repository default, as in the init
     # driver (fv3_init_driver._load_initial_state).
-    cfg = expand_shield_exe(
-        {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
-    )
+    cfg = {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
 
     preprocess_grid_only = int(bool(cfg["preprocess_grid_only"]))
     preprocess_orog_only = int(bool(cfg["preprocess_orog_only"]))
@@ -345,14 +343,17 @@ def get_config():
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
 
-    shield_exe = os.path.expandvars(cfg["shield_exe"] or "")
-    if shield_exe and not Path(shield_exe).is_file():
-        logger.error(
-            f"shield_exe not found: {shield_exe}. Build it from SHiELD_build "
-            + '(README section 19), or set shield_exe: "" to use the container '
-            + "image on a single node."
+    # A missing executable falls back to the container on a single node when the
+    # release matches the image; otherwise the submission stops (release.py).
+    try:
+        shield_exe, exe_message = resolve_shield_exe(
+            cfg["shield_exe"], RELEASE, multi_node=n_nodes > 1
         )
+    except FileNotFoundError as error:
+        logger.error(str(error))
         sys.exit(1)
+    if exe_message:
+        logger.warning(exe_message)
     if not shield_exe and n_nodes > 1:
         logger.error("Multi-node runs need a native shield_exe (README section 19).")
         sys.exit(1)
@@ -381,6 +382,16 @@ def get_config():
         logger.error(
             "Ensemble run is disabled, but n_ensembles is set to a value greater than 0 in run_config.yaml"
         )
+        sys.exit(1)
+
+    run_length = cfg["run_length"]
+    if not isinstance(run_length, int) or isinstance(run_length, bool) or run_length < 1:
+        logger.error(
+            f"run_length must be a positive integer in run_config.yaml, got {run_length!r}"
+        )
+        sys.exit(1)
+    if cfg["run_length_units"] not in ("hours", "days", "months", "years"):
+        logger.error("run_length_units must be hours, days, months or years")
         sys.exit(1)
 
     walltime = f"{walltime}:00:00"  # sbatch --time accepts H:MM:SS
@@ -456,9 +467,9 @@ def run(script: Path, proc_env: dict, cwd: Path) -> None:
 def check_case_dirs(case_pwd: Path, case_root: Path, parent: str, name: str) -> None:
     """Refuse a run directory that contains the submission directory.
 
-    case_run.sh mirrors the run directory (case_root/<parent>/<case_name>) with
-    rsync --delete and removes it after archiving, which would delete the case
-    files and the driver log if the submission directory were inside it.
+    case_run.sh removes the run directory (case_root/<parent>/<case_name>) after
+    archiving, which would delete the case files and the driver log if the
+    submission directory were inside it.
     """
     run_dir = (case_root / parent / name).resolve()
     pwd = case_pwd.resolve()
@@ -468,6 +479,20 @@ def check_case_dirs(case_pwd: Path, case_root: Path, parent: str, name: str) -> 
             + "Submit from a directory outside case_root, or change case_root or case_name."
         )
         sys.exit(1)
+
+
+def log_file_path(logfile: str, member: str = None) -> Path:
+    """Return the driver log path for ``logfile``.
+
+    A trailing ``.log`` is removed and ``.log`` is added back, so ``run``,
+    ``run.log`` and a name with dots such as ``run.v2`` all give a file that
+    ends in ``.log`` without losing part of the name. Ensemble members insert
+    their zero-padded number: ``<stem>.<member>.log``.
+    """
+    stem = str(logfile).removesuffix(".log")
+    if member is None:
+        return Path(f"{stem}.log")
+    return Path(f"{stem}.{member}.log")
 
 
 def main():
@@ -501,7 +526,7 @@ def main():
     )
 
     n_ensembles = int(env["CASE_ENSEMBLES"])
-    logfile = Path(env["CASE_OUTPUT"])
+    logfile = env["CASE_OUTPUT"]
     script = ufs_utils_dir / "launchers" / "sbatch.sh"
     skipped_ensembles = env.pop("CASE_SKIP_ENSEMBLES")
 
@@ -512,7 +537,7 @@ def main():
         slurm_job_name = f"{case_parent_dir}.{case_dir}"
         case_name = env["CASE_NAME"]
         case_data_symlink = case_pwd / "run"
-        case_log_file = logfile.with_suffix(".log")
+        case_log_file = log_file_path(logfile)
 
         # Per-job values on top of the shared ones. TOTAL_WALLTIME_TIME is the
         # wall time already used by earlier segments; it starts at 0. The
@@ -548,7 +573,7 @@ def main():
             slurm_job_name = f"{case_parent_dir}.{case_dir}.MEM{mem_id}"
             case_name = f"{env['CASE_NAME']}/mem{mem_id}"
             case_data_symlink = case_pwd / f"mem{mem_id}"
-            case_log_file = logfile.with_suffix(f".{mem_id}.log")
+            case_log_file = log_file_path(logfile, mem_id)
 
             iter_env = {
                 **env,

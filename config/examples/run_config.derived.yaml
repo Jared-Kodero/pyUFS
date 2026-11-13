@@ -1,0 +1,14 @@
+# Global uniform C96 with a user derived-variable file (config/examples/derived_vars_example.py).
+# Copy to the case directory as run_config.yaml; unset keys come from
+# config/<release>/run_config.yaml. Methods: plugins/README.md.
+description: C96 user derived variable
+shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
+init_datetime: "2026031200Z"
+run_length: 6
+run_length_units: hours
+c_res: C96
+gtype: uniform
+levels: 64
+generate_ic_data: true
+
+derived_vars_module: ${UFS_UTILS_DIR}/config/examples/derived_vars_example.py

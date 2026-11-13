@@ -140,7 +140,7 @@ def gen_global_nest_parent(c_res: int, grid_dir: Path | None = None) -> Path:
     ]
 
     if grid_dir is None:
-        grid_dir = state.tmp / ".tmp_make_grid"
+        grid_dir = state.tmp / "make_grid"
         grid_dir.mkdir(parents=True, exist_ok=True)
 
     result, msgs = run_cmd(cmd, cwd=grid_dir, stdout=log_file, stderr=log_file)

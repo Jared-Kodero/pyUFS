@@ -1,16 +1,10 @@
 # pyUFS HPC Run Guide
 
-`pyUFS` is a Python workflow for configuring, staging, and launching GFDL SHiELD cases on
-Oscar and other HPC systems that do not provide the native UFS utilities layout. A thin
-shell wrapper hands off to Python, which validates the case configuration, assembles the
-launch environment, generates or stages the grid and initial conditions, runs SHiELD,
-regrids the output, and synchronizes results back to the case directory.
+`pyUFS` is a Python workflow for setting up and running GFDL SHiELD cases on Oscar and similar HPC systems that lack the native UFS utilities layout. A thin shell wrapper hands off to Python, which checks the case configuration, builds the launch environment, generates or stages the grid and initial conditions, runs SHiELD, regrids the output and copies results back to the case directory.
 
 ## SHiELD releases
 
-One checkout supports two SHiELD releases. `202411` (`FV3-202411-public`, FMS `2024.03`) is
-the stable release and the default. `202604` (`FV3-202604-public`, FMS `2026.01`, FMSCoupler
-`full` driver) is supported alongside it.
+One checkout supports two releases. `202411` is the default.
 
 | | `202411` (default) | `202604` |
 | --- | --- | --- |
@@ -21,597 +15,236 @@ the stable release and the default. `202604` (`FV3-202604-public`, FMS `2026.01`
 | Default configuration | `config/202411/run_config.yaml` | `config/202604/run_config.yaml` |
 | Namelist templates | `templates/202411/` | `templates/202604/` |
 
-Select the release in the case `run_config.yaml`; leave the key out for the default:
-
-```yaml
-shield_release: "202604"   # "202411" or "202604"
-```
-
-The key selects the repository defaults and valid keys (`config/<release>/run_config.yaml`), the
-namelist templates (`templates/<release>/`), the `coupler_nml` time-step key and the restart
-checksum overrides, all resolved in `src/release.py`. The run configuration key is `dt_cpld`
-for both releases; it is written as `dt_ocean` for `202411`. `shield_exe` may contain the
-placeholder `{shield_release}`, which is replaced by the selected release, so one default path
-serves both. The release must match the executable: build it with
-`python tools/build_shield.py --release <release>` (Section 19). Case files written for the
-former `202411` branch need `dt_ocean` renamed to `dt_cpld`.
+Set `shield_release: "202604"` in the case `run_config.yaml`, or omit it for the default. The key selects the default configuration, the namelist templates, the `coupler_nml` time-step key and the restart checksum overrides (all resolved in `src/release.py`). In `run_config.yaml` the time-step key is always `dt_cpld`; it is written as `dt_ocean` for `202411`. The release must match the executable (Section 19). Case files written for the old `202411` branch need `dt_ocean` renamed to `dt_cpld`.
 
 ## Contents
 
 1. Reference documentation
 2. Requirements and runtime environment
 3. Repository layout
-4. Workflow flow
+4. Workflow
 5. Case setup
-6. Configuration reference (`run_config.yaml`)
+6. Configuration reference
 7. Static runtime datasets (`fix/`)
 8. Initial conditions and preprocessing
 9. Modifying the grid
 10. Modifying orography
 11. Soil moisture perturbations
 12. Time stepping
-13. Process decomposition (PEs and layout)
+13. Process decomposition
 14. Diagnostics and regridded output
-15. Restarts and segmented runs
+15. Restarts
 16. Ensembles
 17. Archiving
 18. Example cases
-19. Compiling a custom SHiELD executable
-20. Quick start and submission notes
-21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
+19. Compiling a SHiELD executable
+20. Quick start
+21. PAMIP SST and sea-ice boundary conditions
 22. Monthly runs
+23. Plugins
 
 ## 1. Reference documentation
 
-For model background, use the official references below.
-
-- SHiELD model: https://www.gfdl.noaa.gov/shield/
-- FV3 dynamical core: https://www.gfdl.noaa.gov/fv3/fv3-documentation-and-references/
-- FV3 namelist guide:
-  https://www.gfdl.noaa.gov/wp-content/uploads/2017/09/fv3_namelist_Feb2017.pdf
-- Noah-MP land model:
-  https://www2.mmm.ucar.edu/wrf/users/physics/phys_refs/LAND_SURFACE/noah_mp_tech_note.pdf
+- SHiELD: https://www.gfdl.noaa.gov/shield/
+- FV3: https://www.gfdl.noaa.gov/fv3/fv3-documentation-and-references/
+- FV3 namelist guide: https://www.gfdl.noaa.gov/wp-content/uploads/2017/09/fv3_namelist_Feb2017.pdf
 - UFS_UTILS: https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html
 - UFS Weather Model: https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html
-- Flexible Modeling System: https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html
+- FMS: https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html
 
 ## 2. Requirements and runtime environment
 
-The workflow uses three Apptainer images referenced from `run_config.yaml`; SHiELD itself
-may instead run from a native executable:
+Three Apptainer images are set in `run_config.yaml`. SHiELD can instead run from a native executable.
 
-- `preprocess_image` (`docker://gfdlfv3/preprocessing`, with UFS_UTILS at
-  `/UFS_UTILS/exec`, plus the Python environment of `tools/env.yaml`) runs the
-  preprocessing driver `src/driver.py`.
-- `shield_image` (`docker://gfdlfv3/shield`) runs `SHiELD_nh.prod.64bit.x` when no
-  native `shield_exe` is given.
-- `fregrid_image` (`docker://gfdlfv3/fre-nctools` plus the same Python environment) runs
-  the regridding stage `src/fv3_regrid.py`. Regridding is done in Python (xarray
-  and xESMF, `src/pyfregrid.py`), not by the FRE-NCtools `fregrid` program.
+- `preprocess.sif` (`docker://gfdlfv3/preprocessing`) holds UFS_UTILS at `/UFS_UTILS/exec` and the Python environment of `tools/env.yaml`. It runs `src/driver.py`.
+- `shield.sif` (`docker://gfdlfv3/shield`, the 202411 build) runs the model when no native `shield_exe` is used.
+- `fregrid.sif` (`docker://gfdlfv3/fre-nctools` plus the same Python environment) runs `src/fv3_regrid.py`. Regridding uses xarray and xESMF (`src/pyfregrid.py`), not the FRE-NCtools `fregrid` program.
 
-`tools/install_images.sh` builds all three into `containers_root` as `preprocess.sif`,
-`shield.sif` and `fregrid.sif`, so the three image keys must point there. If any image is
-missing, `case_run.sh` runs it before the first stage (output in `image_build.log` in the
-working directory). To build or rebuild by hand:
+`tools/install_images.sh` builds all three into `containers_root`; the image keys must point there. If an image is missing, `case_run.sh` builds it first (log: `image_build.log` in the case directory). To build by hand:
 
 ```bash
 CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash tools/install_images.sh
 ```
 
-The preprocessing and SHiELD images do not contain the Open MPI help texts
-(`/opt/openmpi/share`), without which `mpirun` reports errors as missing help files; the
-script copies them from the fre-nctools image, which has the same Open MPI 4.1.0. Images
-are pulled from the `latest` tag, which is the newest published release of each
-(`gfdlfv3/shield:latest` is the 2024-12-03 push; the older tags are earlier releases).
-`SHIELD_TAG`, `PREPROCESS_TAG` and `FREGRID_TAG` select another tag. The sources, SHA-256
-sums and conda package lists are written to `$CONTAINERS_DIR/manifest`. A build needs
-internet access (Docker Hub, repo.anaconda.com, conda-forge) and several GB in `TMP_DIR`.
+The script copies the Open MPI help texts from the fre-nctools image into the other two. Images use the `latest` tag; set `SHIELD_TAG`, `PREPROCESS_TAG` or `FREGRID_TAG` to change it. Sources, SHA-256 sums and conda package lists go to `$CONTAINERS_DIR/manifest`. A build needs internet access (Docker Hub, repo.anaconda.com, conda-forge) and several GB in `TMP_DIR`.
 
-The `modules` key lists the host modules loaded before a native `shield_exe` is launched
-(default `hpcx-mpi`, `netcdf-mpi`, `libyaml`, `netcdf`); it is not used with the
-container image. `case_submit.sh` needs a host `python3` with PyYAML. The Python
-dependencies used inside the preprocessing container are listed in `tools/env.yaml`
-and include `netcdf4`, `numpy`, `pandas`, `xarray`, `xesmf`, `esmpy`, `f90nml`, `metpy`,
-`cartopy`, and `wgrib2`. The scheduler is SLURM. `launchers/sbatch.sh` submits
-`launchers/case_run.sh` and forwards the resolved environment. The driver creates the
-configured `jobtmp` subdirectory on the allocated node when its parent directory
-exists, before selecting the work directory. When `jobtmp` exists, the case runs
-there and the results are synchronized back after preprocessing and after a
-successful segment; on failure the
-logs are copied back. Only an absent `jobtmp` falls back to the case directory; node
-count does not change this preference.
-The driver logs the selected paths and the reason. When work and case directories
-coincide, no copy or deletion is performed for staging. The fallback runs inside the
-case tree. The run directory (`case_root/<parent>/<case>`) must not contain the submission
-directory, since it is mirrored with deletion and removed after archiving;
-`case_submit.sh` refuses such a layout. Every `container_bindpath` entry must exist on the
-compute node, or Apptainer does not start.
+`modules` lists the host modules loaded before a native `shield_exe` runs (default `hpcx-mpi`, `netcdf-mpi`, `libyaml`); it is unused with the container. `case_submit.sh` needs a host `python3` with PyYAML. The container Python packages are listed in `tools/env.yaml`.
+
+The scheduler is SLURM. `launchers/sbatch.sh` submits `launchers/case_run.sh`. The case runs directly in `case_root/<parent>/<case_name>`; set `case_root` to run on scratch. The run directory must not contain the submission directory, because it is removed after archiving (`case_submit.sh` refuses that layout). Every `container_bindpath` entry must exist on the compute node, or Apptainer does not start.
 
 ## 3. Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `case_submit.sh` | Root entrypoint; calls `launchers/case_submit.py`. |
-| `config/` | `<release>/run_config.yaml` (defaults and valid keys for `202411` and `202604`) and `examples/` case configurations. |
-| `launchers/` | Submission, runtime and container entrypoints, plus `shield.launcher`. |
-| `src/` | Python workflow implementation; `release.py` resolves the release. |
-| `templates/` | `<release>/` namelist templates (`input_nml.yaml`, `input_nestXX_nml.yaml`, `C3072.template.yaml`); shared tracer tables, diagnostic tables and chgres templates. |
-| `tables/` | Diagnostic field reference and GFS, HRRR and ERA5 variable maps. |
-| `tools/` | SHiELD build, dataset download (`get_pamip.py`, `get_amip.py`, `esa_sst.py`, `get_era5.py`) and container helpers, plus `env.yaml`. |
-| `tests/cases/` | HPC case configurations, submitted with `tests/submit.sh`. |
-| `bin/` | Link to `../bin`, the flat directory that holds every compiled SHiELD executable. `tools/build_shield.py` creates `../bin` and the link. |
-| `fix/` | Link to `../fix`, the static runtime datasets. `tools/update_fix.py` creates `../fix` and the link; `case_submit.sh` stops if `fix_src` is missing, and the link is then made by hand with `ln -s /path/to/fix ../fix`. |
-| `containers/` | Container images; its contents are ignored by Git. |
-| `README.md` | Setup and workflow documentation. |
+| `case_submit.sh` | Entrypoint; calls `launchers/case_submit.py`. |
+| `case_continue.sh` | Entrypoint for resuming a failed case; calls `launchers/case_continue.py`. |
+| `config/` | `<release>/run_config.yaml` (defaults and valid keys) and `examples/`. |
+| `launchers/` | Submission and runtime scripts, `shield.launcher`. |
+| `src/` | Core Python workflow code; `release.py` resolves the release. `fv3_plugins.py` is the only module that imports `plugins/`. |
+| `plugins/` | Optional modules: `pamip` (PAMIP and external climatologies), `sm_perturbations` and `derived` (derived variables). See Section 23. |
+| `templates/` | `<release>/` namelist templates (`input_nml.yaml`, `input_nestXX_nml.yaml`, `C3072.template.yaml`), plus shared tracer, diagnostic and chgres templates. |
+| `tables/` | Diagnostic field reference and variable maps. |
+| `tools/` | Build, dataset download (`get_pamip.py`, `get_amip.py`, `esa_sst.py`, `get_era5.py`), fix update and container helpers, `env.yaml`. |
+| `tests/cases/` | HPC test cases, submitted with `tests/submit.sh`. |
+| `bin/` | Link to `../bin`, the compiled executables (created by `tools/build_shield.py`). |
+| `fix/` | Link to `../fix`, the static datasets (created by `tools/update_fix.py`). If `fix_src` is missing, `case_submit.sh` stops; link it with `ln -s /path/to/fix ../fix`. |
+| `containers/` | Container images, ignored by Git. |
 
-The default configuration and its inline comments are in
-[config/202411/run_config.yaml](config/202411/run_config.yaml) (or `config/202604/`). The launcher reads the case-local
-`run_config.yaml` from the current working directory and fills any unset key from the
-default file.
+## 4. Workflow
 
-## 4. Workflow flow
-
-1. Create a case directory.
-2. Place a `run_config.yaml` in that directory.
-3. Run `case_submit.sh` from the case directory, directly or through a local wrapper.
-4. `case_submit.sh` deactivates any active conda environment and calls
-   `launchers/case_submit.py`.
-5. `launchers/case_submit.py` validates the configuration against the default key set, rejects
-   unknown keys with a suggested correction, fills unset keys from the default file, resolves
-   paths and SLURM flags into `CASE_*` environment variables, and submits
-   `launchers/case_run.sh` through `launchers/sbatch.sh`. Ensemble members are submitted as
-   separate jobs (`<parent>.<case>.MEMnn`). The variables are listed in the module docstring
-   of `launchers/case_submit.py`, and the mapping to `sbatch` flags is in section 6.2.
-6. `case_run.sh` prepares directories, stages the case to the working directory, runs the
-   preprocess container, launches SHiELD, runs the regridding stage, synchronizes outputs, and optionally
-   resubmits the next segment or archives the case.
-7. Inside the preprocess container, `src/driver.py` calls the initial driver on the
-   first segment and the restart driver on later segments.
-
-The initial driver performs grid generation, orography generation, initial condition
-conversion, optional grid plotting, process decomposition, namelist assembly, soil moisture
-perturbation, and generation of the model run script.
+1. Create a case directory with a `run_config.yaml`.
+2. Run `case_submit.sh` from that directory. It deactivates any active conda environment and calls `launchers/case_submit.py`.
+3. `case_submit.py` checks the configuration against the default key set, rejects unknown keys with a suggested fix, fills unset keys from the default file, resolves paths and SLURM flags into `CASE_*` variables (listed in its docstring) and submits `case_run.sh` through `sbatch.sh`. Ensemble members are separate jobs (`<parent>.<case>.MEMnn`).
+4. `case_run.sh` prepares the case directory, runs the preprocess container, launches SHiELD, runs the regridding stage, then resubmits the next segment or archives the case. It keeps `TMP` after a failure and clears it when the next job starts.
+5. In the preprocess container, `src/driver.py` calls the initial driver for the first segment and the restart driver for later ones. The initial driver generates the grid and orography, converts initial conditions, plots the grid, decomposes processes, writes the namelists, tables and fixed files, writes the run script and then runs the plugins (Section 23: soil moisture perturbations, PAMIP and external boundary files), which edit the written namelists where they need to.
 
 ## 5. Case setup
 
-Create a case directory and place a case-local `run_config.yaml` in it before launching. A
-common pattern is:
+Make a case directory and put a `run_config.yaml` in it. Submit from this directory so case-local overrides are picked up. After a run it holds `FIXED`, `GRID`, `IC`, `INPUT`, `LOGS`, `OUTPUT`, `RESTART`, `HIST` and `TMP`, depending on the settings. A `run` symlink points to the case directory during a job and to the archive afterwards (`memNN` links for ensemble members).
 
-```bash
-INIT="2026031200Z"
-CASE_NAME="C96.R4N2.R2N1.CNTRL"
-WORK_ROOT="$HOME/scratch/shield_cases/$INIT"
-CASE_DIR="$WORK_ROOT/$CASE_NAME"
-mkdir -p "$CASE_DIR"
-```
+## 6. Configuration reference
 
-Submit from this directory so case-local overrides are read from the same location. After a
-successful run the case directory contains staged subdirectories such as `FIXED`, `GRID`,
-`IC`, `INPUT`, `LOGS`, `OUTPUT`, `RESTART`, `HIST`, and `TMP`, depending on the case
-settings. A `run` symlink points at the active working directory during a single-case job,
-and at the archived case after archiving. Ensemble members use `memNN` symlinks instead.
-
-## 6. Configuration reference (`run_config.yaml`)
-
-Each case directory must include a `run_config.yaml`. Start from
-[config/202411/run_config.yaml](config/202411/run_config.yaml) (or `config/202604/`) and override only the keys you need. The
-configuration parser rejects unknown keys, so keep the case file aligned with the template.
+Start from [config/202411/run_config.yaml](config/202411/run_config.yaml) (or `config/202604/`) and override only what you need. Unknown keys are rejected. Variables such as `$USER` and `$HOME` are expanded in paths.
 
 ### 6.1 System paths
 
-| Key | Meaning |
+| Key | Description |
 | --- | --- |
-| `case_root` | Root of the persistent case tree. |
-| `jobtmp` | Preferred work root, created on the allocated node when its parent exists. Absent scratch falls back to `case_root`; node count does not change this preference. |
-| `fix_src` | Source tree for static datasets (the `fix` directory). |
-| `ufs_utils` | Configured workflow path. The launcher ultimately derives the active repository from `launchers/case_submit.py`. |
-| `shield_image`, `fregrid_image`, `preprocess_image` | Apptainer images for the model, regridding and preprocessing (Section 2). |
-| `containers_root` | Directory where `tools/install_images.sh` writes the three images; the image keys must point into it. |
-| `container_bindpath` | Host paths bound into the containers: a list or a comma-separated string; variables are expanded. Each path must exist on the compute nodes. |
-| `shield_root` | Reserved configuration key; it is not consumed by the current launcher. |
-| `archive_root` | Root of the archive tree. |
-| `shield_release` | SHiELD release, `"202411"` (default) or `"202604"`; selects `config/<release>/`, `templates/<release>/` and the `coupler_nml` time-step key (Section "SHiELD releases"). |
-| `shield_exe` | Path to a native SHiELD executable; `{shield_release}` in the path is replaced by the release. Required for any multi-node run; an empty value selects the container path for single-node runs. |
-| `modules` | Host modules loaded before a native `shield_exe` is launched; unused with the container image. |
-
-Environment variables such as `$USER` and `$HOME` are expanded.
+| `fix_src` | Static dataset tree (the `fix` directory); must be writable (Section 7). |
+| `shield_image`, `fregrid_image`, `preprocess_image` | Full paths of the images (Section 2). |
+| `containers_root` | Where `tools/install_images.sh` writes images. |
+| `case_root` | Root of the case tree, `case_root/<parent>/<case_name>`. Default `/jobtmp/$USER/gfdl_shield`. |
+| `container_bindpath` | Host paths bound into the containers (list or comma-separated string). Each must exist on the compute nodes. |
+| `archive_root` | Archive base; outputs go to `<archive_root>/<parent>/<case_name>`. |
+| `shield_release` | `"202411"` (default) or `"202604"`. An unquoted `202604` is accepted; any other value stops the submission. |
+| `shield_exe` | Full path of a native executable, used as written. Required for multi-node runs; `""` selects the single-node container. If the file is missing, a single-node `202411` case uses the container with a warning; any other case stops. `null` uses the repository default. |
+| `modules` | Host modules loaded before a native executable runs. |
 
 ### 6.2 SLURM submission
 
-| Key | Default | Meaning |
+| Key | Default | Description |
 | --- | --- | --- |
-| `walltime` | 24 | Wall time in hours. |
-| `n_nodes` | 4 | Nodes requested. |
-| `n_cpus` | 192 | Requested task count. The submitted count is rounded down to a multiple of `n_nodes`. |
-| `n_cpus_per_task` | 1 | CPUs per task. |
-| `partition` | batch | SLURM partition. |
-| `mem` | 0 | Total job memory in GB. 0 uses the scheduler default. See the memory rule below. |
-| `constraint_node` | null | Optional SLURM node constraint passed as `--constraint=<value>`. |
-| `exclusive_node` | false | Request exclusive node access (`--exclusive`). |
-| `sbatch_options` | "" | Extra raw options appended to the `sbatch` call, for example `"--account=myproj --mail-type=END"`. |
-| `logfile` | shield_driver | Base name of the driver log written in the case directory. |
+| `walltime` | 24 | Wall time in hours (`--time=<h>:00:00`). |
+| `n_nodes` | 4 | Nodes (`--nodes`). |
+| `n_cpus` | 192 | Tasks, rounded down to a multiple of `n_nodes` (`--ntasks`, `--ntasks-per-node`). |
+| `n_cpus_per_task` | 1 | `--cpus-per-task`. |
+| `partition` | batch | `--partition`. |
+| `mem` | 0 | Total memory in GB. `--mem=<mem>g` on one node, `--mem-per-cpu=<mem // tasks>g` on several; omitted when not above 2 GB per task. |
+| `constraint_node` | null | `--constraint=<value>`; omitted when null. |
+| `exclusive_node` | false | `--exclusive`. |
+| `sbatch_options` | "" | Extra raw options, appended unchanged, e.g. `"--account=myproj --mail-type=END"`. |
+| `logfile` | shield_driver | Base name of the driver log. `.log` is added (a trailing `.log` is ignored); ensembles insert the member number, `<logfile>.NN.log`. |
 
-Tasks per node are computed as `n_cpus // n_nodes`, and the submitted task count is
-`(n_cpus // n_nodes) * n_nodes`.
+The job name is `<parent directory>.<case directory>`, with `.MEMnn` for ensemble members. The job writes its own log, so `sbatch` gets `--output=/dev/null`. A multi-node job runs the native `shield_exe`; a single-node job may use the container. Several `tests/cases/*/run_config.yaml` files show the SLURM keys in a `# SBATCH OPTIONS` block.
 
-The keys map to `sbatch` flags in `launchers/sbatch.sh`:
+### 6.3 Case metadata and execution control
 
-| Key | Flag |
+| Key | Description |
 | --- | --- |
-| `walltime` | `--time=<walltime>:00:00` |
-| `n_nodes` | `--nodes` |
-| `n_cpus` | `--ntasks` (rounded as above) and `--ntasks-per-node` |
-| `n_cpus_per_task` | `--cpus-per-task` |
-| `partition` | `--partition` |
-| `constraint_node` | `--constraint=<value>`, omitted when null |
-| `exclusive_node` | `--exclusive`, omitted when false |
-| `mem` | `--mem=<mem>g` on one node, `--mem-per-cpu=<mem // tasks>g` on several nodes, omitted when `mem` is not above 2 GB per task |
-| `sbatch_options` | appended unchanged |
-
-The job name is `<parent directory>.<case directory>`, with `.MEMnn` added for ensemble members. The
-driver log (`logfile`) is written by the job itself, so `sbatch` is called with `--output=/dev/null`.
-A multi-node job runs the native `shield_exe` directly; a single-node job may use the container.
-
-The test cases in `tests/cases/*/run_config.yaml` list all SLURM keys in a `# SBATCH OPTIONS`
-block at the top of the file, so the request of a case is read in one place.
-
-### 6.3 Case metadata
-
-| Key | Meaning |
-| --- | --- |
-| `case_name` | Case identifier. Null falls back to the directory name. |
-| `description` | Short experiment label. |
+| `case_name` | Case identifier; null uses the directory name. |
+| `description` | Optional short experiment label. |
 | `fv3_debug` | Verbose model diagnostics. |
-| `archive_data` | Archive outputs after the final segment. |
-| `merge_freq` | Merge frequency for regridded output across run segments (see Section 14). |
+| `archive_data` | Archive outputs after the final segment (Section 17). |
+| `merge_freq` | Merging of regridded output across segments (Section 14). |
+| `init_datetime` | Cycle of the initial-condition data, UTC, `YYYYMMDDHHZ` with hour 00, 06, 12 or 18, e.g. `2026031200Z`. |
+| `forecast_hour` | Lead hour of the `init_datetime` forecast used for initial conditions (0 is the analysis). If non-zero, the model clock starts at `init_datetime + forecast_hour`, and regional boundaries come from the same cycle at leads `forecast_hour`, `+3`, ... Regional runs therefore need a multiple of 3, and the last lead must exist (GFS: hourly to f120, 3-hourly to f384). The state records `ic_cycle`. |
+| `run_length`, `run_length_units` | Segment length; units are `hours` (default), `days`, `months` or `years`. Months are calendar months (`coupler_nml months`; years as 12 months) and need a start day of 28 or earlier. |
+| `resubmit` | Number of resubmissions; the run has `resubmit + 1` segments. |
+| `continue_run` | Set internally (first segment cold, later ones warm). |
+| `preprocess_dask_scheduler` | `processes` (default) or `synchronous` (for debugging). `threads` is not supported. |
 
-### 6.4 Execution control
+### 6.4 Initial conditions and preprocessing
 
-| Key | Meaning |
-| --- | --- |
-| `init_datetime` | Cycle of the initial-condition source data, UTC, in `YYYYMMDDHHZ` form with hour 00, 06, 12 or 18, for example `2026031200Z`. The model starts `forecast_hour` hours later. |
-| `run_length` | Length of one segment, in `run_length_units`. |
-| `run_length_units` | `hours` (default), `days`, `months` or `years`. Months are calendar months from the segment start (`coupler_nml months`; years are passed as 12 months) and need a start day of 28 or earlier. |
-| `forecast_hour` | Lead hour of the `init_datetime` forecast used for initial conditions; 0 selects the analysis. With a non-zero value the model clock (`coupler_nml`, diagnostics, climatologies, the `chgres_cube` date) starts at `init_datetime + forecast_hour`, and regional boundaries are taken from the same cycle at leads `forecast_hour`, `forecast_hour + 3`, ..., written as boundary hours 000, 003, ...; regional runs therefore need a multiple of 3, and the last lead must exist (GFS: hourly to f120, 3-hourly to f384). The state records the source cycle as `ic_cycle`. |
-| `resubmit` | Number of sequential resubmissions. The run has `resubmit + 1` segments (see Section 15). |
-| `continue_run` | Managed internally by the driver. The initial segment is a cold start and later segments are warm starts. |
-| `preprocess_dask_scheduler` | Dask scheduler for the parallel per-tile preprocessing and regridding steps: `processes` (default, spawned worker processes) or `synchronous` (one task at a time in the driver process, for debugging). `threads` is not supported because the tasks change the working directory. |
-
-`c_res` is a string that starts with `C`: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072`. A plain integer such as `96` is still read as the same resolution, and checksums and staged-grid records treat the two spellings alike.
-
-### 6.5 Initial conditions and preprocessing
-
-| Key | Default | Meaning |
+| Key | Default | Description |
 | --- | --- | --- |
-| `generate_ic_data` | true | Generate the grid and initial conditions during preprocess. |
-| `external_ic_dir` | null | Path to a pre-staged case bundle used when `generate_ic_data` is false. |
-| `preprocess_only` | false | Stage the complete grid and initial conditions, then exit. |
-| `preprocess_grid_only` | false | Generate and stage the grid, then exit for `uniform`, `stretch`, and `nest` cases (see Section 9). |
-| `preprocess_orog_only` | false | Generate and stage orography, then exit for `uniform`, `stretch`, and `nest` cases (see Section 10). |
+| `generate_ic_data` | true | Generate the grid and initial conditions. |
+| `external_ic_dir` | null | Pre-staged bundle, used when `generate_ic_data` is false (Section 8.5). |
+| `preprocess_only` | false | Stage the grid and initial conditions, then exit. |
+| `preprocess_grid_only` | false | Generate and stage the grid, then exit (Section 9). |
+| `preprocess_orog_only` | false | Generate and stage orography, then exit (Section 10). |
 
-Setting `preprocess_grid_only` or `preprocess_orog_only` implies `preprocess_only`.
+The grid-only and orography-only options imply `preprocess_only`. The UFS_UTILS options (`run_*`) are in Section 8.6.
 
-The UFS_UTILS surface-analysis and coupled-grid options (`run_global_cycle`,
-`run_emcsfc_snow`, `run_emcsfc_ice_blend`, `run_cpld_gridgen` and their inputs) are
-described in Section 8.9.
+### 6.5 Horizontal grid
 
-### 6.6 Horizontal grid
-
-| Key | Meaning |
+| Key | Description |
 | --- | --- |
-| `c_res` | Cubed-sphere face resolution. Approximate spacing: C96 \~ 100 km, C192 \~ 50 km, C384 \~ 25 km, C768 \~ 13 km, C3072 \~ 3 km. |
-| `gtype` | `uniform`, `stretch`, `nest`, `regional_gfdl`, or `regional_esg`. |
-| `target_lon`, `target_lat` | Grid centre for `stretch` and `regional_esg`. For `nest` and `regional_gfdl` it is replaced by the centre of the (first) box. |
-| `stretch_factor` | Schmidt stretching coefficient. Values greater than 1 refine the target region. |
+| `c_res` | Cubed-sphere resolution: `C48`, `C96`, `C192`, `C384`, `C768`, `C1152` or `C3072` (an integer such as `96` is the same). Spacing: C96 ~100 km, C192 ~50 km, C384 ~25 km, C768 ~13 km, C3072 ~3 km. |
+| `gtype` | `uniform`, `stretch`, `nest`, `regional_gfdl` or `regional_esg`. |
+| `target_lon`, `target_lat` | Grid centre for `stretch` and `regional_esg`. For `nest` and `regional_gfdl` it is the centre of the (first) box. |
+| `stretch_factor` | Schmidt stretching; values above 1 refine the target region. |
+| `refine_ratio` | Refinement ratio of each nest relative to its parent; a list defines several nests. |
+| `parent_tile` | Parent tile, 1 to 6: one value for all nests, or one per same-level nest. The grid is rotated so the centre of the first box lies on tile 6 (the usual value). A telescoping chain uses the first entry for its outermost nest. |
+| `halo` | Halo width for the nest boundary exchange; regional grids need 3. |
+| `lon_min`, `lon_max`, `lat_min`, `lat_max` | Bounding box of each nest, one value per `refine_ratio` entry. A different count stops preprocessing. |
+| `idim`, `jdim`, `delx`, `dely` | `regional_esg` only: zonal and meridional points and supergrid spacing in degrees (model spacing is twice `delx`; 0.0585 is about 13 km). |
 
-Nested grids, active when `gtype: nest`:
+All nests are generated by one `make_hgrid --nest_grids` call. Each nest covers its box with the smallest block of whole parent cells and must stay `halo` parent cells inside its parent tile. If each box lies inside its predecessor the layout is telescoping, and the effective refinement of nest `i` is the product of the ratios up to `i`; otherwise the nests are independent on the same parent grid. A box may cross 0 or 180 degrees longitude. `regional_gfdl` needs the box keys, is centred on the box and refined by the first `refine_ratio`. For both regional types `c_res` is replaced by the equivalent global resolution (`global_equiv_resol`).
 
-| Key | Meaning |
-| --- | --- |
-| `refine_ratio` | Refinement ratio for each nest relative to its parent. A list defines multiple nests. |
-| `parent_tile` | Parent cubed-sphere tile, 1 to 6: one value for all nests, or a list with one entry per same-level nest. The grid is rotated so that the centre of the first box lies on tile 6, so 6 is the usual value. A telescoping chain uses the first entry for its outermost nest; each inner nest has its predecessor as parent. |
-| `halo` | Halo width for the nest boundary exchange. Regional grids require 3. |
-| `lon_min`, `lon_max`, `lat_min`, `lat_max` | Bounding box of each nest: one value per `refine_ratio` entry (scalars are accepted for a single nest). A different number of boxes stops preprocessing. |
+### 6.6 Vertical grid, physics, time stepping, surface
 
-When `gtype: nest`, the target longitude and latitude are set to the center of the first
-bounding box. Each nest covers its box with the smallest block of whole parent cells and
-must stay `halo` parent cells inside its parent tile; all nests are generated by one
-`make_hgrid --nest_grids` call, and each telescoping nest is bracketed on the generated
-grid of its parent nest. The nest layout is classified automatically from the bounding boxes. If each
-box is contained inside its predecessor, the layout is telescoping and refinement ratios
-compound. Otherwise the nests are treated as independent nests on the same parent grid. For
-telescoping nests the effective refinement of nest `i` is the product of ratios up to and
-including `i`. A box may cross 0 or 180 degrees longitude. `regional_gfdl` also requires
-`lon_min`, `lon_max`, `lat_min`, and `lat_max`; the cube is centred on that box, as for
-nests, and the domain is bracketed on tile 6 and refined by the first `refine_ratio` entry;
-`regional_esg` is defined by `target_lon`, `target_lat` and the keys below. For both
-regional types `c_res` is replaced by the equivalent global resolution of the generated
-grid (`global_equiv_resol`).
-Regional ESG grids, active when `gtype: regional_esg`, additionally use:
-
-| Key | Meaning |
-| --- | --- |
-| `idim`, `jdim` | Zonal and meridional grid points. |
-| `delx`, `dely` | Supergrid spacing in degrees. The model grid spacing is twice this value (0.0585 is about 13 km). |
-
-### 6.7 Vertical grid and physics
-
-| Key | Meaning |
+| Key | Description |
 | --- | --- |
 | `levels` | Number of hybrid sigma-pressure levels. |
-| `do_deep` | `false` (default) switches deep convection off on every domain with grid spacing of 4 km or less and keeps it elsewhere; `true` keeps it on all domains. |
+| `do_deep` | `false` (default) turns deep convection off on domains with spacing of 4 km or less; `true` keeps it everywhere. |
+| `dt_atmos`, `dt_cpld`, `k_split`, `n_split` | Time stepping (Section 12). |
+| `lake_cutoff` | Land and water fraction threshold. |
+| `add_lake` | Add lake fraction and depth (GLDB v2) to the orography; `uniform` and `regional_gfdl` only. It does not switch on a lake model. |
+| `make_gsl_orog` | Generate `oro_data_ls` and `oro_data_ss`. SHiELD physics does not read them. |
+| `use_modern_diag` | Use a case-local `diag_table.yaml` (required); `data_table.yaml` is optional. |
+| `pack_output` | Pack final output as int16 with `scale_factor` and `add_offset`. |
+| `derived_vars_module` | Path to a Python file whose `derive` list adds derived variables (Section 14). |
 
-### 6.8 Time stepping
+### 6.7 Ensembles and perturbations
 
-| Key | Meaning |
+| Key | Description |
 | --- | --- |
-| `dt_atmos` | Atmospheric time step in seconds. Null triggers automatic selection. |
-| `dt_cpld` | Coupling time step in seconds, written as `coupler_nml dt_cpld` (`dt_ocean` for `202411`). Null uses `dt_atmos`. |
-| `k_split` | Remap split counts per domain. Length must equal `n_nests + 1`. |
-| `n_split` | Acoustic substep counts per domain. Length must equal `n_nests + 1`. |
-
-See Section 12 for the automatic values and the relations between these quantities.
-
-### 6.9 Surface and orography
-
-| Key | Meaning |
-| --- | --- |
-| `lake_cutoff` | Land and water fractional threshold. |
-| `add_lake` | Add lake fraction and depth (GLDB v2) to the orography files; `uniform` and `regional_gfdl` only. It does not switch on a lake model. |
-| `make_gsl_orog` | Generate the GSL drag-suite orography files (`oro_data_ls`, `oro_data_ss`). SHiELD physics does not read them; they are staged for use outside SHiELD. |
-
-### 6.10 Ensembles
-
-| Key | Meaning |
-| --- | --- |
-| `ensemble_run` | Enable a multi-member ensemble. |
-| `n_ensembles` | Number of members. Must be at least 1 when `ensemble_run` is true. |
-| `skip_ensembles` | Member indices to omit, for example `[1, 3, 5]`. |
-
-### 6.11 Land surface perturbations
-
-The `sm_perturbations` block applies controlled perturbations to soil-state variables. The
-schema and methods are documented in Section 11.
+| `ensemble_run`, `n_ensembles`, `skip_ensembles` | Ensemble switch, member count (at least 1) and member indices to omit (Section 16). |
+| `sm_perturbations` | Soil-state perturbation block (Section 11). |
+| `pamip_experiment`, `pamip_baseline`, `pamip_fields`, `external_sst`, `external_sic`, `external_mask` | PAMIP and external climatologies (Section 21). |
 
 ## 7. Static runtime datasets (`fix/`)
 
-The `fix` tree holds the climatologies, lookup tables, orography inputs, and other static
-datasets required by a run, resolved from `fix_src`. On Oscar these are already staged, so
-manual download is normally unnecessary. If a dataset is missing, the NOAA fix bundle is the
-reference source:
+The `fix` tree holds climatologies, lookup tables, orography inputs and other static datasets, resolved from `fix_src`. The reference source is https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/. Missing files are fetched at run time: `src/fv3_update_fix.py` looks for each file
 
-https://noaa-nws-global-pds.s3.amazonaws.com/index.html#fix/
+1. in `fix_src` under the workflow name;
+2. in `fix_src` under the NOAA name, which it then links (e.g. `am/fix_co2_update/global_co2historicaldata_2020.txt` for `am/co2historicaldata_2020.txt`);
+3. in the NOAA bucket, newest version directory first (so the binary orography inputs, present only in `orog/20231027`, are found).
 
-Missing files are fetched at run time. `src/fv3_update_fix.py` looks for each file
-the workflow reads in `fix_src`, then under the name NOAA uses for it in `fix_src` (for
-example `am/fix_co2_update/global_co2historicaldata_2020.txt` for
-`am/co2historicaldata_2020.txt`, which it links), and then in the NOAA bucket, newest
-version directory first, so files dropped from the latest release (the binary orography
-inputs of the preprocessing image, present only in `orog/20231027`) are still found.
-Downloads go to `fix_src` under the NOAA name, with a link under the name the workflow
-reads; `fix_src` must therefore be writable. The chgres_cube variable maps come from the
-UFS_UTILS fork of the preprocessing image. A run stops only for a required file found
-neither locally nor remotely; `mld_DR003_c1m_reg2.0.grb` and `fix/external/ERA5` are not in the
-bucket and must be staged by hand. Set `UFS_PY_FIX_REMOTE=0` to disable remote lookups.
+Downloads go to `fix_src` under the NOAA name with a link under the workflow name, so `fix_src` must be writable. A run stops only for a required file found nowhere. `mld_DR003_c1m_reg2.0.grb` and `fix/external/ERA5` are not in the bucket and must be staged by hand. `UFS_PY_FIX_REMOTE=0` disables remote lookups. The chgres_cube variable maps are fetched from a pinned UFS_UTILS commit (override with `UFS_PY_FIX_VARMAP_URL`).
 
-For CO2 the observed record (`fix_co2_update`) is preferred over `co2dat_4a`, and both over
-the projection (`fix_co2_proj`). When no table exists for a model year, the latest earlier
-year is staged with a warning; the radiation code extrapolates from it
-(`radiation_gases.f`). The decadal volcanic aerosol tables (1850-1999) are linked into the
-working directory, where `radiation_aerosols.f` opens them.
+For CO2 the observed record (`fix_co2_update`) is preferred over `co2dat_4a`, and both over the projection (`fix_co2_proj`). If no table exists for a model year, the latest earlier year is staged with a warning. The decadal volcanic aerosol tables (1850-1999) are linked into the working directory.
 
-`tools/update_fix.py` (or `tools/sync_noaa_fix.sh`, which loads `awscli`) updates the
-whole tree in advance and is independent of the run-time lookup above. It mirrors the
-`am`, `orog` and `sfc_climo` directories of the NOAA bucket with `aws s3 sync`, keeps the
-newest version of each in `fix/`, removes the pre-generated `C<res>` directories, recreates
-the CO2 and volcanic-aerosol links without the `global_` prefix, and downloads the Cartopy
-Natural Earth data into `fix/external/CARTOPY`. It writes to `fix` in the parent of the repository (linked as `fix/`) by
-default and replaces those three dataset directories. Use `--dest /path/to/fix` to
-choose a different destination, and
-`--skip-carto` to skip the Cartopy download. The destination is independent of the
-directory from which the helper is run.
+To update the whole tree in advance, use `tools/update_fix.py` (or `tools/sync_noaa_fix.sh`, which loads `awscli`). It mirrors `am`, `orog` and `sfc_climo` with `aws s3 sync`, keeps the newest version of each, removes pre-generated `C<res>` directories, recreates the CO2 and aerosol links without the `global_` prefix and downloads Cartopy Natural Earth data into `fix/external/CARTOPY`. It writes to `fix` in the parent of the repository by default; use `--dest` for another path and `--skip-carto` to skip Cartopy.
 
-Data that does not come from the NOAA bucket is kept in `fix/external` (`ERA5`, `PAMIP`,
-`AMIP` and `CARTOPY`). `tools/update_fix.py` writes only `CARTOPY` there. The soil moisture
-climatology used by the perturbation module is `fix/external/ERA5/sm_monthly_1950_2025.nc`.
+Data not from the bucket is in `fix/external` (`ERA5`, `PAMIP`, `AMIP`, `CARTOPY`); `update_fix.py` writes only `CARTOPY`. The soil moisture climatology is `fix/external/ERA5/sm_monthly_1950_2025.nc`.
 
 ## 8. Initial conditions and preprocessing
 
-When `generate_ic_data: true`, preprocessing generates the grid and orography and then
-uses `chgres_cube` to convert external GRIB2 data into FV3 initial conditions. The
-workflow currently supports GFS and HRRR as external source models. Source data are
-retrieved with retry and multi-source fallback:
+With `generate_ic_data: true`, preprocessing generates the grid and orography, then runs `chgres_cube` on GRIB2 data. GFS and HRRR are supported sources; downloads retry and fall back between sources (GFS: NOAA AWS S3, NCAR GDEX; HRRR: NOAA AWS S3, Google Cloud Storage). The source is chosen per domain, not in `run_config.yaml`.
 
-- GFS: NOAA AWS S3 and NCAR GDEX.
-- HRRR: NOAA AWS S3 and Google Cloud Storage.
+### 8.1 Default source assignment
 
-The source model is selected per model domain. It is **not** selected with a key in
-`run_config.yaml`. To override the built-in source assignment, place a domain-specific
-`chgres_cube` YAML file in the case directory from which `case_submit.sh` is launched.
-
-### 8.1 Default GFS/HRRR source assignment
-
-With no case-local `chgres_cube` override files, the workflow uses the following
-assignments:
-
-| Domain | Atmospheric source | Surface source | Behavior |
+| Domain | Atmosphere | Surface | Conversions |
 | --- | --- | --- | --- |
-| Global | GFS | GFS | One combined GFS conversion. |
-| Regional | GFS | GFS | One combined GFS conversion. |
-| Nest inside HRRR coverage | HRRR | GFS | Two conversions: HRRR atmosphere, then GFS surface. |
-| Nest outside HRRR coverage | GFS | GFS | One combined GFS conversion after the implicit HRRR default falls back to GFS. |
+| Global | GFS | GFS | One |
+| Regional | GFS | GFS | One |
+| Nest inside HRRR coverage | HRRR | GFS | Two (HRRR atmosphere, GFS surface) |
+| Nest outside HRRR coverage | GFS | GFS | One (implicit HRRR default falls back to GFS) |
 
-For nested domains, HRRR is therefore the default **atmospheric** source, not the
-surface source. The workflow checks each nest against the supported HRRR domain before
-using HRRR. If a nest has no explicit `external_model` setting and is outside HRRR
-coverage, the automatic HRRR choice falls back silently to GFS.
+The surface source stays GFS because HRRR lacks the required soil levels.
 
-The surface source for limited-area HRRR initialization remains GFS because the HRRR
-input used by this workflow does not provide the required soil levels. Consequently,
-an HRRR limited-area initialization is split into two `chgres_cube` calls:
+### 8.2 Override files
 
-```text
-HRRR -> atmospheric fields
-GFS  -> surface fields
-```
+Overrides are flat `chgres_cube` mappings, one optional file per domain in the submission directory: `chgres_cube.yaml` (global or regional) and `chgres_cube_nest{NN}.yaml` for nests (`nest02` is the first nest, `nest03` the second). `fort.41` and `fort_nest{NN}.41` are also read. Keys may be flat or inside one `config` group. Copy `templates/chgres_cube.yaml` as a start: every key is null, meaning "keep the workflow value", so set only what you change. An unknown key stops preprocessing with an error naming the file and keys. Land-surface defaults follow UFS_UTILS except `tg3_from_soil: true` (deep-soil temperature from the lowest soil layer of the source).
 
-A GFS limited-area initialization uses one call for both atmospheric and surface fields.
+`external_model` (`GFS` or `HRRR`) selects the source:
 
-### 8.2 Override files and precedence
+- No `external_model` in a nest file: try HRRR, fall back to GFS outside HRRR coverage.
+- `external_model: HRRR`: require HRRR; outside coverage this raises `ValueError`. Regional domains may use it with `chgres_cube.yaml`; for a global domain it is an error.
+- `external_model: GFS`: force GFS.
 
-Overrides are supplied per domain as flat `chgres_cube` configuration mappings in the
-case directory. Every override file is optional. Domains without an override retain the
-built-in behavior described above.
-
-| Domain | YAML override file |
-| --- | --- |
-| Global | `chgres_cube.yaml` |
-| Regional | `chgres_cube.yaml` |
-| Nest `NN` | `chgres_cube_nest{NN}.yaml` |
-
-`chgres_cube.py` also lists `fort.41` and `fort_nest{NN}.41` as candidates. Keys may be
-flat or nested in one `config` group, so a conventional namelist with a `&config` section
-and a YAML file copied from `templates/chgres_cube.yaml` are both accepted. Every key of the
-template is null, meaning "keep the workflow value" (given in its comment), so a verbatim
-copy changes nothing; set only the keys to change. The land-surface defaults follow
-UFS_UTILS, except `tg3_from_soil: true`: the deep-soil temperature comes from the lowest
-soil layer of the source data rather than the static substrate-temperature climatology. `NN` is the
-zero-padded nest index
-used throughout the workflow: the first nest
-is `nest02`, the second is `nest03`, and so on. For example:
-
-```text
-CASE_DIR/
-├── run_config.yaml
-├── chgres_cube_nest02.yaml   # overrides nest02 only
-├── chgres_cube_nest03.yaml   # overrides nest03 only
-└── ...
-```
-
-Override keys use the `chgres_cube` variable names represented by
-`templates/chgres_cube.yaml`. Unknown keys stop preprocessing with an error that identifies
-the file and offending keys.
-
-### 8.3 Selecting GFS or HRRR
-
-Set `external_model` in the override file for the domain you want to change. The
-supported source selections are `GFS` and `HRRR`, subject to the domain restrictions
-below.
-
-#### Global domain
-
-The global domain supports GFS initialization. The default requires no override file:
-
-```yaml
-external_model: GFS
-```
-
-Do not request `external_model: HRRR` for the global domain. HRRR initialization is
-implemented only for limited-area regional and nested domains, so an explicit global
-HRRR request raises an error.
-
-For the global domain, the conversion switches may also be overridden explicitly:
-
-```yaml
-external_model: GFS
-convert_atm: true
-convert_sfc: true
-convert_nst: false
-```
-
-#### Regional domain
-
-Regional domains default to GFS. To use HRRR for the regional atmosphere, create
-`chgres_cube.yaml` in the case directory:
-
-```yaml
-external_model: HRRR
-```
-
-The regional domain must lie within HRRR coverage. An **explicit** HRRR request outside
-HRRR coverage raises `ValueError`; it is not silently downgraded to GFS. To force GFS,
-use:
-
-```yaml
-external_model: GFS
-```
-
-When HRRR is selected successfully, the workflow performs an HRRR atmospheric
-conversion and a separate GFS surface conversion.
-
-#### Nested domains
-
-Each nest can be controlled independently. For the first nest, `nest02`, create
-`chgres_cube_nest02.yaml`.
-
-To explicitly request HRRR atmospheric initialization:
-
-```yaml
-external_model: HRRR
-```
-
-To force GFS for both atmosphere and surface:
-
-```yaml
-external_model: GFS
-```
-
-To retain automatic source selection, either omit `chgres_cube_nest02.yaml` entirely or
-omit `external_model` from that file. The automatic nested behavior is:
-
-```text
-nest inside HRRR coverage  -> HRRR atmosphere + GFS surface
-nest outside HRRR coverage -> GFS atmosphere + GFS surface
-```
-
-The distinction between an implicit and explicit HRRR request is important:
-
-- No `external_model` in a nest override: try HRRR; fall back to GFS if the nest is
-  outside HRRR coverage.
-- `external_model: HRRR`: require HRRR; raise an error if the nest is outside HRRR
-  coverage.
-- `external_model: GFS`: force GFS; do not attempt HRRR.
-
-For a two-nest experiment in which `nest02` should use HRRR and `nest03` should use GFS:
-
-`chgres_cube_nest02.yaml`:
-
-```yaml
-external_model: HRRR
-```
-
-`chgres_cube_nest03.yaml`:
-
-```yaml
-external_model: GFS
-```
-
-These choices affect only the specified nests; domains without an override continue to
-use their defaults.
-
-### 8.4 Conversion switches on limited-area domains
-
-For regional and nested domains, `convert_atm`, `convert_sfc`, and `convert_nst` are
-controlled by the source-selection planner. Users should not use these switches to
-change the HRRR/GFS split for limited-area initialization.
-
-The planner applies:
-
-| Selected atmospheric source | `convert_atm` | `convert_sfc` | `convert_nst` | Calls |
-| --- | ---: | ---: | ---: | --- |
-| GFS | `true` | `true` | `false` | One GFS conversion |
-| HRRR | `true` for HRRR pass | `false` for HRRR pass | `false` | HRRR atmosphere pass |
-| HRRR | `false` for GFS pass | `true` for GFS pass | `false` | GFS surface pass |
-
-If these conversion keys are present in a regional or nest override file, the planner
-removes them from the user override and supplies the values required by the selected
-source plan. Other recognized settings remain user-overridable.
-
-### 8.5 Overriding other `chgres_cube` settings
-
-A source override can be combined with other recognized `chgres_cube` settings. For
-example, the first nest can explicitly require HRRR while changing the output soil-layer
-count and vegetation-fraction climatology behavior:
+The conversion switches `convert_atm`, `convert_sfc` and `convert_nst` are set by the planner on regional and nested domains and are dropped if given there. Other settings stay overridable, for example:
 
 ```yaml
 external_model: HRRR
@@ -619,219 +252,92 @@ nsoill_out: 9
 vgfrc_from_climo: false
 ```
 
-Other recognized settings, including tracer configuration, climatology switches, and
-halo-related options, are applied to the corresponding domain unless they are among the
-limited-area conversion switches controlled by the planner.
+### 8.3 Verifying the source
 
-### 8.6 Verifying which source was used
+The resolved source is recorded in `state.yaml` under `ic_source` (keys `global`, `regional`, `nest02`, ..., each with `atm`, `sfc` and `nst`). A domain converted from several sources also gets one log per field group, e.g. `chgres_cube_nest02_atm.log` and `chgres_cube_nest02_sfc.log`.
 
-The workflow records source provenance in `state.yaml` under a per-domain
-`ic_source` mapping, keyed by domain (`global`, `regional`, `nest02`, ...), with separate
-`atm`, `sfc`, and `nst` entries. State files written by earlier versions, with one
-`{domain}_ic_source` key per domain, are read as before. This is the
-recommended way to verify the resolved source after preprocessing.
+### 8.4 Preprocessing only
 
-A domain converted from multiple sources also receives separate logs for each converted
-field group. For example, an HRRR-initialized first nest produces logs such as:
+`preprocess_only: true` stages the grid and initial conditions and exits.
 
-```text
-chgres_cube_nest02_atm.log   # HRRR atmospheric conversion
-chgres_cube_nest02_sfc.log   # GFS surface conversion
-```
-
-This makes the final source assignment traceable even when automatic HRRR-to-GFS
-fallback is active for nests.
-
-### 8.7 Preprocessing without launching SHiELD
-
-To generate and stage the grid and initial conditions without running the model, set:
-
-```yaml
-generate_ic_data: true
-preprocess_only: true
-```
-
-The job exits after preprocessing.
-
-### 8.8 External initial-condition bundles
-
-If a pre-generated case bundle already exists, bypass initial-condition generation by
-setting `generate_ic_data: false` and pointing `external_ic_dir` at the staged case
-bundle:
+### 8.5 External bundles
 
 ```yaml
 generate_ic_data: false
 external_ic_dir: /path/to/prestaged_case
 ```
 
-The workflow expects a staged case directory containing non-empty `FIXED`, `GRID`, and
-`INPUT` directories plus `state.yaml`, not a single NetCDF file that it modifies in place.
-Use the repository code as the handoff point when building a custom conversion pipeline
-rather than mutating the default files directly.
+The bundle must be a staged case directory with non-empty `FIXED`, `GRID` and `INPUT` plus `state.yaml`. Its `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in `src/fv3_external_ic.py`); everything else, including segment settings and `pamip_experiment`, comes from the case `run_config.yaml`. The model start (`init_datetime` plus `forecast_hour`), `gtype` and `levels` must match the bundle.
 
-The bundle's `state.yaml` supplies only the grid and IC keys (`BUNDLE_KEYS` in
-`src/fv3_external_ic.py`); all other settings, including segment settings and
-`pamip_experiment`, come from the case `run_config.yaml`. The case model start
-(`init_datetime` plus `forecast_hour`), `gtype` and `levels` must match the bundle.
+### 8.6 Surface analysis update and coupled grids (UFS_UTILS)
 
-### 8.9 Surface analysis update and coupled grids (UFS_UTILS)
+Four UFS_UTILS programs can run after `chgres_cube` on a cold start with `generate_ic_data: true`. Each runs when its `run_*` key is true (all false by default; see section 5a of `config/<release>/run_config.yaml`) and follows the matching UFS_UTILS `ush` script.
 
-Four UFS_UTILS programs of the preprocessing image can run after `chgres_cube` on a cold
-start with `generate_ic_data: true`, each when its `run_*` key is true (all false by
-default; `config/<release>/run_config.yaml` section 5a lists the keys). They follow the
-corresponding UFS_UTILS `ush` scripts.
+- `run_global_cycle` runs `global_cycle` on `INPUT/sfc_data*`. It updates surface fields from the `namsfc` climatologies and the optional GRIB1 analyses `global_cycle_sst_file` (FNTSFA), `global_cycle_ice_file` (FNACNA) and `global_cycle_snow_file` (FNSNOA); a missing analysis keeps the first guess and climatology. Settings are those of the scripts (`DELTSFC=6`, `FSMCL(2:4)=60`, default `FSNOL=-2., FSNOS=99999.`; `global_cycle_vars` sets `CYCLVARS`). The six global tiles run as one 6-rank job and each nest as a 1-rank job. Global, stretched and nested grids only. Logs: `LOGS/preprocess/global_cycle_<domain>.log`.
+- `run_emcsfc_snow` builds the snow analysis from `ims_snow_file` and the optional AFWA files (`afwa_snow_nh_file`, `afwa_snow_sh_file`, `afwa_snow_global_file`) with `emcsfc_snow2mdl` on the T1534 Gaussian grid and passes it to `global_cycle`.
+- `run_emcsfc_ice_blend` blends `ims_ice_file` into the MMAB 5-minute concentration `five_min_ice_file` with `emcsfc_ice_blend` and passes the GRIB1 result to `global_cycle`. `cnvgrib`, `copygb2` and `copygb` (NCEP grib_util) must be on `PATH`; they are not in `tools/env.yaml`.
+- `run_cpld_gridgen` writes the MOM6/CICE6 grids, SCRIP files and ocean mask to `IC/cpld_gridgen` for `cpld_gridgen_res` (`500`, `100`, `050`, `025`). MOM6 inputs come from `fix_src/mom6/<res>`. Other resolutions need `Ct.mx025_SCRIP.nc`, so generate 025 first. `ESMF_Scrip2Unstruct` must be available, and `cpld_gridgen_postwgts: true` also needs `ncremap` (NCO). SHiELD does not read these files.
 
-- `run_global_cycle` runs `global_cycle` on `INPUT/sfc_data*` (`global_cycle_driver.sh`,
-  `global_cycle.sh`): the surface fields are updated at the model start from the
-  climatologies of the model `namsfc` (Section 7) and the optional analyses
-  `global_cycle_sst_file` (FNTSFA), `global_cycle_ice_file` (FNACNA) and
-  `global_cycle_snow_file` (FNSNOA), all GRIB1; a missing analysis keeps the first guess
-  and climatology for that field. The relaxation settings are those of the scripts
-  (`DELTSFC=6`, `FSMCL(2:4)=60`, `global_cycle_vars` for `CYCLVARS`, default
-  `FSNOL=-2., FSNOS=99999.`). The six global tiles run as one 6-rank job and each nest as
-  a 1-rank job, since the program takes one tile size per call. Global, stretched and
-  nested grids only. Logs: `LOGS/preprocess/global_cycle_<domain>.log`.
-- `run_emcsfc_snow` builds the snow analysis from `ims_snow_file` (and the optional AFWA
-  files) with `emcsfc_snow2mdl` on the T1534 Gaussian grid (`emcsfc_snow.sh`) and passes
-  it to `global_cycle`.
-- `run_emcsfc_ice_blend` blends `ims_ice_file` into the MMAB 5-minute concentration
-  `five_min_ice_file` with `emcsfc_ice_blend` (`emcsfc_ice_blend.sh`) and passes the GRIB1
-  result to `global_cycle`. The script's `cnvgrib`, `copygb2` and `copygb` (NCEP
-  grib_util) must be on `PATH`; they are not part of `tools/env.yaml`.
-- `run_cpld_gridgen` writes the MOM6/CICE6 grids, SCRIP files and the ocean mask mapped to
-  this cubed sphere with `cpld_gridgen` (`cpld_gridgen.sh`) into `IC/cpld_gridgen`, for
-  MOM6 resolution `cpld_gridgen_res` (`500`, `100`, `050`, `025`). The MOM6 inputs are
-  taken from `fix_src/mom6/<res>` (fetched from the NOAA fix bucket when missing). Other
-  resolutions need `Ct.mx025_SCRIP.nc`, so the 025 grid is generated first.
-  `ESMF_Scrip2Unstruct` must be available; `cpld_gridgen_postwgts: true` also needs
-  `ncremap` (NCO). SHiELD does not read these files; they serve coupled UFS
-  configurations.
-
-The analyses are not in the NOAA GFS buckets used for the initial conditions and must be
-staged by the user; the emcsfc outputs are kept in `IC/surface_analysis`. The settings
-are checked before the grid is generated.
+The analyses are not in the NOAA GFS buckets, so stage them yourself. emcsfc outputs are kept in `IC/surface_analysis`. Settings are checked before the grid is generated.
 
 ## 9. Modifying the grid
 
-For `uniform`, `stretch`, and `nest` cases, grid generation is driven from
-`src/fv3_make_grid.py` and staged through a modification directory. The generator
-copies user-supplied files verbatim when a non-empty modification directory is present, so
-the procedure is stage, edit, and re-inject. The regional branches do not currently stage
-and terminate through this same grid-only path.
+For `uniform`, `stretch` and `nest` cases, a non-empty staged grid directory is copied in verbatim, so the procedure is stage, edit, re-inject. Regional grids do not stage.
 
-1. Set `preprocess_grid_only: true` and submit. The workflow generates the grid and mosaic,
-   stages them into the case-local `IC/grid` directory, and exits. The driver log reports
-   the staging path.
-2. Copy the staged files to a backup directory. The staged content includes
-   `C{c_res}_grid.tile*.nc` and the corresponding `C{c_res}_*mosaic*.nc` files.
-3. Edit the tile files. If you change tile geometry, keep the mosaic consistent, because the
-   mosaic is staged and re-injected from the same directory. Preserve filenames exactly.
-4. Set `preprocess_grid_only: false`, keep `generate_ic_data: true`, and resubmit. The
-   edited grid is copied through without regeneration.
+1. Set `preprocess_grid_only: true` and submit. The grid and mosaic are staged in the case-local `IC/grid` and the job exits (the driver log gives the path).
+2. Back up `C{c_res}_grid.tile*.nc` and `C{c_res}_*mosaic*.nc`.
+3. Edit the tile files, keeping the mosaic consistent and the filenames unchanged.
+4. Set `preprocess_grid_only: false`, keep `generate_ic_data: true` and resubmit.
+
+Staged files are reused only while the grid settings recorded in `.grid_settings.yaml` are unchanged; otherwise the run stops and asks you to remove the directory or restore the settings.
 
 ## 10. Modifying orography
 
-For `uniform`, `stretch`, and `nest` cases, orography generation is driven from
-`src/fv3_make_orog.py` and follows the same stage, edit, and re-inject pattern as the
-grid. Orography is generated after the grid, so a grid must exist first. The regional
-branches do not currently stage and terminate through this same orography-only path.
+The same pattern applies, after the grid exists (`uniform`, `stretch`, `nest` only).
 
-1. Set `preprocess_orog_only: true` and submit. The workflow stages the orography into the
-   case-local `IC/orography` directory and exits. The `shield_driver*.log` file reports the
-   staging path.
-2. Copy the staged files to a backup directory. The staged content is
-   `oro.C{c_res}.tile*.nc`, and the GSL variants when `make_gsl_orog: true`.
-3. Edit the orography. Modify both the `orog_raw` and `orog_filt` variables inside each tile
-   file, and update them together to preserve consistency. `orog_raw` is the unfiltered
-   surface height and `orog_filt` is the filtered height used by the dynamical core.
-   Preserve filenames exactly.
-4. Set `preprocess_orog_only: false`, keep `generate_ic_data: true`, and resubmit.
+1. Set `preprocess_orog_only: true` and submit. Orography is staged in `IC/orography` and the job exits.
+2. Back up `oro.C{c_res}.tile*.nc` (and the GSL variants if `make_gsl_orog: true`).
+3. Edit `orog_raw` (unfiltered height) and `orog_filt` (filtered height used by the dynamical core) together, keeping the filenames.
+4. Set `preprocess_orog_only: false`, keep `generate_ic_data: true` and resubmit.
 
-The topography filter runs after orography generation on the global tiles of uniform,
-stretched, and nested grids. Nest tiles keep the unfiltered orography.
-Inject edited orography as the staged tile files rather than relying on the filter to
-preserve raw edits.
+The topography filter runs after generation on the global tiles; nest tiles keep the unfiltered orography. Inject edits as the staged tile files and do not rely on the filter to preserve raw edits.
 
 ## 11. Soil moisture perturbations
 
-Soil moisture perturbations are applied at model initialization and at the start of each
-restart segment by `src/sm_perturbations.py`. They act on the surface restart files
-`sfc_data.tile*.nc`, `sfc_data.nest{NN}.tile*.nc` for nested tiles, and `sfc_data.nc` for a
-regional domain. Target variables are `smc` (total volumetric soil moisture), `slc`
-(liquid volumetric soil moisture), and `stc` (soil temperature). All three are perturbed on
-soil points, identified by valid `smc`. Volumetric soil moisture is clipped to the interval $[0.01, 0.99]\,\mathrm{m^3\,m^{-3}}$. The frozen fraction is held fixed by keeping the ice content
-$\mathrm{ice} = \mathrm{smc} - \mathrm{slc}$ constant and reconstructing `slc` after any
-`smc` edit. The workflow writes both an original and a perturbed copy of each file into
-`IC/perts`, so the unperturbed state is recoverable.
-
-### Schema
+`plugins/sm_perturbations/soil_moisture.py` perturbs surface restart files (`sfc_data.tile*.nc`, `sfc_data.nest{NN}.tile*.nc`, `sfc_data.nc` for regional) at initialization and at the start of each restart segment. Targets are `smc` (total volumetric soil moisture), `slc` (liquid) and `stc` (soil temperature) on soil points. Volumetric moisture is clipped to $[0.01, 0.99]\,\mathrm{m^3\,m^{-3}}$. The ice content $\mathrm{smc} - \mathrm{slc}$ is held fixed and `slc` is rebuilt after any `smc` edit. Original and perturbed copies are written to `IC/perts`.
 
 ```yaml
 sm_perturbations:
   target_var: smc          # smc, slc, or stc
-  soil_layers: [0, 1, 2]   # integer or list of integers
+  soil_layers: [0, 1, 2]   # integer or list
   tiles: [1, 2, 3, 4, 5, 6]
-  method: mean_shift       # string or list of strings
+  method: mean_shift       # string or list (applied in order)
   apply_on_restarts: 0     # None, "all", int, or list of ints
 ```
 
-Required keys are `target_var`, `soil_layers`, `tiles`, and `method`. If `apply_on_restarts`
-is absent, no perturbation is applied. Multiple methods in a list are applied in order.
+`target_var`, `soil_layers`, `tiles` and `method` are required; without `apply_on_restarts` nothing is perturbed. Optional keys: `n_sigma`, `mean_scale`, `anom_scale`, `fill_value`, `use_climo`, `do_nudge`, `do_hold`, `climo_file`, `tau_hours`. A method that needs a missing parameter raises an error.
 
-### Methods
+With $X$ the soil field in a layer, $\mu$ its mean over valid points and $\sigma$ its standard deviation:
 
-Let $X$ be the soil field in a layer, $\mu$ the mean over valid points, and $\sigma$ the
-standard deviation.
+| Method | Result | Parameter |
+| --- | --- | --- |
+| `std_shift` | $X' = X + k\,\sigma$ | `n_sigma` ($k$) |
+| `mean_shift` | $X' = X\,(1 + s)$ | `mean_scale` ($s$) |
+| `anom_shift` | $X' = \mu + (1 + a)\,(X - \mu)$ | `anom_scale` ($a$) |
+| `constant_fill` | $X' = c$ | `fill_value` ($c$, or `mean` for the field mean) |
+| `climo_mean` | monthly climatological mean regridded to the cubed sphere, for the month of the segment start | `climo_file` |
 
-Standard deviation shift, `std_shift`, with $k$ from `n_sigma`:
+For `climo_mean`, climatology points outside the valid range are excluded when regridding, model points without a valid value keep their own, and climatology layers are matched to model layers by index (Noah: 0-10, 10-40, 40-100, 100-200 cm).
 
-$$X' = X + k\,\sigma$$
-
-Mean scaling, `mean_shift`, with $s$ from `mean_scale`:
-
-$$X' = X\,(1 + s)$$
-
-Anomaly scaling, `anom_shift`, with $a$ from `anom_scale`:
-
-$$X' = \mu + (1 + a)\,(X - \mu)$$
-
-Constant fill, `constant_fill`, with $c$ from `fill_value`, or the field mean when
-`fill_value` is the string `mean`:
-
-$$X' = c$$
-
-Climatological replacement, `climo_mean`, replaces valid points with the monthly
-climatological mean regridded to the cubed sphere. The month is that of the start of the
-current segment. Climatology points outside the valid soil-moisture range are excluded when
-regridding, and model points left without a valid regridded value keep their own value.
-The climatology layers are matched to the model soil layers by index, so the climatology
-file must already be on the model soil layers (Noah: 0-10, 10-40, 40-100 and 100-200 cm).
-
-### Cross-segment behavior
-
-Two behaviors act across restart segments and are mutually exclusive.
-
-Nudging, `do_nudge: true`, relaxes the field toward a reference with weight $\alpha = \Delta
-t / \tau$ clipped to $[0, 1]$:
+Two mutually exclusive options act across segments. Nudging (`do_nudge: true`) relaxes toward a reference with weight $\alpha = \Delta t/\tau$ clipped to $[0,1]$:
 
 $$X' = (1 - \alpha)\,X + \alpha\,X_\mathrm{ref}$$
 
-Here $\Delta t$ is the length in hours of the previous segment and $\tau$ is `tau_hours`, default 24 hours. The reference
-is the previous perturbed segment, or the climatological mean of `climo_file` (default
-`fix/external/ERA5/sm_monthly_1950_2025.nc`) when `use_climo: true`. Holding, `do_hold: true`,
-carries the perturbed `target_var` layers of the previous segment forward without
-recomputing; all other surface fields continue from the model restart.
-
-### Optional keys
-
-`n_sigma`, `mean_scale`, `anom_scale`, `fill_value`, `use_climo`, `do_nudge`, `do_hold`,
-`climo_file`, `tau_hours`, `apply_on_restarts`. A method that requires a parameter raises an
-error if the parameter is missing.
+where $\Delta t$ is the previous segment length (h) and $\tau$ is `tau_hours` (default 24 h). The reference is the previous perturbed segment or, with `use_climo: true`, the mean of `climo_file` (default `fix/external/ERA5/sm_monthly_1950_2025.nc`). Holding (`do_hold: true`) carries the previous perturbed `target_var` layers forward without recomputing.
 
 ## 12. Time stepping
 
-When `dt_atmos`, `k_split`, or `n_split` are null, the workflow derives them from a base
-table indexed by resolution.
+Null `dt_atmos`, `k_split` or `n_split` come from a base table by resolution.
 
 | `c_res` | `dt_atmos` (s) | `k_split` | `n_split` |
 | --- | --- | --- | --- |
@@ -843,234 +349,118 @@ table indexed by resolution.
 | 1152 | 120 | 2 | 8 |
 | 3072 | 90 | 2 | 10 |
 
-Resolutions outside the table are estimated by a log-log fit of `dt_atmos` against `c_res`
-and snapped to a value that divides 3600 seconds. `dt_cpld` defaults to `dt_atmos`. Before
-the model is launched, `dt_cpld` is checked to be a multiple of `dt_atmos` and the segment
-length a multiple of `dt_cpld`, the checks the SHiELD coupler applies. For nested runs the
-finest domain sets
-`dt_atmos`, and each domain receives split counts sized to its resolution. The dynamics and
-acoustic time steps follow
+Other resolutions use a log-log fit of `dt_atmos` against `c_res`, snapped to a divisor of 3600 s. `dt_cpld` defaults to `dt_atmos`; before launch it must be a multiple of `dt_atmos`, and the segment length a multiple of `dt_cpld`. For nested runs the finest domain sets `dt_atmos` and each domain gets split counts sized to its resolution. Supplied `k_split` and `n_split` are lists of length `n_nests + 1` (global grid first). With $\Delta t_\mathrm{atmos}$ the atmospheric step (s), $k_\mathrm{split}$ the remap split count and $n_\mathrm{split}$ the acoustic substeps per remap split:
 
-$$\Delta t_\mathrm{dyn} = \frac{\Delta t_\mathrm{atmos}}{k_\mathrm{split}}$$
+$$\Delta t_\mathrm{dyn} = \frac{\Delta t_\mathrm{atmos}}{k_\mathrm{split}}, \qquad \Delta t_\mathrm{acoustic} = \frac{\Delta t_\mathrm{atmos}}{k_\mathrm{split}\,n_\mathrm{split}}$$
 
-$$\Delta t_\mathrm{acoustic} = \frac{\Delta t_\mathrm{atmos}}{k_\mathrm{split}\,n_\mathrm{split}}$$
+The step is CFL constrained and should shrink as resolution or refinement increases.
 
-where $\Delta t_\mathrm{atmos}$ is the atmospheric time step in seconds, $k_\mathrm{split}$
-is the remap split count, and $n_\mathrm{split}$ is the acoustic substep count per remap
-split. Supplied `k_split` and `n_split` must be lists of length `n_nests + 1`, with the
-first entry for the global grid and the remaining entries for the nests in order. The
-atmospheric time step is CFL constrained and should decrease as horizontal resolution or
-refinement increases.
+## 13. Process decomposition
 
-## 13. Process decomposition (PEs and layout)
+- **Uniform grid:** the largest multiple of 6 not above `n_cpus`, split equally over six tiles. It is not checked against the tile size, so choose `n_cpus` so the per-tile layout divides the tile dimensions.
+- **Regional grid:** all `n_cpus`.
+- **Nested runs:** processes are split between the global grid and each nest by minimizing the largest estimated per-domain time
 
-Process counts and domain layouts are computed automatically from the grid. For a uniform
-grid the total process count is the largest multiple of 6 not exceeding `n_cpus` whose
-per-tile count has a valid layout, distributed equally across the six tiles. A regional
-grid uses the largest valid count not exceeding `n_cpus`. For nested runs the workflow distributes processes
-across the global grid and each nest by minimizing the largest estimated per-domain time,
+$$T_g \sim \frac{w_g}{P_g}, \qquad w_g = N_g\,k_{\mathrm{split},g}\,n_{\mathrm{split},g}$$
 
-$$T_g \sim \frac{w_g}{P_g}$$
+where $P_g$ is the process count of domain $g$, $N_g$ its number of horizontal cells and $k_{\mathrm{split},g}$, $n_{\mathrm{split},g}$ its split counts. Global counts are multiples of 6; nest counts keep subdomain aspect ratios within 2 to 1. Allocations using all `n_cpus` are preferred, then the smallest bottleneck time, then the smallest spread.
 
-$$w_g = N_g\,k_{\mathrm{split},g}\,n_{\mathrm{split},g}$$
-
-where $T_g$ is the estimated time for domain $g$, $P_g$ is its process count, $w_g$ is a
-work weight, $N_g$ is the number of horizontal cells, and $k_{\mathrm{split},g}$ and
-$n_{\mathrm{split},g}$ are its split counts. Global process counts are multiples of 6. Nest
-process counts are drawn from a set that keeps subdomain aspect ratios no more elongated
-than 2 to 1. An allocation that uses all `n_cpus` is preferred; among those, the smallest
-bottleneck time, then the smallest spread. The per-domain layout requires at least 4 cells
-per subdomain edge (FV3 exchanges 3-point halos), then prefers a layout that divides the
-cells of the domain evenly in both directions, so every PE holds the same subdomain, then
-the most nearly square subdomains. The I/O layout is set to one by one and the physics
-block size to 32.
-
-To override the automatic allocation, place a case-local `input.nml` or `input.yaml` in the
-case directory that sets `grid_pes` under `fv_nest_nml` (the first of `input.nml`,
-`input.yaml` and `input.yml` found is used, as for namelist overrides). The listed values
-become the per-domain process counts; there must be one per domain, the global count must
-be a multiple of 6, and their sum must not exceed `n_cpus`.
+Each domain's layout (per tile for the global grid) is the factor pair of its process count giving the most nearly square subdomains. Divisibility and a minimum subdomain size are not checked. The I/O layout is 1 by 1 and the physics block size 32. To override the allocation, set `grid_pes` under `fv_nest_nml` in a case-local `input.nml`, `input.yaml` or `input.yml` (first found), one value per domain; the global count must be a multiple of 6 and the sum must not exceed `n_cpus`.
 
 ## 14. Diagnostics and regridded output
 
-Output frequency and the reported variable set are controlled by a `diag_table`. Place a
-case-local `diag_table` in the case directory to override the default in
-`templates/diag_table` (`templates/diag_table.monthly` for month and year segments). Its first
-two entries, the title and the base date (literal or the `DESCRIPTION` and `DATETIME`
-placeholders), are replaced by the case description and the initialization time. A
-case-local `field_table.yaml`, or a legacy ASCII `field_table`, replaces
-`templates/field_table.yaml`; `field_manager_nml use_field_table_yaml` follows the format. A
-case-local `data_table` (`data_table.yaml` with `use_modern_diag: true`) is staged when
-present. The default defines three streams: `grid_spec` and `atmos_static` written once, and `fv3_hist`
-written hourly (monthly means in the monthly table). The variable reference list is in
-[tables/diag_field.csv](tables/diag_field.csv). After the model runs, the regridding stage
-remaps native history to a latitude-longitude grid: the global grid at the resolution of
-`c_res`, each nest over its box (a box across 180 degrees gives longitudes above 180), and a
-regional domain over the bounding box of its compute domain, with missing values outside
-the domain. Regridded files are named by domain: `global`, `regional`, and `nest02`,
-`nest03`, and so on, where nest tile 7 maps to `nest02`. Conservative remapping averages
-only valid source values, so missing values (for example pressure levels below the
-surface) are neither filled nor counted as zero, and fields without horizontal dimensions
-(`average_T1`, `average_T2`, `average_DT`, `time_bnds`) are copied unchanged. Weights are
-computed once per grid and stream set.
+A case-local `diag_table` replaces `templates/diag_table` (`templates/diag_table.monthly` for month and year segments). Its title and base date (literal or the `DESCRIPTION` and `DATETIME` placeholders) are replaced by the case description and initialization time. A case-local `field_table.yaml` (or legacy `field_table`) replaces `templates/field_table.yaml`; a case-local `data_table` (`data_table.yaml` with `use_modern_diag: true`) is staged when present. The default has three streams: `grid_spec` and `atmos_static` written once, and `fv3_hist` hourly (monthly means in the monthly table). Variables are listed in [tables/diag_field.csv](tables/diag_field.csv).
 
-Each variable line of a `diag_table` (or `varlist` entry of a `diag_table.yaml`) names a native
-model field (module and field, for example `"gfs_sfc", "t2m"`) and an output name, which is the
-variable name in the history and regridded files and may be chosen freely. At staging, every
-module and field pair is checked against `tables/diag_field.csv`, read with pandas; an unknown pair
-stops the case before the run, with the closest valid names suggested (FMS would otherwise skip the
-field without an error). An output name used twice in one stream also stops the case. The derived variables of `src/derived_vars.py` (`ivt`, `ivtu`, `ivtv`,
-`vimfc`, `brn`, `mse`, `evf`, `vpd2m`) and the zero clip of the precipitation rates find their inputs
-by native field, so they do not depend on the output names; the derived variables are written under
-their fixed names. `fv3_diag_files.variables` maps each native field name to its output name
-(`variables["t_plev"]` is `"t"` with the default table) and is filled whenever a diag_table is
-loaded; a calculation reads `ds[variables["t_plev"]]` and is skipped, with a warning, when an input is not
-written to the stream. A field written under several names, or shared by two modules, takes the first
-entry of the table.
-`src/fv3_diag_files.py` provides `AsciiDiagTable` and `YamlDiagTable` to read, edit and write both formats.
+Each variable line (or `varlist` entry) names a native field (module and field, e.g. `"gfs_sfc", "t2m"`) and a freely chosen output name. At staging, every pair is checked against `tables/diag_field.csv`; an unknown pair, or an output name used twice in one stream, stops the case before the run (with close matches suggested), since FMS would otherwise skip the field silently.
 
-The `merge_freq` key controls how per-segment regridded files are combined.
+The derived variables of `plugins/derived/derived_vars.py` (`ivt`, `ivtu`, `ivtv`, `vimfc`, `brn`, `mse`, `evf`, `vpd2m`) find their inputs by native field and are written under fixed names. `fv3_diag_files.variables` maps native field names to output names (`variables["t_plev"]` is `"t"` by default); a calculation is skipped with a warning if an input is not in the stream. A field written under several names takes the first table entry. Set `derived_vars_module` to a Python file that defines `derive = [func, ...]` to add your own: each `func(ds, *, state, variables, **_)` returns `ds`, runs after the built-ins once per output stream (skip a stream that lacks its inputs), and the file is copied to `derived_vars_user.py` in the case directory. The file is copied to `derived_vars_user.py` in the case directory at the cold start. See [plugins/README.md](plugins/README.md) and [config/examples/derived_vars_example.py](config/examples/derived_vars_example.py). `src/fv3_diag_files.py` provides `AsciiDiagTable` and `YamlDiagTable`.
 
-- `-1` merges the whole run into one file per stream and grid on the final segment.
-- `0` disables merging and retains one file per segment.
-- `n` merges every `n` segments and flushes any remainder on the final segment.
+After the model runs, native history is remapped to latitude-longitude: the global grid at the resolution of `c_res`, each nest over its box (a box across 180 degrees gives longitudes above 180) and a regional domain over its bounding box, with missing values outside. Files are named `global`, `regional`, `nest02`, `nest03`, ... Conservative remapping averages only valid source values. Fields without horizontal dimensions (`average_T1`, `average_T2`, `average_DT`, `time_bnds`) are copied unchanged.
 
-Merging concatenates records along time; it does not average (Section 22).
+`merge_freq` combines per-segment regridded files by concatenation along time (no averaging): `-1` merges the whole run into one file per stream and grid on the final segment, `0` keeps one file per segment, and `n` merges every `n` segments, flushing the remainder at the end.
 
 ### 14.1 Grid visualization
 
-The initial driver optionally renders the generated grid through
-`src/fv3_plot_grid.py`. Plotting is a diagnostic step: it reads the
-`C*_grid.tile*.nc` supergrid files from `state.grid`, requires `cartopy` and its Natural
-Earth cache under `fix_src/external/CARTOPY`, and writes to `state.run_dir`. Two figures are produced.
+The initial driver plots the grid with `src/fv3_plot_grid.py` (needs `cartopy` and its cache in `fix_src/external/CARTOPY`) and writes to `state.run_dir`:
 
-- `grid_faces.png` places one panel per global cubed-sphere face. Each panel is an
-  orthographic view centred on the centroid of its own face, with every nest hosted by that
-  face drawn on it and the host mesh masked out beneath each nest, so a mesh is shown only
-  where it is the finest grid present. Nest hosting follows `state.parent_tile` up the
-  parent chain, so a telescoping chain resolves to the single global face at its root. Line
-  density is set by physical grid spacing rather than array size, so a fine nest and its
-  coarse host read at a comparable spacing on the page.
-- `nest_grids.png` draws the nest bounding boxes from `state.lon_min`, `state.lon_max`,
-  `state.lat_min`, and `state.lat_max` on a map whose projection is selected from the union
-  of those bounds: Robinson for whole-world spans, cylindrical equidistant (PlateCarree) for
-  low-latitude or equator-straddling domains, polar stereographic for high-latitude domains,
-  and Lambert conformal conic for mid-latitudes. Bounds are read in degrees east in the
-  range [-180, 180] and each nest is assumed not to cross the antimeridian.
+- `grid_faces.png`: one orthographic panel per cubed-sphere face, with nests drawn on their host face and the host mesh masked beneath each nest. Line density follows physical grid spacing.
+- `nest_grids.png`: nest bounding boxes from `state.lon_min`, `lon_max`, `lat_min`, `lat_max` (degrees east in [-180, 180]; nests must not cross the antimeridian), in a projection chosen from the bounds (Robinson, PlateCarree, polar stereographic or Lambert conformal conic).
 
-Coordinate units are taken from the `units` attribute of the supergrid `x` and `y`
-variables; absent that attribute, degrees are assumed, in line with the FV3 supergrid
-convention. Both figures are written to disk and no interactive window is opened, so
-plotting is safe on a headless compute node. Failures in the plotting stage are logged and
-do not interrupt the run.
+Units come from the supergrid `x` and `y` attributes (degrees if absent). No window is opened, and a plotting failure is logged without stopping the run.
 
-## 15. Restarts and segmented runs
+## 15. Restarts
 
-A run is divided into `resubmit + 1` segments, each `run_length` `run_length_units` long. The first
-segment is a cold start produced by the initial driver. Each later segment is a warm start
-produced by the restart driver, which resumes from the previous segment restart files.
-Restart segments load the persisted `state.yaml`; their settings come from it, not from
-`run_config.yaml`. The cold start records a checksum of the grid geometry, vertical
-levels, initialization time and, when set, `pamip_experiment` of `run_config.yaml`;
-each restart compares it with the current `run_config.yaml` before moving any directory
-and stops if these settings were edited. Other keys (for example `run_length` or
-`resubmit`) are not checked. Regional restart segments must start on multiples of 3 h, the
-interval of the boundary files, because the model reads the boundary file of its restart
-hour. Forcing files in `FIXED/PAMIP`
-and the cold-start namelists are reused by later segments; the case `diag_table` is
-restaged every segment. When `RESTART` is promoted to `INPUT`, the static inputs of the
-cold-start `INPUT` (archived as `IC/INPUT`) that the model also reads at a warm start are
-linked back: `oro_data*`, grid and mosaic links, `gfs_ctrl.nc` and fix files. The initial
-conditions and boundary files are not. Segments are resubmitted automatically until the maximum index
-is reached.
+A run has `resubmit + 1` segments of `run_length` `run_length_units`. The first is a cold start from the initial driver; later segments are warm starts that load the saved `state.yaml`, not `run_config.yaml`. The cold start records a checksum of the grid geometry, vertical levels, initialization time and, when set, the hashed options of the `plugins/` plugins (`pamip_experiment`, `pamip_baseline`, `pamip_fields`, `pamip_forcing_year`). Each restart compares it with the current `run_config.yaml` and stops if those settings changed; other keys (e.g. `run_length`, `resubmit`) are not checked.
+
+Regional segments must start on multiples of 3 h, the boundary file interval. Forcing files in `FIXED/PAMIP` and the cold-start namelists are reused; the case `diag_table` is restaged every segment. When `RESTART` is promoted to `INPUT`, the static inputs archived as `IC/INPUT` that the model also reads at a warm start (`oro_data*`, grid and mosaic links, `gfs_ctrl.nc`, fix files) are linked back; initial conditions and boundary files are not.
+
+### 15.1 Continuing a failed case
+
+Segments follow one another automatically; `case_continue.sh` is for a case that stopped partway. Fix the cause (a missing module, a bad node, a walltime), then run `case_continue.sh` from the case directory, the one holding `run_config.yaml`. It reads the model time of the newest restart on disk (`RESTART/coupler.res` if `RESTART` holds files, else `INPUT/coupler.res`), takes it as the start of the segment to run, and submits from there with the usual chain for the later segments. Segments already run are not repeated. The segment is taken from the files, not from the counters in `state.yaml`, so a failure before or after the restart was promoted to `INPUT` is handled alike.
+
+The continued segment clears nothing (`RESTART`, `HIST`, `OUTPUT`, `IC`) and accepts a restart that was already promoted. A normal cold start, by contrast, refuses to run while `OUTPUT/seg` holds regridded output; use `case_continue.sh`, or remove the case directory to start over. If the model finished but the regridding failed, check `OUTPUT/seg` before continuing.
+
+For an ensemble, `case_continue.sh --ensembles` resumes every member except those in `skip_ensembles`, and `case_continue.sh --mem 2 5` resumes only members 2 and 5. Each member is resumed from its own restart in `<case>/memNN`, so members that stopped at different segments each continue from their own. A member with no case directory (not started or already archived) or whose last restart is the final segment is reported and skipped; the others are still submitted. With no arguments an ensemble case is refused, and `--ensembles` or `--mem` on a single case is refused. The exit status is 1 if any member fails its checks or nothing was submitted.
+
+`state.yaml` records `node_list` (the nodes of the latest attempt of each segment) and `regrid_progress` (`last` regridded segment and `total` segments).
+
+### 15.2 Starting from an archived restart
+
+With `archive_data: true` the archive holds `restart.tar.gz`, which holds `RESTART/` (the final restart files), `state.yaml` and `run_config.yaml` side by side. Unpack it into a directory `DIR` and run `case_continue.sh --restart-dir DIR` from a new case directory whose `run_config.yaml` keeps the grid and start-time settings of the archived case (checked against `DIR/state.yaml`). The preprocess rebuilds the grid, orography and initial conditions, then the run continues from the model time in `RESTART/coupler.res`. All other settings come from `state.yaml`, so only `resubmit` and the resource settings can change; raise `resubmit` to extend a finished case. The directory must be under a `container_bindpath` directory. With `--ensembles` or `--mem`, member N reads `DIR/memNN`.
 
 ## 16. Ensembles
 
-Set `ensemble_run: true` and `n_ensembles` to submit an ensemble. Each member is submitted
-as an independent job with its own working directory `memNN` and its own log. Use
-`skip_ensembles` to omit specific members. Ensemble members can be combined with soil
-moisture perturbations to build spread.
-
-Member 1 is unperturbed; other members get temperature noise seeded from the case
-checksum (`src/fv3_ensemble_driver.py`), which includes `pamip_experiment`
-when set. Perturbations are generated only when ICs are generated; to pair members
-across experiments, stage the same member bundle through `external_ic_dir`.
+Set `ensemble_run: true` and `n_ensembles`. Each member is an independent job with its own `memNN` directory and log; `skip_ensembles` omits members. Member 1 is unperturbed; the others get temperature noise seeded from the case checksum (`src/fv3_ensemble_driver.py`), which includes the PAMIP keys when set, so two PAMIP experiments get different perturbations (only member 1 is the same). Perturbations are made only when ICs are generated. To pair members across experiments, stage the same bundle through `external_ic_dir`. Members can be combined with soil moisture perturbations.
 
 ## 17. Archiving
 
-When `archive_data: true`, the final segment copies the regridded output to the archive tree
-under `archive_root`, writes a copy of `state.yaml` and the model log, and compresses the
-persistent working case tree into `case.tar.gz`. After archiving, that working tree is
-removed and the case-local `run` (or ensemble `memNN`) symlink points to the archived
-location.
+With `archive_data: true`, the final segment copies regridded output to `archive_root`, writes `state.yaml` and the model log, compresses the final restart files, `state.yaml` and `run_config.yaml` to `restart.tar.gz` (Section 15.2), copies the driver log to `shield_log`, removes the working tree except `STATIC` and points the `run` (or `memNN`) symlink at the archive.
 
 ## 18. Example cases
 
-Example case files are in [config/examples/](config/examples). Copy a
-`run_config.<case>.yaml` into the case directory as `run_config.yaml`; unset keys come
-from the defaults.
+Copy a file from [config/examples/](config/examples) into the case directory as `run_config.yaml`; unset keys come from the defaults.
 
 | File | Case |
 | --- | --- |
 | `run_config.uniform.yaml` | Global uniform C96, hourly output |
 | `run_config.stretch.yaml` | Stretched global grid |
-| `run_config.nest.yaml` | Two telescoping nests; `chgres_cube_nest02.yaml` forces GFS ICs |
+| `run_config.nest.yaml` | Two telescoping nests (`chgres_cube_nest02.yaml` forces GFS ICs) |
 | `run_config.regional.yaml` | Regional ESG domain |
-| `run_config.external_ic.yaml` | Start from a staged grid and IC bundle |
+| `run_config.external_ic.yaml` | Staged grid and IC bundle |
 | `run_config.sm_perturbations.yaml` | Soil moisture perturbation (Section 11) |
-| `run_config.pamip.yaml` | PAMIP SST and sea-ice experiment (Section 21) |
-| `run_config.monthly.yaml` | Ten years of monthly segments, yearly files (Section 22) |
+| `run_config.pamip.yaml` | PAMIP experiment (Section 21) |
+| `run_config.derived.yaml` | User derived variable (Section 14) |
+| `run_config.monthly.yaml` | Ten years of monthly segments (Section 22) |
 
-## 19. Compiling a custom SHiELD executable
+## 19. Compiling a SHiELD executable
 
-Build a native executable with `tools/build_shield.py`. It reads `modules` and
-`shield_exe` from `config/<release>/run_config.yaml` (the repository default file, not a
-case-local one). `--release` selects the release and defaults to `202411`: `--release 202604`
-builds `FV3-202604-public`, `--release 202411` builds `FV3-202411-public`. The release no
-longer depends on the checked-out branch.
+`tools/build_shield.py` builds a native executable. It reads `modules` and `shield_exe` from the repository default `config/<release>/run_config.yaml` (not a case-local one); `--release` picks the release regardless of the checked-out branch.
 
 ```bash
-python tools/build_shield.py                                       # default release, repro, 64bit, pic, cleanall
-python tools/build_shield.py --release 202604
+python tools/build_shield.py                                  # 202411, repro, 64bit, pic, cleanall
 python tools/build_shield.py --release 202604 --comp prod
-python tools/build_shield.py --release 202604 --comp debug --fflags "-fcheck=all"
-python tools/build_shield.py --release 202604 --no-compile         # source and toolchain checks
-python tools/build_shield.py --release 202604 --force              # replace an existing build tree
+python tools/build_shield.py --release 202604 --no-compile    # source and toolchain checks only
+python tools/build_shield.py --release 202604 --force         # replace an existing build tree
 ```
-
-The helper creates `/tmp/$USER/FV3-<release>-public` and stops if it exists unless `--force` is given,
-clones `SHiELD_build`, checks out the release, runs `CHECKOUT_code`, and verifies the
-tagged component repositories. It writes `site/environment.gnu.sh` using the configured
-host modules and validates the GNU/MPI/netCDF/libyaml toolchain. Compilation needs
-gfortran 10 or later. The temporary FMS source has the duplicate `static` qualifier
-removed from its local `gettid` definition to support newer glibc.
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `--release` | `202411` | Select `202411` or `202604`. |
-| `--comp` | `repro` | Select `repro`, `prod` or `debug`. |
-| `--bit` | `64bit` | Select `64bit` or `32bit` precision. |
-| `--pic` / `--no-pic` | enabled | Enable or disable position-independent code. |
-| `--clean` | `cleanall` | Select `cleanall`, `clean` or `noclean`. |
-| `--avx-level` | `-march=native` | Set `AVX_LEVEL`; use `--avx-level=<value>` for values starting with `-`. |
-| `--fflags` | empty | Add Fortran flags. |
-| `--no-compile` | disabled | Stop after fetching sources and checking the toolchain. |
+| `--release` | `202411` | `202411` or `202604`. |
+| `--comp` | `repro` | `repro`, `prod` or `debug`. |
+| `--bit` | `64bit` | `64bit` or `32bit`. |
+| `--pic` / `--no-pic` | enabled | Position-independent code. |
+| `--clean` | `cleanall` | `cleanall`, `clean` or `noclean`. |
+| `--avx-level` | `-march=native` | Sets `AVX_LEVEL`; use `--avx-level=<value>` for values starting with `-`. |
+| `--fflags` | empty | Extra Fortran flags. |
+| `--no-compile` | off | Stop after fetching sources and checking the toolchain. |
 
-The helper runs `COMPILE shield nh <comp> <bit> gnu [pic] <clean>`, verifies that a new,
-non-empty executable was produced, and installs it at the configured path with the
-build mode and precision reflected in the filename. Its adjacent `.manifest` records
-component commits, the executable SHA-256, toolchain and build directory. It prints
-the installed path; set `shield_exe` in the case configuration to that path when it
-differs from the repository default. The helper does not edit `run_config.yaml`.
+The script works in `/tmp/$USER/FV3-<release>-public` (stops if it exists, unless `--force`), clones `SHiELD_build`, checks out the release, runs `CHECKOUT_code`, writes `site/environment.gnu.sh` from the host modules and checks the GNU/MPI/netCDF/libyaml toolchain (gfortran 10 or later). The duplicate `static` on `gettid` in the FMS source is removed for newer glibc. It then runs `COMPILE shield nh <comp> <bit> gnu [pic] <clean>`, checks for a new non-empty executable and installs it with the build mode and precision in the name. A `.manifest` beside it records component commits, SHA-256, toolchain and build directory. The script does not edit `run_config.yaml`; set `shield_exe` yourself:
 
 ```yaml
 shield_exe: /path/to/FV3-<release>-public_SHiELD_nh.repro.64bit.gnu.x
 ```
 
-The workflow uses a non-empty `shield_exe` as the native model executable.
-`case_submit.sh` rejects a missing executable, and all multi-node runs require one.
-Use `shield_exe: ""` for the single-node container path; `null` restores the non-null
-repository default. Validate a new build with your case on the target HPC system.
+A missing file falls back to the container only for a single-node `202411` case (with a warning); a multi-node run or a `202604` case stops at `case_submit.sh`. Test any new build on your target system.
 
 ### 19.1 Build profiles
 
@@ -1079,159 +469,112 @@ repository default. Validate a new build with your case on the target HPC system
 | Core, physics, drivers | `FV3-202411-public` | `FV3-202604-public` |
 | FMS / FMSCoupler | `2024.03` / `2024.03.01` | `2026.01` / `2026.01` |
 | `ice_param`, `*_null` | as cloned (untagged) | as cloned (untagged) |
-| Executable (`shield_exe` default) | `FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x` | `FV3-202604-public_SHiELD_nh.repro.64bit.gnu.x` |
+| Default executable | `FV3-202411-public_SHiELD_nh.repro.64bit.gnu.x` | `FV3-202604-public_SHiELD_nh.repro.64bit.gnu.x` |
 
-The profiles compile different coupler drivers. The `FV3-202411-public` `shield` build uses
-`FMSCoupler/SHiELD/coupler_main.F90`, which reads `coupler_nml dt_ocean`. The
-`FV3-202604-public` `shield` build uses `FMSCoupler/full`, which reads `dt_cpld` and rejects
-`dt_ocean`. The workflow key `dt_cpld` is written to the variable of the selected release.
-For custom builds, check `Build/exec/*/pathnames_driver`; the executable filename alone does
-not identify its coupler interface. Case-local `input.nml` or `input.yaml` overrides are
-passed through normally; the model reports incompatible namelist keys.
+`202411` builds `FMSCoupler/SHiELD/coupler_main.F90` (reads `dt_ocean`); `202604` builds `FMSCoupler/full` (reads `dt_cpld`, rejects `dt_ocean`). For a custom build check `Build/exec/*/pathnames_driver`, since the executable name does not show the coupler interface. Case-local `input.nml` or `input.yaml` overrides pass through unchanged.
 
-The templates differ accordingly. `templates/202411/` sets `fms_io_nml` and
-`gfs_physics_nml sfc_coupled`, and a restart forces `checksum_required` and
-`restart_checksums_required` to false. `templates/202604/` has neither, because they are not
-namelist variables in that release. It instead sets the full-coupler flags: `coupler_nml
-do_land = false` skips the separate land component linked from `land_null`, while Noah still
-runs inside SHiELD physics with `gfs_physics_nml lsm = 1` (the standard `shield` build defines
-`_USE_LEGACY_LAND_`, and `atmos_model_nml fullcoupler_fluxes` defaults to 0). Likewise,
-`do_ocean = false` skips the external ocean component, while `gfs_physics_nml do_ocean = true`
-retains the internal slab ocean. `do_flux = false` skips the coupler's component-exchange flux
-calculation; surface fluxes are still calculated by the atmospheric physics. `ice_npes` and
-`land_npes` follow the upstream SHiELD regression cases. These defaults describe the standard
-`shield` build, not a coupled `shiemom_lm4` experiment.
-
-The `202604` templates use variables declared in `FV3-202604-public`, except
-`interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the
-SHiELD_build test cases also set. Record the commits in `SHiELD_SRC`, the executable
-checksum, the modules (`modules` key) and the container digests, and validate any newer
-release separately before use.
+`templates/202411/` sets `fms_io_nml` and `gfs_physics_nml sfc_coupled`, and restarts force `checksum_required` and `restart_checksums_required` to false. `templates/202604/` has neither and sets the full-coupler flags: `coupler_nml do_land = false` (no separate land component; Noah still runs in SHiELD physics, `lsm = 1`), `do_ocean = false` (no external ocean; `gfs_physics_nml do_ocean = true` keeps the slab ocean), `do_flux = false` (surface fluxes come from the atmospheric physics), and `ice_npes`, `land_npes` as in the upstream SHiELD regression cases. These describe the standard `shield` build, not a coupled `shiemom_lm4` experiment. The `202604` templates use only variables declared in `FV3-202604-public`, apart from `interpolator_nml interp_method` and the C3072 template's `cloud_diagnosis_nml`, which the SHiELD_build tests also set. Validate any newer release separately.
 
 ### 19.2 UFS_UTILS and containers
 
-`UFS_UTILS` provides the compiled preprocessing utilities (`chgres_cube`, `make_hgrid`,
-`orog`, `global_cycle`, ...). `pyUFS` is this workflow; its `ufs_utils` key names the
-workflow checkout. Preprocessing runs the utilities from `/UFS_UTILS/exec` inside
-`preprocess_image` (built from `docker://gfdlfv3/preprocessing:latest` by
-`tools/install_images.sh`). Building `UFS_UTILS` on the host does not change these
-binaries; rebuild the image or bind the host `exec` directory to `/UFS_UTILS/exec`.
-The image is built from the `gaea` branch of `kaiyuan-cheng/UFS_UTILS` (2024-10-18;
-Containerized_SHiELD_Workflow), and the workflow follows its program interfaces: the
-`orog` program reads the binary terrain inputs (`gmted2010.30sec.int`,
-`landcover30.fixed`, `thirty.second.antarctic.new.bin`) and a nine-number `INPS` line, and
-`lakefrac` takes four arguments with GLDB v2 data. Upstream UFS_UTILS releases of 2024 and
-later read NetCDF terrain (`topography.gmted2010.30s.nc`, ...) with a three-line `INPS`
-and a five- or seven-argument `lakefrac`, so an upstream `exec` directory is not a drop-in
-replacement.
-`build_all.sh` supports listed machines only; other sites configure dependencies and CMake
-themselves.
+Preprocessing runs the programs in `/UFS_UTILS/exec` inside `preprocess.sif`; building UFS_UTILS on the host does not change them (rebuild the image, or bind your `exec` directory to `/UFS_UTILS/exec`). The image comes from the `gaea` branch of `kaiyuan-cheng/UFS_UTILS` (2024-10-18, Containerized_SHiELD_Workflow), and the workflow follows its interfaces: `orog` reads the binary terrain inputs (`gmted2010.30sec.int`, `landcover30.fixed`, `thirty.second.antarctic.new.bin`) with a nine-number `INPS` line, and `lakefrac` takes four arguments with GLDB v2 data. UFS_UTILS releases from 2024 on read NetCDF terrain with a three-line `INPS` and a five- or seven-argument `lakefrac`, so an upstream `exec` directory is not a drop-in replacement.
 
-## 20. Quick start and submission notes
+## 20. Quick start
 
-1. Create a case directory.
-2. Write `run_config.yaml` into it.
-3. Add optional case-local overrides such as `diag_table`, `chgres_cube.yaml`, or
-   `input.nml`.
-4. Run `case_submit.sh` from the case directory.
-
-Recommended case-local launcher:
+1. Create a case directory and put `run_config.yaml` in it.
+2. Add any overrides (`diag_table`, `chgres_cube.yaml`, `input.nml`).
+3. Run `case_submit.sh` from that directory, directly or through a wrapper:
 
 ```bash
 #!/bin/bash -l
 "/path/to/pyUFS/case_submit.sh"
 ```
 
-`case_submit.sh` deactivates any active conda environment for its own process; use a clean shell
-before submitting so the workflow starts from a predictable environment. The case is read from
-the current directory, and a submission directory inside the run directory
-(`case_root/<parent>/<case_name>`) is refused, because the run directory is mirrored and
-removed after archiving. `tests/submit.sh` submits the test cases, each from its own directory. Place the launcher in the case directory and
-run it there so the workflow reads the local `run_config.yaml` and any case-local files.
+Submit from a clean shell (the script deactivates conda for its own process). A submission directory inside the run directory (`case_root/<parent>/<case_name>`) is refused. `tests/submit.sh` submits the test cases, each from its own directory.
 
-## 21. PAMIP SST and sea-ice boundary conditions (`pamip_experiment`)
+## 21. PAMIP SST and sea-ice boundary conditions
 
-`src/pamip_experiment.py` has four functions, called in this order by `fv3_init_driver` at the cold start: `validate_pamip_options` (checks `pamip_experiment`, `pamip_baseline`, `pamip_fields` and the `external_*` files before any file is written), `stage_external_files` (copies the `external_*` files to `FIXED/external` and points namsfc at the copies; with `pamip_baseline: external` they are the baseline), `write_boundary_files` (regrids the PAMIP fields onto the grid of the baseline files and writes the SST and sea-ice climatologies to `FIXED/PAMIP`) and `set_cold_start_surface` (sets SST and sea ice of the surface files of every tile to the fields of the start date).
+The `pamip` plugin (`plugins/pamip`, which includes the external files) runs these steps (hooks called by `fv3_plugins`; `validate` first, the rest in `apply` at the cold start only):
 
-`pamip_experiment` selects a PAMIP experiment (Smith et al., 2019, GMD 12, 1139) by its number as
-quoted text, for example `pamip_experiment: "1.6"` (present-day SST, future Arctic sea ice), or is
-`null` for the SHiELD climatologies. The names of all PAMIP experiments are `PAMIP_EXPERIMENTS` in
-`src/pamip_experiment.py`; those with SST and sea-ice boundary files are 1.1
-(control), 1.6, 1.5, 1.3 and 1.4, and their input4MIPs dataset identifiers are in
-`templates/pamip_experiments.yaml`. At the cold start `src/pamip_experiment.py` regrids the
-PAMIP monthly climatologies from `fix_src/external/PAMIP` (`python tools/get_pamip.py --root <fix_src>`, optionally with `--experiment 1.6` and `--list`) onto the grids
-of the SHiELD SST and sea-ice GRIB files and writes them to `FIXED/PAMIP` as
-`RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, with the
-headers, packing, month stamps and land flags of the SHiELD files. The sea-ice file changes only at the ocean points of
-SHiELD's own land mask (`seaice_newland.grb`, 0.5 degree, regridded to the file grid and thresholded at 0.5 as in `sfcsub.F`)
-and keeps its land flag (values above 1), because `sfcsub.F` takes the land mask of the sea-ice field from the data itself
-(no flag, no masking, and land values would mix into coastal ice). The PAMIP files hold filled values over land (ocean values spread inland, 271 to 306 K, not land temperatures), and with the
-`pamip` baseline the SST file keeps them: it is the PAMIP SST at every point, land included. The perturbed baselines (`shield`,
-`external`) change ocean points only and keep the land values of their files. In all baselines the lakes and inland seas (water bodies of the 0.5 degree mask below 500 cells: Great Lakes, Baikal, Victoria, Baltic, Black Sea, Caspian) keep the SHiELD SST and ice, because PAMIP has no lake data and its values there are filled from the ocean. At ocean points the surface cycle weights the source
-fields by the land mask and never reads land values; at model land points it reads the SST file and limits it to 173 to 353 K. The paths are stored in
-`state.fntsfc` and `state.fnaisc`, which `update_namsfc` writes to `namsfc`. With the option set,
-`update_namsfc` also sets `ftsfs = faiss = fsics = fsicl = 0` (the surface cycle replaces SST and
-ice by the climatology at each cycle) and `do_ocean = false` (no mixed-layer ocean), `use_ext_sst = false` and `nstf_name = [0, 0, 1, 0, 5]` (NSST off, the model default). The surface cycle runs every `fhcyc` = 24 h, so the climatology is applied at the first step and then daily, interpolated linearly between mid-month values. The AMIP II processing that the protocol asks for (monthly means of the model equal to the means of the files) is not applied. At the cold start
-the same fields, interpolated to the start date with the mid-month weights of the surface cycle, are
-also regridded onto every tile with `to_fv3_grid` of `src/latlon_to_fv3.py` (shared with `sm_perturbations`, xESMF). The PAMIP grid is regridded onto
-the SHiELD GRIB grids with `ll_regrid` of the same module (bilinear xESMF with NaN-skipping weights and a periodic longitude; points with no valid
-source value take the nearest valid value (ocean points only); one regridder serves the twelve months of a file, and its
-weights for the 0.083 degree SST grid of 9.3 million points take about 3 minutes and 15 GB of memory; the land mask needs a second regridder of the same size, built after the first is released) and written to
-`slmsk`, `tsea`, `fice`, `hice` and `tisfc` of `sfc_data` over non-land points,
-so the initial state agrees with the forcing; the surface cycle repeats this at the first time step. Because `slmsk` then already agrees, `newice` of `sfcsub.F` does not fire at points changing between ice and open water, so its resets are applied there instead: snow (`sheleg`, `snwdph`) 0, roughness `zorl` 1 cm and soil (sea-ice layer) temperature `stc` 271.2 K.
-At the cold start (`restart_no` 0) two figures go to `state.run_dir`, next to `grid_faces.png`: `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png`, with `<tag>` as in the file names (`PAMIP_shield_1.6`, `PAMIP_1.6_sst`, ...). Each has twelve Robinson panels of the written file minus the SHiELD file (K for SST, fraction for ice), with one colour scale symmetric about zero; unchanged points, land included, are white. Grids finer than 720 points in longitude are block-averaged for drawing only. The first ensemble member draws them and the others skip them (delete a figure to draw it again); a failure to plot is logged and does not stop the run. They need `cartopy` and the Natural Earth cache in `fix_src/external/CARTOPY`, as `fv3_plot_grid.py`.
-Ice thickness of ice that persists is kept; new ice gets 0.2 m. Restart segments keep these files;
-`preprocess_only` exits before they are written. The option is validated when the case
-starts. See `config/examples/run_config.pamip.yaml` and section 11 of `config/<release>/run_config.yaml`.
+1. `validate` checks `pamip_experiment`, `pamip_baseline`, `pamip_fields` and the `external_*` files before anything is written.
+2. `plugins/pamip/external_files.py` copies the `external_*` files to `FIXED/external` and collects the `namsfc` entries pointing at the copies.
+3. `write_boundary_files` (`plugins/pamip/boundary.py`) regrids the PAMIP fields to the baseline grids and writes SST and sea-ice climatologies to `FIXED/PAMIP`.
+4. `set_cold_start_surface` sets SST and sea ice in every tile's surface file to the fields of the start date.
+5. `patch_nml` writes the file entries and the settings below into the global and nest namelists, then `update_fixed_files` runs again so that the CO2 table follows `ictm`.
 
-`pamip_baseline` (null or `pamip`, the default) applies the experiment to the PAMIP fields as they are.
-With `pamip_baseline: shield` the PAMIP perturbation, experiment minus 1.1, is regridded from 1 degree and added to
-the SHiELD climatologies (`RTGSST.1982.2012`, 0.083 degree, and `CFSR.SEAICE.1982.2012`, 0.5 degree):
-sea ice is clipped to 0 to 1 and the land flags kept; SST is perturbed where the SHiELD value lies in the
-271.2 to 313.0 K range of the surface cycle and kept between the SHiELD freezing value and 313.0 K. The files are
-`RTGSST.PAMIP_shield_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_shield_<exp>.monthly.clim.grb`, and the
-cold-start surface files take the written fields. The control of this baseline is experiment 1.1 (no
-perturbation: the SHiELD fields with the surface-cycle settings of the PAMIP runs); `pamip_experiment: null`
-keeps the SHiELD settings and is not a control for it. `pamip_fields` (null or `both`, `sst`, `sic`) takes only
-the SST or only the sea ice from the experiment; the other field is the control (PAMIP 1.1, or the SHiELD field
-with the shield baseline) and `_sst` or `_sic` is added to the file names. The protocol pairs hold the
-ice-edge SST adjustment, which `sst` or `sic` alone leaves out. Both keys are part of the restart checksum when set.
+### 21.1 Experiments
 
-`external_sst`, `external_sic` and `external_mask` (null by default) give the SST, sea-ice and land-mask climatologies that replace namsfc `FNTSFC`, `FNAISC` and `FNMSKH`, as GRIB paths, absolute or relative to `fix_src`, in the format of the SHiELD files they replace (`am/RTGSST.1982.2012`, `am/CFSR.SEAICE.1982.2012`, `am/seaice_newland.grb`). They can be used without a PAMIP experiment. At the cold start each is copied (the original is neither linked nor changed) to `FIXED/external`, and namsfc points to the copy; a file not given stays the SHiELD one. The three files of one set go together, because the land mask decides which source cells the surface cycle uses and the sea-ice land flags must agree with it. With `pamip_baseline: external` the PAMIP perturbation, experiment minus 1.1, is added to these copies as for `shield`: SST and sea ice change at the ocean points of `external_mask` only (a mask on the grid of the SST file needs no regridding; a different grid is regridded and thresholded at 0.5), land keeps the values of the file, and the files are `RTGSST.PAMIP_external_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_external_<exp>.monthly.clim.grb`. The baseline needs all three files set to existing files, otherwise the case stops before grid generation. With `pamip_baseline` `pamip` or `shield` the files of the experiment replace the SST and sea-ice files and a warning is logged. The paths are not part of the restart checksum. `python tools/esa_sst.py` (no options) builds a set from the ESA SST CCI v3.0 climatology in `fix/external/ESA` (download, regridding and format are in its module docstring), for example `external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb`. ESA has no values over land, so land and lake cells of the SST file take the 1991 to 2020 monthly skin temperature of ERA5-Land (0.1 degree) regridded to the file grid, except the land cells within three cells of water, which take the nearest ocean value. The regridding of the 0.05 degree ESA fields to the 1/12 degree grid needs a large-memory node (the xESMF weights take about 15 GB). `tools/get_era5.py` downloads it once (needs a Copernicus CDS account and `~/.cdsapirc`) and saves it as `fix/external/ERA5/monthly_skin_1991-2020.nc` together with `monthly_sst_1991-2020.nc`, the ERA5 SST; existing files are not downloaded again. Lakes of the SHiELD mask stay water with the ERA5-Land lake skin temperature and the SHiELD ice (the SHiELD ice marks the Great Lakes with the land flag 1.57, so a lake at freezing is ice covered and any other is ice free). The sea-ice file keeps the land flag 1.57 over land.
+`pamip_experiment` is the PAMIP experiment number (Smith et al., 2019, GMD 12, 1139) as quoted text, e.g. `"1.6"` (present-day SST, future Arctic sea ice), or `null` for the SHiELD climatologies. Experiments with SST and sea-ice files are 1.1 (control), 1.6, 1.5, 1.3 and 1.4 (`PAMIP_EXPERIMENTS` in `plugins/pamip/boundary.py`; input4MIPs identifiers in `plugins/pamip/registry.yaml`). Monthly climatologies come from `fix_src/external/PAMIP` (`python tools/get_pamip.py --root fix_src`, optionally `--experiment 1.6`, `--list`) and are written to `FIXED/PAMIP` as `RTGSST.PAMIP_<exp>.monthly.clim.grb` and `CFSR.SEAICE.PAMIP_<exp>.monthly.clim.grb`, keeping the headers, packing, month stamps and land flags of the baseline.
 
-Run 1.1 and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing), then 1.5 and 1.3; 1.4 is a Tier 2
-experiment. A run of days only checks that the files are read. The PAMIP protocol is a 14-month
-run from 1 April 2000 with the first two months discarded, analysed over at least 100 members,
-because the circulation response builds over autumn and winter and is small relative to internal
-variability. Only the SST and sea-ice files are replaced. Initial conditions come from GFS, which is
-not available for the year 2000, so start on 1 April of an available year (the PAMIP climatologies
-do not depend on the year). The radiative forcing is that of the protocol year 2000: `ictm` is set to
-20000, so the model reads `co2historicaldata_2000.txt` (staged by `fv3_fixed_files`) for the CO2 of every
-model year. Volcanic aerosol and solar constant are not changed. The SHiELD namelist settings of
-each experiment (`ictm`) are in `PAMIP_EXPERIMENTS`; tier, start date, length and spin-up are described in
-`templates/pamip_experiments.yaml`.
+Treatment of land, ice and lakes:
 
-Three test cases run twelve one-month segments from 1 January 2023 with `dt_atmos` 1200 s, `k_split` 3 and `n_split` 6: `tests/cases/pamip_1.1_pdsst_pdsic` (experiment 1.1, control) and `tests/cases/pamip_1.6_pdsst_futarcsic` (1.6, future Arctic sea ice), which use `pamip_baseline: external` (the ESA SST CCI set of `tools/esa_sst.py`: `external_sst`, `external_sic` and `external_mask` in `fix_src/external/ESA`) and differ only in `pamip_experiment`, and `tests/cases/pamip_ctrl` (no PAMIP option, the SHiELD climatologies and surface-cycle settings, the reference of the SHiELD method). The two ESA cases need the PAMIP files in `fix_src/external/PAMIP` (`tools/get_pamip.py`) and the ESA files. They are listed in `tests/submit.sh`.
+- **Sea ice** changes only at ocean points of the baseline land mask (`seaice_newland.grb` or `external_mask`, thresholded at 0.5 as in `sfcsub.F`) and keeps its land flag (values above 1).
+- **SST over land.** PAMIP files hold filled values over land (ocean values spread inland, 271 to 306 K). The `pamip` baseline keeps them; `shield` and `external` change ocean points only.
+- **Lakes and inland seas** (water bodies of the 0.5 degree mask under 500 cells, e.g. Great Lakes, Baikal, Caspian) keep the baseline SST and ice in all baselines.
+- **Surface cycle.** At ocean points it weights source fields by the land mask; at model land points it reads the SST file limited to 173 to 353 K.
+
+The `pamip` plugin writes the file paths (`fntsfc`, `fnaisc`) and the settings below into the namelists with `patch_nml`, after the core has written them: `faiss = fsics = fsicl = 0` (sea ice follows the climatology), `use_ext_sst = false`, `nstf_name = [0, 0, 1, 0, 5]` and a global slab ocean: `do_ocean = true`, `disable_radiation_quasi_sea_ice = true` and `ocean_nml` with `ocean_option = SOM`, `mld_option = obs`, `restore_method = 1`, `sst_restore_tscale = 90` days (`SOM_RESTORE_DAYS` in `plugins/pamip/boundary.py`) and `start_lat`, `end_lat`, `maxlat` of -90, 90, 90. The slab restores the SST toward the PAMIP (or perturbed external) SST climatology and needs `fix/am/mld_DR003_c1m_reg2.0.grb`. To get the fixed-SST protocol back, set `gfs_physics_nml do_ocean: false` and `namsfc ftsfs: 0` in `input.yaml` (and in the nest file); `patch_nml` applies the case-local files again after the plugin, so they win. The surface cycle runs every `fhcyc` = 24 h, interpolating linearly between mid-month values; the AMIP II monthly-mean adjustment of the protocol is not applied.
+
+At the cold start the fields interpolated to the start date are regridded onto every tile (`to_fv3_grid` in `src/latlon_to_fv3.py`, xESMF) and written to `slmsk`, `tsea`, `fice`, `hice` and `tisfc` over non-land points. The `newice` resets of `sfcsub.F` are applied directly: snow (`sheleg`, `snwdph`) 0, `zorl` 1 cm, sea-ice `stc` 271.2 K, new ice thickness 0.2 m (existing ice keeps its thickness). The PAMIP grid is regridded to the GRIB grids with `ll_regrid` (bilinear xESMF, NaN-skipping weights, periodic longitude, nearest valid value at ocean points with none). For the 0.083 degree SST grid the weights take about 3 minutes and 15 GB, and the land mask needs a second regridder of the same size.
+
+At `restart_no` 0, `pamip_<tag>_sst_change.png` and `pamip_<tag>_sic_change.png` are written to `state.run_dir` (twelve Robinson panels of written file minus baseline; K for SST, fraction for ice; symmetric colour scale at the 99.9th percentile of the absolute change). The first process draws them, the others skip if the figure or its lock exists. They need `cartopy`; failure is logged and does not stop the run. Restart segments keep these files, and `preprocess_only` exits before they are written. See `config/examples/run_config.pamip.yaml`.
+
+### 21.2 Baselines (`pamip_baseline`)
+
+`null` or `pamip` (default), `shield`, or `external`.
+
+- **`pamip`**: the experiment is applied to the PAMIP fields as they are.
+- **`shield`**: the perturbation (experiment minus 1.1) is regridded from 1 degree and added to the SHiELD climatologies (`RTGSST.1982.2012`, 0.083 degree; `CFSR.SEAICE.1982.2012`, 0.5 degree). Sea ice is clipped to 0 to 1 with land flags kept. SST is perturbed where the SHiELD value lies in 271.2 to 313.0 K and kept between the SHiELD freezing value and 313.0 K. Files are named `...PAMIP_shield_<exp>...`. The control is experiment 1.1; `pamip_experiment: null` keeps the SHiELD settings and is not a control for it.
+- **`external`**: the same perturbation added to the `external_*` copies (Section 21.3). Files are named `...PAMIP_external_<exp>...`. SST and ice change at ocean points of `external_mask` only (regridded and thresholded at 0.5 if on a different grid). All three `external_*` files must be set and exist, otherwise the case stops before grid generation.
+
+`pamip_fields` (`null` or `both`, `sst`, `sic`) takes only the SST or only the sea ice from the experiment; the other field is the control (PAMIP 1.1 with the `pamip` baseline, the unperturbed field otherwise), and `_sst` or `_sic` is appended to the file names. This leaves out the ice-edge SST adjustment of the protocol pairs. `pamip_experiment`, `pamip_baseline` and `pamip_fields` are part of the restart checksum.
+
+### 21.3 External climatologies
+
+`external_sst`, `external_sic` and `external_mask` (default `null`) replace namsfc `FNTSFC`, `FNAISC` and `FNMSKH`. They are paths to GRIB files (variables and `~` expanded; absolute recommended, since a relative path is resolved from `CASE_DIR`), in the format of the files they replace (`am/RTGSST.1982.2012`, `am/CFSR.SEAICE.1982.2012`, `am/seaice_newland.grb`). They work without a PAMIP experiment. Each is copied (never linked or modified) to `FIXED/external`. Give all three together, since the land mask decides which source cells the surface cycle uses and the ice land flags must agree with it. The paths are not part of the restart checksum.
+
+With baseline `null`, `pamip` or `shield`, the PAMIP files replace `external_sst` and `external_sic` without a warning. A set `external_mask` still replaces `FNMSKH`, so leave it `null` unless the baseline is `external`.
+
+`python tools/esa_sst.py` builds a set from the ESA SST CCI v3.0 climatology in `fix/external/ESA` (details in its docstring), e.g. `external_sst: /path/to/fix/external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb`. ESA has no values over land, so land and lake cells take the 1991 to 2020 monthly ERA5-Land skin temperature (0.1 degree), except land cells within three cells of water, which take the nearest ocean value. Lakes of the SHiELD mask stay water with the ERA5-Land lake skin temperature and the SHiELD ice (land flag 1.57, so a lake at freezing is ice covered). The sea-ice file keeps flag 1.57 over land. Regridding the 0.05 degree fields to 1/12 degree needs a large-memory node (about 15 GB). `tools/get_era5.py` downloads the ERA5 data once (Copernicus CDS account and `~/.cdsapirc` needed) to `fix/external/ERA5/monthly_skin_1991-2020.nc` and `monthly_sst_1991-2020.nc`.
+
+### 21.4 Running the experiments
+
+Run 1.1 and 1.6 first (1.6 minus 1.1 isolates the Arctic sea-ice forcing), then 1.5 and 1.3; 1.4 is Tier 2. The protocol is a 14-month run from 1 April 2000, discarding two months, over at least 100 members. Initial conditions come from GFS, which is unavailable for 2000, so start on 1 April of an available year; the climatologies do not depend on the year. CO2 is the year 2020 value (`ictm` 20200, reading `co2historicaldata_2020.txt` for every year); volcanic aerosol and solar constant are unchanged. Per-experiment settings are in `PAMIP_EXPERIMENTS` and `plugins/pamip/registry.yaml`.
+
+Three test cases run twelve one-month segments from 1 January 2023 (`dt_atmos` 1200 s, `k_split` 3, `n_split` 6), all listed in `tests/submit.sh`:
+
+- `tests/cases/pamip_1.1_pdsst_pdsic` (control) and `tests/cases/pamip_1.6_pdsst_futarcsic` use `pamip_baseline: external` with the ESA set from `tools/esa_sst.py`. They differ only in `pamip_experiment` and need the PAMIP files (`tools/get_pamip.py`) and the ESA files.
+- `tests/cases/pamip_ctrl` has no PAMIP option: the reference for the SHiELD method.
 
 ## 22. Monthly runs
 
-Use one-month segments starting at 00 UTC on day 1 (`config/examples/run_config.monthly.yaml`):
-`resubmit: 119` gives 120 segments (ten years) and `merge_freq: 12` writes one file per
-year; merging only concatenates segments. When the case has no `diag_table`, month and
-year segments use `templates/diag_table.monthly`, which averages the samples (`.true.`)
-over each month. Precipitation (`pr`, `prc`, `prsn`) is written as
-monthly mean rates (kg m-2 s-1). Runoff buckets are totals and are summed by FMS
-(`"sum"`) into `mrro_sum` and `mrros_sum` (kg m-2). Month and year segments also use a monthly namelist profile
-(`common_configs` in `src/fv3_namelists.py`): `fdiag = fhzero = 6` h, so each sample
-of a bucket field such as `totprcpb_ave` is a full 6 h mean; `fhswr = fhlwr = 3600` s;
-`ldiag3d` and `fprint` off; `print_freq = 24` h. The model step comes from `dt_atmos`,
-`k_split` and `n_split`; for C96 use 600 s, 2 and 6, which keeps `dt_atmos` at or below
-`fv_sg_adj` (600 s) as in the GFDL SHiELD_build RTS. Hour and day segments keep `fdiag = fhzero = 1` h. Keep
-`fdiag` and `fhzero` equal in any override and multiples of `dt_atmos`.
-A weekly `fhzero` would make each 6 h sample a running mean since the last weekly reset
-and misalign the buckets with month ends; keep `fhzero = fdiag`. Forecast templates print
-fv_diag summaries every hour (`print_freq = 1`), month and year segments once a day.
-The monthly test (`tests/cases/monthly`) has no case `diag_table`, so it exercises the
-template; it keeps the physics schemes of `templates/input_nml.yaml` and changes only the timing.
-The diag tables write time in seconds for every output frequency; the regridded files
-keep the time handling of `post_process` unchanged. Fields without horizontal axes, such as `average_T1`, `average_T2` and `average_DT`, are copied to the regridded files.
+Use one-month segments starting at 00 UTC on day 1 (`config/examples/run_config.monthly.yaml`): `resubmit: 119` gives ten years and `merge_freq: 12` one file per year.
+
+- **Diag table.** Without a case `diag_table`, `templates/diag_table.monthly` averages samples over each month. Precipitation (`pr`, `prc`, `prsn`) is a monthly mean rate (kg m-2 s-1); runoff buckets are summed by FMS into `mrro_sum` and `mrros_sum` (kg m-2). Time is written in seconds, and regridded files keep the `post_process` time handling.
+- **Namelist.** Same as other segments (`common_configs`, `set_radiation` in `src/fv3_namelists.py`) except `fhswr` and `fhlwr` are at least 3600 s. `fdiag` and `fhzero` both take `diagnostic_interval_hours` (default 1 h), `print_freq` takes `fv3_print_freq` (default 0), `fprint` is off and `ldiag3d` keeps the `templates/<release>/input_nml.yaml` value (true).
+- **Diagnostic interval.** The model computes diagnostics every `fdiag` hours, so each sample of a bucket field is a full `fhzero` mean and cost scales with `1/fdiag`. Use `diagnostic_interval_hours: 6` for monthly means: the windows tile each day, so bucket means are exact, and four samples a day alias only the fourth and higher diurnal harmonics of instantaneous fields. Use 3 for a finer diurnal sample at twice the cost; intervals above 6 h alias the diurnal cycle. In any override keep `fdiag = fhzero`, both multiples of `dt_atmos`; a weekly `fhzero` would misalign buckets with month ends.
+- **Time step.** For C96 use `dt_atmos` 600 s, `k_split` 2, `n_split` 6, keeping `dt_atmos` at or below `fv_sg_adj` (600 s) as in the SHiELD_build RTS.
+
+The test `tests/cases/monthly` has no case `diag_table`, so it exercises the template, and keeps the physics of `templates/<release>/input_nml.yaml`, changing only the timing.
+
+## 23. Plugins
+
+`src/` is the core. Everything that is not needed by every run is a package in [plugins/](plugins); the core calls it only through `src/fv3_plugins.py`, and a plugin is active when one of its `ACTIVE_KEYS` is set in `run_config.yaml`. The hook contract and how to add a plugin are in [plugins/README.md](plugins/README.md).
+
+| Plugin | Active keys | Hooks | What it does |
+| --- | --- | --- | --- |
+| `derived` | `derived_vars_module` | `validate`, `apply`; `add_derived_variables` for every output stream | Built-in derived variables (`derived_vars.py`) plus the `derive` list of the user file (`use_derived.py`); the user file is copied to the case directory. Section 14. |
+| `sm_perturbations` | `sm_perturbations` | `apply` | Perturbs the surface restart files at the cold start and at each restart segment. Section 11. |
+| `pamip` | `pamip_experiment`, `pamip_baseline`, `pamip_fields`, `external_sst`, `external_sic`, `external_mask` | `validate`, `apply` | PAMIP boundary files, slab ocean and CO2 settings, and the external climatologies. Section 21. |
+
+The core calls the hooks here:
+
+| When | Core call | Hook |
+| --- | --- | --- |
+| Cold start, before grid and IC generation | `fv3_plugins.validate()` in `fv3_init_driver.py` | `validate` |
+| Cold start, last step before `save_fv3_state()` | `fv3_plugins.do_plugins(restart=False)` in `fv3_init_driver.py` | `apply` |
+| Each restart segment, last step before `save_fv3_state()` | `fv3_plugins.do_plugins(restart=True)` in `fv3_restart_driver.py` | `apply` |
+| Each regridded output stream | `fv3_plugins.add_derived_variables(ds)` in `fv3_regrid.py` | `plugins.derived.add_derived_variables` |
+| Restart checksum | `compute_checksum` in `fv3_state.py` | `HASH_KEYS` of each plugin |
+
+`do_plugins` runs after the namelists, tables, fixed files and run script have been written. A plugin changes the namelists with `patch_nml(settings)` (`settings` is `{group: {key: value}}`), which merges them into the global and nest namelists and then applies the case-local `input.yaml` and `input.nml` override files again, so those win. A `namsfc` file key (`fntsfc`, `fnaisc`, `fnmskh`) replaces the SHiELD default file name in the namelist. A plugin that changes a value that `update_fixed_files` reads (pamip sets `ictm` for the CO2 table) is passed `update_fixed_files` and calls it after patching. A plugin gets the live `state` and the core functions it needs as keyword arguments (listed in `src/fv3_plugins.py`), and imports nothing from `src/`.

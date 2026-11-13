@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import shutil
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -11,27 +11,13 @@ import xarray as xr
 import yaml
 from scipy import ndimage
 
-from fv3_runtime import log
-from fv3_state import state
-from fv3_utils import cp
-from grib_io import open_grib, save_grib
-from latlon_to_fv3 import fill_nearest, ll_regrid, load_grid, sfc_filename, to_fv3_grid
+from plugins.pamip.config import CONTROL, REGISTRY_FILE
+
+log = logging.getLogger("PLUGINS")
 
 SST_FILE = "RTGSST.1982.2012.monthly.clim.grb"
 ICE_FILE = "CFSR.SEAICE.1982.2012.monthly.clim.grb"
 LAND_FILE = "seaice_newland.grb"
-REGISTRY_FILE = (
-    Path(__file__).resolve().parent.parent / "templates" / "pamip_experiments.yaml"
-)
-CONTROL = "1.1"
-BASELINES = ("pamip", "shield", "external")
-FIELDS = ("both", "sst", "sic")
-EXTERNAL_FILES = {
-    "external_sst": "fntsfc",
-    "external_sic": "fnaisc",
-    "external_mask": "fnmskh",
-}
-
 SST_MIN_K, SST_MAX_K = 271.2, 313.0
 AISLIM = 0.15
 LAND_FLAG = 1.0
@@ -59,118 +45,13 @@ SIHNEW = 0.2
 T_MELT = 273.16
 ZORL_NEWICE = 1.0
 
-FORCING_2000 = {"gfs_physics_nml": {"ictm": 20000}}
-FORCING_VARYING: dict[str, dict] = {}
-PAMIP_EXPERIMENTS: dict[str, dict] = {
-    "1.1": {"name": "pdSST-pdSIC", "namelist": FORCING_2000},
-    "1.2": {"name": "piSST-piSIC", "namelist": FORCING_2000},
-    "1.3": {"name": "piSST-pdSIC", "namelist": FORCING_2000},
-    "1.4": {"name": "futSST-pdSIC", "namelist": FORCING_2000},
-    "1.5": {"name": "pdSST-piArcSIC", "namelist": FORCING_2000},
-    "1.6": {"name": "pdSST-futArcSIC", "namelist": FORCING_2000},
-    "1.7": {"name": "pdSST-piAntSIC", "namelist": FORCING_2000},
-    "1.8": {"name": "pdSST-futAntSIC", "namelist": FORCING_2000},
-    "1.9": {"name": "pdSST-pdSICSIT", "namelist": FORCING_2000},
-    "1.10": {"name": "pdSST-futArcSICSIT", "namelist": FORCING_2000},
-    "2.1": {"name": "pa-pdSIC", "namelist": FORCING_2000},
-    "2.2": {"name": "pa-piArcSIC", "namelist": FORCING_2000},
-    "2.3": {"name": "pa-futArcSIC", "namelist": FORCING_2000},
-    "2.4": {"name": "pa-piAntSIC", "namelist": FORCING_2000},
-    "2.5": {"name": "pa-futAntSIC", "namelist": FORCING_2000},
-    "3.1": {"name": "pdSST-futOkhotskSIC", "namelist": FORCING_2000},
-    "3.2": {"name": "pdSST-futBKSeasSIC", "namelist": FORCING_2000},
-    "4.1": {"name": "modelSST-pdSIC", "namelist": FORCING_2000},
-    "4.2": {"name": "modelSST-futArcSIC", "namelist": FORCING_2000},
-    "5.1": {"name": "amip-climSST", "namelist": FORCING_VARYING},
-    "5.2": {"name": "amip-climSIC", "namelist": FORCING_VARYING},
-    "6.1": {"name": "pa-pdSIC-ext", "namelist": FORCING_2000},
-    "6.2": {"name": "pa-futArcSIC-ext", "namelist": FORCING_2000},
-    "6.3": {"name": "pa-futAntSIC-ext", "namelist": FORCING_2000},
-}
 
+def write_boundary_files(
+    *, state, open_grib, save_grib, ll_regrid, fill_nearest
+) -> tuple[xr.Dataset, dict[str, str]]:
+    """Write SST and sea-ice climatologies of state.pamip_experiment to FIXED/PAMIP.
 
-def validate_pamip_options() -> None:
-    """Check the PAMIP and external-file options of run_config.yaml."""
-    experiment = state.pamip_experiment
-    baseline = state.pamip_baseline
-    fields = state.pamip_fields
-
-    if experiment is None or experiment == "":
-        state.pamip_experiment = None
-        if baseline is not None or fields is not None:
-            raise ValueError(
-                "`pamip_baseline` and `pamip_fields` only apply to a PAMIP experiment: "
-                'set `pamip_experiment` (for example "1.6") or set both options to null'
-            )
-    else:
-        if not isinstance(experiment, str):
-            raise TypeError(
-                f'`pamip_experiment` must be quoted text such as "1.6". Got {experiment!r}'
-            )
-        experiment = experiment.strip()
-        if experiment not in PAMIP_EXPERIMENTS:
-            raise ValueError(
-                f"`pamip_experiment` must be one of {tuple(PAMIP_EXPERIMENTS)}. Got {experiment!r}"
-            )
-        registry = yaml.safe_load(REGISTRY_FILE.read_text())["experiments"]
-        if experiment not in registry:
-            raise ValueError(
-                f"PAMIP experiment {experiment} has no SST and sea-ice files in {REGISTRY_FILE.name}."
-            )
-        if baseline is not None and baseline not in BASELINES:
-            raise ValueError(
-                f"`pamip_baseline` must be one of {BASELINES} or null. Got {baseline!r}"
-            )
-        if fields is not None and fields not in FIELDS:
-            raise ValueError(
-                f"`pamip_fields` must be one of {FIELDS} or null. Got {fields!r}"
-            )
-        state.pamip_experiment = experiment
-
-    for key in EXTERNAL_FILES:
-        value = getattr(state, key)
-        if value is None or value == "":
-            setattr(state, key, None)
-            continue
-        if not isinstance(value, str):
-            raise TypeError(f"`{key}` must be a file path as text. Got {value!r}")
-        path = Path(state.fix_src) / Path(value).expanduser()
-        if not path.is_file():
-            raise FileNotFoundError(f"`{key}` is {value!r}, which resolves to {path}.")
-
-    given = [
-        Path(getattr(state, key)).name for key in EXTERNAL_FILES if getattr(state, key)
-    ]
-    if len(set(given)) != len(given):
-        raise ValueError(
-            "`external_sst`, `external_sic` and `external_mask` need three different file names."
-        )
-    if state.pamip_experiment is not None and baseline == "external":
-        missing = [key for key in EXTERNAL_FILES if not getattr(state, key)]
-        if missing:
-            raise ValueError(
-                f"`pamip_baseline: external` requires all external files. Not set: {missing}"
-            )
-
-
-def stage_external_files() -> None:
-    """Copy external files to FIXED/external."""
-    for key, entry in EXTERNAL_FILES.items():
-        value = getattr(state, key)
-        if not value:
-            continue
-        source = Path(state.fix_src) / Path(value).expanduser()
-        destination = Path(state.fix) / "external" / source.name
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.unlink(missing_ok=True)
-        shutil.copyfile(source, destination)
-        setattr(state, entry, f"FIXED/external/{source.name}")
-
-
-def write_boundary_files() -> xr.Dataset | None:
-    """Write SST and sea-ice climatologies of state.pamip_experiment to FIXED/PAMIP."""
-    if state.pamip_experiment is None:
-        return None
+    Returns the fields and the namsfc entries pointing at the files."""
     experiment = state.pamip_experiment
     baseline = state.pamip_baseline or "pamip"
     fields = state.pamip_fields or "both"
@@ -180,9 +61,12 @@ def write_boundary_files() -> xr.Dataset | None:
 
     if baseline == "external":
         base_files = {
-            "sst": Path(state.fix) / Path(state.fntsfc).relative_to("FIXED"),
-            "sic": Path(state.fix) / Path(state.fnaisc).relative_to("FIXED"),
-            "land": Path(state.fix) / Path(state.fnmskh).relative_to("FIXED"),
+            kind: Path(state.fix) / "external" / Path(state[key]).name
+            for kind, key in (
+                ("sst", "external_sst"),
+                ("sic", "external_sic"),
+                ("land", "external_mask"),
+            )
         }
     else:
         am_dir = Path(state.fix_src) / "am"
@@ -237,7 +121,8 @@ def write_boundary_files() -> xr.Dataset | None:
 
     poles = [-90.0, *pamip["sst"].lat.values, 90.0]
     pamip = {
-        kind: da.reindex(lat=poles, method="nearest") for kind, da in pamip.items()
+        kind: da.pad(lat=1, mode="edge").assign_coords(lat=poles)
+        for kind, da in pamip.items()
     }
     land = land.reindex(lat=[-90.0, *land.lat.values, 90.0], method="nearest")
     lake = lake.reindex(lat=land.lat, method="nearest").astype("float32")
@@ -367,8 +252,8 @@ def write_boundary_files() -> xr.Dataset | None:
                     )
                     grid.fig.suptitle(
                         f"{names[kind].removesuffix('.monthly.clim.grb')} - "
-                        f"{base_files[kind].name.removesuffix('.monthly.clim.grb')}: "
-                        f"largest change {float(abs(out[kind] - base[kind]).max()):.3g}"
+                        + f"{base_files[kind].name.removesuffix('.monthly.clim.grb')}: "
+                        + f"largest change {float(abs(out[kind] - base[kind]).max()):.3g}"
                     )
                     grid.fig.savefig(figure, dpi=300, bbox_inches="tight")
                 finally:
@@ -376,17 +261,27 @@ def write_boundary_files() -> xr.Dataset | None:
         except Exception:
             log.exception("PAMIP change figure failed; continuing")
 
-    state.fntsfc = f"FIXED/{family}/{names['sst']}"
-    state.fnaisc = f"FIXED/{family}/{names['sic']}"
-
+    files = {
+        "fntsfc": f"FIXED/{family}/{names['sst']}",
+        "fnaisc": f"FIXED/{family}/{names['sic']}",
+    }
     if baseline == "pamip":
-        return xr.Dataset({"sst": pamip["sst"], "sic": pamip["sic"]})
+        return xr.Dataset({"sst": pamip["sst"], "sic": pamip["sic"]}), files
     sic = out["sic"].where(out["sic"] <= LAND_FLAG)
     sst = out["sst"].reindex(lat=sic.lat, lon=sic.lon, method="nearest")
-    return xr.Dataset({"sst": sst.where(sic.notnull()), "sic": sic})
+    return xr.Dataset({"sst": sst.where(sic.notnull()), "sic": sic}), files
 
 
-def set_cold_start_surface(fields: xr.Dataset) -> None:
+def set_cold_start_surface(
+    fields: xr.Dataset,
+    *,
+    state,
+    fill_nearest,
+    sfc_filename,
+    to_fv3_grid,
+    load_grid,
+    cp,
+) -> None:
     """Set SST and sea ice of surface files to start date fields."""
     date = pd.Timestamp(state.init_datetime)
     rjday = date.dayofyear + date.hour / 24.0

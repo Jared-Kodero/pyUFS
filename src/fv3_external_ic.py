@@ -175,7 +175,7 @@ def _validate_ic_files(c_res: int, gtype: str, n_nests: int) -> None:
 
     if failures:
         detail = "; ".join(f"{d}: {', '.join(n)}" for d, n in failures.items())
-        raise FileNotFoundError(f"IC validation failed in {state.work_dir}: {detail}")
+        raise FileNotFoundError(f"IC validation failed in {state.case_dir}: {detail}")
 
 
 def _validate_bc_files() -> None:
@@ -222,10 +222,7 @@ def init_external_ic() -> bool:
     from c_res, gtype, and n_nests, rather than only confirming that the
     staging directories are non-empty.
     """
-    if state.work_dir is None:
-        raise RuntimeError("Cannot stage external IC: work_dir is not set")
-
-    case_home = Path(state.work_dir)
+    case_home = Path(state.case_dir)
     external = bool(state.external_ic_dir)
     ic_dir = Path(state.external_ic_dir) if external else case_home
 

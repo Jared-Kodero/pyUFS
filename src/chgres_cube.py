@@ -420,6 +420,18 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
     return tmp_dir
 
 
+def domain_ranks(domain: str, n_cpus: int) -> int:
+    """MPI ranks for one domain.
+
+    A nest is a single tile split into 1 x N strips, and ESMF cannot regrid a
+    decomposition element narrower than 2 cells, so keep >= 3 rows per rank.
+    """
+    if not domain.startswith("nest"):
+        return n_cpus
+    ny = state.npy[int(domain[4:]) - 1] - 1
+    return max(1, min(n_cpus, ny // 3))
+
+
 def run_chgres_cube() -> None:
     env_setup()
 
@@ -455,7 +467,7 @@ def run_chgres_cube() -> None:
 
     try:
         for spec in specs:
-            run_chgres(spec, n_cpus)
+            run_chgres(spec, domain_ranks(spec.domain, n_cpus))
 
         if is_regional:
             regional = next(spec for spec in specs if spec.domain == "regional")

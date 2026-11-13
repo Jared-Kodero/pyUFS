@@ -10,13 +10,9 @@ from fv3_runtime import read_namelist, sort_paths
 from fv3_state import save_fv3_state, state
 from fv3_timings import get_timings
 
-grid_dir: Path | None = None
-
 
 def calc_cpu_alloc(dir: Path) -> None:
-    global grid_dir
-    grid_dir = dir
-    get_grid_info()
+    get_grid_info(dir)
     if state.gtype == "nest":
         calc_nest_pes()
     elif state.gtype in ("regional_gfdl", "regional_esg"):
@@ -25,14 +21,14 @@ def calc_cpu_alloc(dir: Path) -> None:
         calc_uniform_pes()
 
 
-def get_grid_info() -> None:
+def get_grid_info(grid_dir: Path) -> None:
     state.ngrid_cells = [0 for _ in range(state.n_nests + 1)]
     state.ntiles = []
     state.npx = []
     state.npy = []
 
     if state.gtype in ("regional_gfdl", "regional_esg"):
-        get_regional_grid_info()
+        get_regional_grid_info(grid_dir)
         return
 
     files = sorted(grid_dir.glob("C*_grid.tile*.nc"), key=sort_paths)
@@ -64,7 +60,7 @@ def get_grid_info() -> None:
         state.npy.append(npy)
 
 
-def get_regional_grid_info() -> None:
+def get_regional_grid_info(grid_dir: Path) -> None:
     """Read the single, unshaved tile-7 grid used by a regional domain."""
     files = sorted(grid_dir.glob("C*_grid.tile7.nc"), key=sort_paths)
 
@@ -353,7 +349,10 @@ def get_layouts(pes: list[int]) -> dict[str, list[int]]:
 
         layouts.append(best_layout)
         io_layouts.append([1, 1])
-        blocksizes.append(32)
+        # -1: one block per rank, avoids FMS non-uniform block warnings
+        divisible = nx % best_layout[0] == 0 and ny % best_layout[1] == 0
+        local = nx // best_layout[0] * (ny // best_layout[1])
+        blocksizes.append(32 if divisible and local % 32 == 0 else -1)
 
     return {
         "layout": layouts,

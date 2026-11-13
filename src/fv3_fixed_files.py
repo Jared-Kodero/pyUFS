@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from fv3_runtime import fix_file, log
+from fv3_runtime import fix_file, log, read_namelist
 from fv3_state import state
 from fv3_update_fix import PHYSICS_FILES, volcanic_files
 from fv3_utils import cp
@@ -61,22 +61,14 @@ def update_fixed_files():
         fix_file(f"am/{name}")
         link_fixed_file(fix_dir / name)
 
-    from pamip_experiment import PAMIP_EXPERIMENTS
-
-    ictm = None
-    if state.pamip_experiment:
-        ictm = (
-            PAMIP_EXPERIMENTS[state.pamip_experiment]["namelist"]
-            .get("gfs_physics_nml", {})
-            .get("ictm")
-        )
-    if ictm is not None:
-        forcing_year = ictm // 10
+    ictm = read_namelist(state.case_dir / "input.nml")["gfs_physics_nml"].get("ictm", 0)
+    if ictm >= 10000 and ictm % 10 == 0:
+        year = ictm // 10
         # ictm = yyyy0: the model stops if the table of exactly this year is missing
-        path = fix_file(f"am/co2historicaldata_{forcing_year}.txt", required=False)
+        path = fix_file(f"am/co2historicaldata_{year}.txt", required=False)
         if path is None:
             raise FileNotFoundError(
-                f"co2historicaldata_{forcing_year}.txt not found in {fix_dir}"
+                f"co2historicaldata_{year}.txt not found in {fix_dir}"
             )
         link_fixed_file(fix_dir / path.name)
     else:
@@ -91,4 +83,4 @@ def update_fixed_files():
     # Volcanic tables exist for 1850-1999; later years use the lowest value.
     for name in volcanic_files(run_years()):
         fix_file(f"am/{name}")
-        link_fixed_file(fix_dir / name, link_dir=state.work_dir)
+        link_fixed_file(fix_dir / name, link_dir=state.case_dir)

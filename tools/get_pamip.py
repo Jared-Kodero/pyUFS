@@ -1,4 +1,4 @@
-"""Download the PAMIP SST and sea-ice files that the experiments of templates/pamip_experiments.yaml use.
+"""Download the PAMIP SST and sea-ice files that the experiments of plugins/pamip/registry.yaml use.
 
 Files are stored, with their original names, in <root>/external/PAMIP/<source_id>/<variable_id>/ where
 <root> is the fix_src directory of the case. Existing files are not downloaded again.
@@ -19,9 +19,7 @@ PROJECTS = (
     "input4MIPs",
     "input4mips",
 )  # the ESGF index spells some datasets in lower case
-REGISTRY = (
-    Path(__file__).resolve().parent.parent / "templates" / "pamip_experiments.yaml"
-)
+REGISTRY = Path(__file__).resolve().parent.parent / "opt" / "pamip" / "registry.yaml"
 
 
 def download(era: str, target: str, source: str, variable: str) -> list[Path]:

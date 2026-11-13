@@ -13,19 +13,8 @@ module purge
 
 cd "$CASE_PWD"
 
-export WORK_DIR="$JOBTMP_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
-
-
-if  [ ! -d "$JOBTMP_DIR" ]; then 
-    SYNC=0
-    WORK_DIR="$CASE_DIR"
-    mkdir -p "$JOBTMP_DIR"
-else
-    SYNC=1
-    rm -rf "$WORK_DIR"
-fi
 
 
 
@@ -40,13 +29,12 @@ export SESSION_START_TIME=$(date +%s)
 
 
 # PREPARE DIRECTORIES
-mkdir -p "$WORK_DIR"
 mkdir -p "$CASE_DIR"
 
 
 # BUILD MISSING IMAGES (run as a child process so its module/env changes do not leak)
 if [ ! -f "$SHIELD_SIF" ] || [ ! -f "$PREPROCESS_SIF" ] || [ ! -f "$FREGRID_SIF" ]; then
-    bash "$UFS_UTILS_DIR/tools/install_images.sh" > "$WORK_DIR"/image_build.log 2>&1
+    bash "$UFS_UTILS_DIR/tools/install_images.sh" > "$CASE_DIR"/image_build.log 2>&1
     for SIF in "$SHIELD_SIF" "$PREPROCESS_SIF" "$FREGRID_SIF"; do
         if [ ! -f "$SIF" ]; then
             echo "Case.Run - ERROR - image $SIF not found after build; images are written to $CONTAINERS_DIR" >&2
@@ -56,19 +44,14 @@ if [ ! -f "$SHIELD_SIF" ] || [ ! -f "$PREPROCESS_SIF" ] || [ ! -f "$FREGRID_SIF"
 fi
 
 
-# CREATE SYMLINK TO WORK_DIR
+# CREATE SYMLINK TO CASE_DIR
 rm -f "$CASE_DATA_SYMLINK"
-ln -s "$WORK_DIR" "$CASE_DATA_SYMLINK"
-
-# SYNC CASE_DIR TO WORK_DIR
-if (( SYNC == 1 )); then
-    rsync -a --delete "$CASE_DIR/" "$WORK_DIR/"
-fi
+ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
 
 
 # RUNTIME FILES
-EXIT_CODE_FILE="$WORK_DIR/exit_code"
-SHIELD_NATIVE="$WORK_DIR/shield.native"
+EXIT_CODE_FILE="$CASE_DIR/exit_code"
+SHIELD_NATIVE="$CASE_DIR/shield.native"
 
 echo 0 > "$EXIT_CODE_FILE"
 
@@ -80,10 +63,14 @@ else
 fi
 
 
-# Private temporary directory for each case, inside its work directory: Python
-# multiprocessing (3.14 forkserver) keeps its pymp-* directory here, so cases that
-# run at the same time on a shared filesystem never share one.
-export TMPDIR="$WORK_DIR/.tmp"
+# The one temporary directory of the case (state.tmp), shared by the workflow and the
+# processes it starts: Python multiprocessing (3.14 forkserver) keeps its pymp-*
+# directory here, so cases that run at the same time never share one. It is
+# removed after a successful segment and kept after a failure for debugging. A
+# kept directory is cleared when the next job of the case starts, so a rerun
+# never picks up files from the failed one.
+export TMPDIR="$CASE_DIR/TMP"
+[ -n "$CASE_DIR" ] && rm -rf "$TMPDIR"
 mkdir -p "$TMPDIR"
 export APPTAINER_CACHEDIR="$TMPDIR"
 export APPTAINER_HOME=$HOME
@@ -94,26 +81,23 @@ FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/launchers/fregrid"
 PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/launchers/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
-SYNC_DIRS="rsync -a --delete --exclude=/.tmp "$WORK_DIR/" "$CASE_DIR/""
+
+# Nodes of this job for state.yaml (comma separated; read by get_allocated_nodes)
+export CASE_NODE_LIST=$(scontrol show hostnames "$SLURM_JOB_NODELIST" 2>/dev/null | paste -sd, -)
 
 
 $PREPROCESS # Run preprocess to stage grid and IC files (if needed)
 
 
-if (( $(<"$EXIT_CODE_FILE") == 0)); then
-    $SYNC_DIRS
-    if (( $CASE_PREPROCESS_ONLY == 1 )); then
-        rm -f "$CASE_DATA_SYMLINK"
-        ln -s "$CASE_DIR" "$CASE_DATA_SYMLINK"
-        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
-        exit 0
-    fi
+if (( $(<"$EXIT_CODE_FILE") == 0 && CASE_PREPROCESS_ONLY == 1 )); then
+    echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - IC and Grid generation complete."
+    exit 0
 fi
 
 if (( CASE_MULTI_NODE_FLAG == 1 )) || [[ -f "$SHIELD_NATIVE" ]]; then
-    SHIELD="$WORK_DIR/shield"
+    SHIELD="$CASE_DIR/shield"
 else
-    SHIELD="$SHIELD_PREFIX $WORK_DIR/shield"
+    SHIELD="$SHIELD_PREFIX $CASE_DIR/shield"
 fi
 
 
@@ -128,14 +112,10 @@ if (( $(<"$EXIT_CODE_FILE") == 0 )); then $FREGRID || true; fi
 
 EXIT_CODE=$(<"$EXIT_CODE_FILE")
 
-if  (( EXIT_CODE == 0 && SYNC == 1 )); then
-    $SYNC_DIRS
+if (( EXIT_CODE == 0 )); then
+    rm -rf "$TMPDIR"
+    unset TMPDIR APPTAINER_CACHEDIR
 fi
-
-if (( EXIT_CODE != 0 )); then
-    cp -rf "$WORK_DIR"/LOGS "$CASE_DIR"/LOGS
-fi
-
 
 if (( EXIT_CODE == 0 )); then
     CURRENT_TIME=$(date +%s)
@@ -147,28 +127,18 @@ if (( EXIT_CODE == 0 )); then
 
         if (( CASE_ARCHIVE == 1 )); then
 
-            CASE_OUT="$CASE_DIR/OUTPUT"
-            rm -rf "$CASE_DIR"/IC/R*_INPUT
+            mkdir -p "$ARCHIVE_DIR"
 
-            if (( CASE_ENSEMBLES == 1 )); then
-                CASE_ARCHIVE_DIR="$ARCHIVE_DIR/ensembles"
-            else
-                CASE_ARCHIVE_DIR="$ARCHIVE_DIR/case"
-            fi
+            cp -rf "$CASE_DIR"/OUTPUT/*.nc "$CASE_DIR"/state.yaml "$ARCHIVE_DIR/"
+            cp -rf "$CASE_DIR"/LOGS/shield "$ARCHIVE_DIR/shield_log"
 
-            mkdir -p "$CASE_ARCHIVE_DIR"
-
-            cp -rf "$CASE_OUT"/*.nc "$CASE_ARCHIVE_DIR/"
-            rm -rf "$CASE_OUT" "$CASE_DIR"/HIST
-
-            cp -f "$CASE_DIR"/state.yaml "$CASE_ARCHIVE_DIR/state.yaml"
-            cp -rf "$CASE_DIR"/LOGS/shield "$CASE_ARCHIVE_DIR/shield_log"
-
-            TARFILE="$ARCHIVE_DIR/case.tar.gz"
-
-            tar --use-compress-program='pigz -p 32' -cf "$TARFILE" -C "$CASE_DIR" .
-            rm -rf "$CASE_DIR" "$CASE_DATA_SYMLINK"
-            ln -s "$CASE_ARCHIVE_DIR" "$CASE_DATA_SYMLINK"
+            # Only the final restart, state.yaml and run_config.yaml are kept; the grid,
+            # orography and ICs are rebuilt from them (case_continue.sh --restart-dir).
+            cp "$CASE_PWD/run_config.yaml" "$CASE_DIR/"
+            tar --use-compress-program='pigz -p 32' -cf "$ARCHIVE_DIR/restart.tar.gz" \
+                -C "$CASE_DIR" RESTART state.yaml run_config.yaml
+                
+            ln -sfn "$ARCHIVE_DIR" "$CASE_DATA_SYMLINK"
         fi
 
         to_hours() { awk -v seconds="$1" 'BEGIN {printf "%.2f\n", seconds / 3600}'; }
@@ -177,8 +147,12 @@ if (( EXIT_CODE == 0 )); then
 
         echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Walltime: $(to_hours "$TOTAL_WALLTIME_TIME") hours."
         echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Total Time Taken: $(to_hours "$TOTAL_RUNTIME") hours."
-        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $CASE_ARCHIVE_DIR"
+        echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Archived files to: $ARCHIVE_DIR"
         echo "$(date '+%Y-%m-%d %H:%M') - UFS_UTILS - INFO - Case $SLURM_JOB_NAME completed"
+
+        if (( CASE_ARCHIVE == 1 )); then
+            cp -f "$CASE_LOG_FILE" "$ARCHIVE_DIR/shield_log/"
+        fi
     fi
 fi
 
@@ -188,13 +162,12 @@ if (( EXIT_CODE == 0 && CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
     SLURM_OPEN_MODE="append"
     CASE_TIME_LIMIT=$(squeue -j "$SLURM_JOB_ID" -h -o "%l")
     CASE_RESUBMIT_INDEX=$((CASE_RESUBMIT_INDEX + 1))
+    export CASE_CONTINUE_RUN=0  # only the segment started by case_continue.sh resumes
+    unset CASE_RESTART_DIR CASE_RESTART_STATE  # only the first job stages a restart
     source "$UFS_UTILS_DIR/launchers/sbatch.sh"
     scontrol top "$JOB_ID"
     exit 0
 fi
-
-
-rm -rf "$TMPDIR"
 
 exit "$EXIT_CODE"
 

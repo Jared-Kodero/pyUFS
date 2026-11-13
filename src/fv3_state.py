@@ -16,13 +16,21 @@ from fv3_utils import parse_datetime, parse_resolution
 
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-logging.basicConfig(
-    format=log_format,
-    datefmt="%Y-%m-%d %H:%M",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler()],
-    force=True,
-)
+
+def setup_logging() -> None:
+    """Configure the root logger of the workflow processes.
+
+    Called by the entry points (driver.py, fv3_regrid.py), not at import, so
+    importing a module never replaces the handlers of the importing program.
+    """
+    logging.basicConfig(
+        format=log_format,
+        datefmt="%Y-%m-%d %H:%M",
+        level=logging.INFO,
+        handlers=[logging.StreamHandler()],
+        force=True,
+    )
+
 
 log = logging.getLogger("UFS_UTILS")
 
@@ -30,7 +38,6 @@ log = logging.getLogger("UFS_UTILS")
 # state.yaml, are converted on assignment.
 PATH_FIELDS = frozenset(
     {
-        "work_dir",
         "fix_src",
         "ufs_exe",
         "run_dir",
@@ -71,14 +78,12 @@ class FV3State:
     # --- Configuration (config/<release>/run_config.yaml) --------------------------
     # 0. Job environment
     case_root: str | None = None
-    jobtmp: str | None = None
-    fix_src: Path | None = None
-    ufs_utils: Path | None = None
     shield_image: str | None = None
     fregrid_image: str | None = None
     preprocess_image: str | None = None
     containers_root: str | None = None
-    shield_root: str | None = None
+    fix_src: Path | None = None
+    ufs_utils: Path | None = None  # derived: the checkout containing this file
     archive_root: str | None = None
     shield_release: str | None = None
     shield_exe: str | None = None
@@ -103,6 +108,7 @@ class FV3State:
     merge_freq: int | None = None
     use_modern_diag: bool | None = None
     pack_output: bool | None = None
+    derived_vars_module: str | None = None
     # 3. Execution control
     init_datetime: pd.Timestamp | None = None  # model start
     run_length: int | None = None
@@ -177,12 +183,12 @@ class FV3State:
     pamip_experiment: str | None = None
     pamip_baseline: str | None = None  # pamip (default), shield or external
     pamip_fields: str | None = None  # both (default), sst or sic
-    # Own climatologies from run_config: a GRIB path, absolute or relative to fix_src
+    pamip_forcing_year: int | None = None
+    # Own climatologies from run_config: a path to a GRIB file (variables and ~ expanded)
     external_sst: str | None = None
     external_sic: str | None = None
     external_mask: str | None = None
-    # namsfc entries replacing the SHiELD files: FIXED/external/<name> after
-    # stage_external_files, then, for fntsfc and fnaisc, the PAMIP files set by write_boundary_files
+    # Unused; kept so state.yaml files of earlier cases still load
     fntsfc: str | None = None
     fnaisc: str | None = None
     fnmskh: str | None = None
@@ -192,6 +198,8 @@ class FV3State:
     multi_node: bool = False
     ensemble_id: int = 0
     resubmit_idx: int = 0
+    # Set by case_continue.sh for the one segment it resumes; never saved as True.
+    resume_run: bool = False
 
     # --- Derived case identity and timeline ------------------------------
     case_description: str = ""
@@ -204,6 +212,10 @@ class FV3State:
     total_run_hours: int = 0
     forecast_length: str = ""
     model_start_date: list[int] = field(default_factory=list)
+    # Nodes of the latest attempt of each segment: {segment: [hostnames]}.
+    node_list: dict[int, list[str]] = field(default_factory=dict)
+    # Newest segment whose output is regridded: {"last": segment, "total": segments}.
+    regrid_progress: dict[str, int] = field(default_factory=dict)
 
     # --- Derived grid geometry and nesting --------------------------------
     res_km: list[float] = field(default_factory=list)
@@ -233,7 +245,6 @@ class FV3State:
     ic_source: dict[str, dict[str, str | None]] = field(default_factory=dict)
 
     # --- Paths (fv3_paths) -------------------------------------------------
-    work_dir: Path | None = None
     ufs_exe: Path | None = None
     run_dir: Path | None = None
     case_dir: Path | None = None
@@ -334,7 +345,9 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
     # Hashed only when set, so checksums of existing cases remain valid.
     if data.get("forecast_hour"):
         _hash_keys.append("forecast_hour")
-    for key in ("pamip_experiment", "pamip_baseline", "pamip_fields"):
+    from fv3_plugins import hash_keys as plugin_hash_keys
+
+    for key in plugin_hash_keys():
         if data.get(key) is not None:
             _hash_keys.append(key)
 
@@ -370,7 +383,7 @@ def save_fv3_state(cfg: FV3State | None = None, path: Path | None = None) -> Non
     _cfg = state if cfg is None else cfg
 
     if path is None:
-        path = Path(paths["work_dir"]) / "state.yaml"
+        path = Path(paths["case_dir"]) / "state.yaml"
 
     data = {}
     for k, v in _cfg.items():
@@ -392,7 +405,7 @@ def save_fv3_state(cfg: FV3State | None = None, path: Path | None = None) -> Non
 
 def load_fv3_state() -> FV3State:
     """Load the persisted state, then apply the current environment paths."""
-    path = Path(paths["work_dir"]) / "state.yaml"
+    path = Path(paths["case_dir"]) / "state.yaml"
 
     if not path.exists():
         raise FileNotFoundError(f"Restart state file not found: {path}")
