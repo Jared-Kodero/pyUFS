@@ -13,9 +13,9 @@ import dask
 import numpy as np
 import xarray as xr
 
-from derived_vars import calc_derived_vars
+import fv3_plugins
 from fv3_diag_files import load_variables, stream_handles, variables
-from fv3_state import load_fv3_state
+from fv3_state import load_fv3_state, save_fv3_state, setup_logging
 from fv3_utils import cres_to_deg, env_setup, exit_code
 from pyfregrid import fregrid
 
@@ -212,6 +212,15 @@ def pack_encoding(ds: xr.Dataset, pack: bool) -> dict[str, dict]:
     return encoding
 
 
+# Static fields are attached once to each final file by add_static_fields(), so
+# seg files and merge inputs never carry them.
+STATIC_FIELDS = ("HGTsfc", "pk", "bk", "hyam", "hybm")
+
+
+def without_static(ds: xr.Dataset) -> xr.Dataset:
+    return ds.drop_vars(STATIC_FIELDS, errors="ignore")
+
+
 def merge_files(inputs: list[Path], target: Path) -> None:
     """Concatenate inputs along time into target.
 
@@ -232,9 +241,10 @@ def merge_files(inputs: list[Path], target: Path) -> None:
             compat="override",
             join="exact",
             decode_times=True,
+            preprocess=without_static,
         )
     else:
-        ds = xr.open_dataset(sources[0])
+        ds = without_static(xr.open_dataset(sources[0]))
 
     tmp = target.with_name(f".{target.name}.merge")
 
@@ -256,8 +266,12 @@ def merge_files(inputs: list[Path], target: Path) -> None:
             p.unlink(missing_ok=True)
 
 
-def promote_segment_outputs(output_dir: Path, streams: list, n_nests: int) -> None:
+def promote_segment_outputs(
+    output_dir: Path, streams: list, n_nests: int
+) -> list[tuple[Path, str]]:
     """Move the current restart's unmerged segment files into output_dir.
+
+    Returns the promoted files as (path, group alias).
 
     Segment indices are taken from the stream names so each restart is promoted
     independently. Existing targets are atomically replaced, which makes a
@@ -268,6 +282,7 @@ def promote_segment_outputs(output_dir: Path, streams: list, n_nests: int) -> No
     current = sorted(
         {(stream_family(stream), segment_index(stream)) for stream in streams}
     )
+    promoted: list[tuple[Path, str]] = []
 
     for handle, seg in current:
         for path in segment_dir.glob(f"{handle}.seg{seg:02d}.*.nc"):
@@ -280,6 +295,9 @@ def promote_segment_outputs(output_dir: Path, streams: list, n_nests: int) -> No
             alias = group_alias(group, n_nests)
             target = output_dir / f"{handle}.seg{seg:02d}.{alias}.nc"
             os.replace(path, target)
+            promoted.append((target, alias))
+
+    return promoted
 
 
 def merge_outputs(
@@ -289,21 +307,24 @@ def merge_outputs(
     restart_no: int,
     total_restarts: int,
     merge_freq: int,
-) -> None:
-    """Finalize per-restart regridded files according to merge_freq."""
+) -> list[tuple[Path, str]]:
+    """Finalize per-restart regridded files according to merge_freq.
+
+    Returns the final files written by this call as (path, group alias).
+    """
     if merge_freq == 0:
-        promote_segment_outputs(output_dir, streams, n_nests)
-        return
+        return promote_segment_outputs(output_dir, streams, n_nests)
 
     window = merge_window(restart_no, total_restarts, merge_freq)
 
     if window is None:
-        return
+        return []
 
     first, last = window
     output_dir = Path(output_dir)
     segment_dir = output_dir / "seg"
     handles = list(dict.fromkeys(stream_family(s) for s in streams))
+    merged: list[tuple[Path, str]] = []
 
     for handle in handles:
         segments: dict[str, list[tuple[int, Path]]] = {}
@@ -325,6 +346,9 @@ def merge_outputs(
             )
 
             merge_files(inputs, target)
+            merged.append((target, alias))
+
+    return merged
 
 
 def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Dataset:
@@ -342,7 +366,7 @@ def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Datase
         if var in precip:
             ds[var] = ds[var].clip(min=0, keep_attrs=True)
 
-    ds = calc_derived_vars(ds)
+    ds = fv3_plugins.add_derived_variables(ds)
     ds = ds[sorted(ds.data_vars)]
 
     for dim in ds.dims:
@@ -409,6 +433,104 @@ def bounding_box(grid_file: Path) -> tuple[float, float, float, float]:
     return lon_begin, lon_begin + float(np.ptp(offset)), float(y.min()), float(y.max())
 
 
+def static_source(suffix: str) -> tuple[Path, str] | None:
+    """Locate the atmos_static file of a group: (directory, input_file stem).
+
+    ``suffix`` is ".tile6" (global), ".nest02.tile7" (nest) or "" (regional).
+    The file is in STATIC once a restart has finalized it, else in HIST as
+    atmos_static.<nn><suffix>.nc.
+    """
+    pattern = re.compile(rf"atmos_static(\.\d+)?{re.escape(suffix)}\.nc")
+    for folder in (Path(state.case_dir) / "STATIC", Path(state.hist)):
+        for path in sorted(folder.glob("atmos_static*.nc")):
+            if pattern.fullmatch(path.name):
+                return folder, path.name[: -len(".nc") - len(suffix)]
+    return None
+
+
+def static_cache(alias: str) -> Path:
+    """Regridded static fields of one output group (global, nest02, regional)."""
+    return Path(state.case_dir) / "STATIC" / f"regridded.{alias}.nc"
+
+
+def build_static_cache(
+    base_cmd: dict, suffix: str, tiles_type: str, alias: str, tmp_dir: Path
+) -> None:
+    """Regrid the static fields of a group once and keep them in STATIC.
+
+    HGTsfc (model orography) is regridded with the weights of the group. The
+    vertical coefficients pk, bk, hyam and hybm are 1-D and copied unchanged.
+    Later streams and segments reuse the cache; add_static_fields() attaches
+    it to the final output files.
+    """
+    cache = static_cache(alias)
+    if cache.exists():
+        return
+
+    source = static_source(suffix)
+    if source is None:
+        log.warning(f"atmos_static not found for {alias}; static fields not added")
+        return
+    folder, stem = source
+
+    out = Path(tmp_dir) / "static"
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
+    fregrid(
+        **{
+            **base_cmd,
+            "input_file": stem if tiles_type == "global" else f"{stem}{suffix}",
+            "input_dir": folder,
+            "scalar_field": ["HGTsfc"],
+            "output_file": "HGTsfc.nc",
+            "output_dir": out,
+        }
+    )
+    with xr.open_dataset(out / "HGTsfc.nc") as hgt:
+        da = hgt["HGTsfc"].squeeze(drop=True).load()
+    # Attributes as in tables/diag_field.csv (gfs_sfc, HGTsfc).
+    attrs = {"long_name": "surface geopotential height", "units": "gpm"}
+    static = xr.Dataset({"HGTsfc": (("lat", "lon"), da.values, attrs)})
+
+    name = f"{stem}.tile6.nc" if tiles_type == "global" else f"{stem}{suffix}.nc"
+    with xr.open_dataset(folder / name) as st:
+        for var in STATIC_FIELDS[1:]:
+            if var in st:
+                v = st[var].squeeze(drop=True).reset_coords(drop=True).load()
+                static[var] = (v.dims, v.values, {**v.attrs})
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    partial = cache.with_name(f".{cache.name}.partial")
+    static.to_netcdf(partial)
+    os.replace(partial, cache)  # a cache is never left half written
+    shutil.rmtree(out)
+
+
+def add_static_fields(path: Path, alias: str) -> None:
+    """Append the static fields of a group to a final output file, in place.
+
+    HGTsfc is added to every file. The vertical coefficients are added only to
+    files on model levels (those with a pfull dimension). Files that already
+    hold the fields are left unchanged, so a rerun is harmless.
+    """
+    cache = static_cache(alias)
+    if not cache.exists():
+        log.warning(f"{path.name}: no static fields for {alias}; not added")
+        return
+
+    with xr.open_dataset(cache) as static, xr.open_dataset(path) as ds:
+        wanted = ["HGTsfc"]
+        if "pfull" in ds.dims:
+            wanted += [v for v in STATIC_FIELDS[1:] if v in static]
+        missing = [v for v in wanted if v not in ds]
+        if not missing:
+            return
+        extra = static[missing].load()
+
+    # The appended file keeps lat and lon as they are: only new variables are written.
+    extra.to_netcdf(path, mode="a")
+
+
 def _run_fregrid(base_cmd: dict, data_vars: list, fregrid_out: Path):
     tmp_name = f"{uuid.uuid4().hex}.nc"
 
@@ -433,6 +555,8 @@ def call_fregrid(
     lat_begin: float,
     lat_end: float,
     name: str = "",
+    static_suffix: str = "",
+    alias: str = "",
 ):
 
     if not Path(input_mosaic).exists():
@@ -493,6 +617,7 @@ def call_fregrid(
     }
     weight_cmd = {k: v for k, v in cmd.items() if k not in ("input_file", "input_dir")}
     fregrid(**weight_cmd)  # weights only, before the parallel chunks read them
+    build_static_cache(weight_cmd, static_suffix, tiles_type, alias, state.tmp)
 
     chunk_size = 5  # number of variables to process in parallel
     tasks = []
@@ -520,7 +645,7 @@ def call_fregrid(
         data_attrs = {var: {**ds[var].attrs} for var in ds.data_vars}
         dim_attrs = {dim: {**ds[dim].attrs} for dim in ds.dims}
 
-        ds = post_process(ds, data_attrs, dim_attrs)
+        ds = without_static(post_process(ds, data_attrs, dim_attrs))
 
         case = state.get("case_description") or ""
         description = state.get("description") or ""
@@ -541,14 +666,14 @@ def call_fregrid(
 
 def regrid_global_tiles(streams: list, c_res: int):
     if state.gtype == "nest":
-        g_input_mosaic = state.work_dir / "GRID" / f"C{c_res}_coarse_mosaic.nc"
+        g_input_mosaic = state.case_dir / "GRID" / f"C{c_res}_coarse_mosaic.nc"
     else:
-        g_input_mosaic = state.work_dir / "GRID" / f"C{c_res}_mosaic.nc"
+        g_input_mosaic = state.case_dir / "GRID" / f"C{c_res}_mosaic.nc"
 
     step = cres_to_deg(state.c_res).deg
 
-    lon_begin = -180.0
-    lon_end = 180.0
+    lon_begin = 0.0
+    lon_end = 360.0
     lat_begin = -90.0
     lat_end = 90.0
 
@@ -575,6 +700,8 @@ def regrid_global_tiles(streams: list, c_res: int):
             lat_begin,
             lat_end,
             "GLOBAL",
+            ".tile6",
+            "global",
         )
 
 
@@ -593,10 +720,8 @@ def regrid_nest_tiles(streams: list, c_res: int):
         else:
             n_step = cres_to_deg(c_res * refine_ratio[i]).deg
 
-        # A box may cross 0 or 180 degrees (lon_max < lon_min); the target
-        # grid then runs east from lon_min past 180.
-        lon_min = state.lon_min[i]
-        lon_max = lon_min + (state.lon_max[i] - lon_min) % 360.0
+        lon_min = state.lon_min[i] % 360.0
+        lon_max = lon_min + (state.lon_max[i] - state.lon_min[i]) % 360.0
         lat_min = state.lat_min[i]
         lat_max = state.lat_max[i]
 
@@ -604,7 +729,7 @@ def regrid_nest_tiles(streams: list, c_res: int):
         ny = max(1, int(np.round((lat_max - lat_min) / n_step)))
 
         input_mosaic = (
-            state.work_dir / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
+            state.case_dir / "GRID" / f"C{c_res}_nested{nest_idx:02d}_mosaic.nc"
         )
 
         if not input_mosaic.exists():
@@ -633,6 +758,8 @@ def regrid_nest_tiles(streams: list, c_res: int):
                 lat_min,
                 lat_max,
                 "NEST",
+                f".nest{nest_idx:02d}.tile{tile}",
+                f"nest{nest_idx:02d}",
             )
 
 
@@ -642,7 +769,7 @@ def regrid_regional_tile(streams: list, c_res: int):
     The history is written on the compute domain, the halo-0 grid of
     fv3_shave; points of the box outside the domain are missing.
     """
-    grid_file = state.work_dir / "GRID" / f"C{c_res}_grid.tile7.halo0.nc"
+    grid_file = state.case_dir / "GRID" / f"C{c_res}_grid.tile7.halo0.nc"
     if not grid_file.exists():
         raise FileNotFoundError(f"Regional compute-domain grid not found: {grid_file}")
 
@@ -669,6 +796,8 @@ def regrid_regional_tile(streams: list, c_res: int):
             lat_begin,
             lat_end,
             "REGIONAL",
+            "",
+            "regional",
         )
 
 
@@ -686,7 +815,7 @@ def regrid():
     shutil.rmtree(state.tmp / "regrid_weights", ignore_errors=True)
 
     merge_freq = get_merge_freq()
-    merge_outputs(
+    final_files = merge_outputs(
         state.output,
         streams,
         state.n_nests,
@@ -694,8 +823,10 @@ def regrid():
         state.total_restarts,
         merge_freq,
     )
+    for path, alias in final_files:
+        add_static_fields(path, alias)
 
-    static_path = Path(state.work_dir) / "STATIC"
+    static_path = Path(state.case_dir) / "STATIC"
 
     static_path.mkdir(parents=True, exist_ok=True)
 
@@ -709,10 +840,12 @@ def regrid():
     if state.resubmit_idx == state.resubmit:
         os.system(f"rm -rf {Path(state.output) / 'seg'}")
 
-    shutil.rmtree(state.tmp)
+    state.regrid_progress = {"last": state.restart_no, "total": state.total_restarts}
+    save_fv3_state()
 
 
 if __name__ == "__main__":
+    setup_logging()
     try:
         regrid()
 

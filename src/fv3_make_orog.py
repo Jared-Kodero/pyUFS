@@ -158,8 +158,7 @@ def run_make_orog(
 
     reused = staged_files(mod_dir)
     if reused:
-        src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
-        log.info(f"Using existing orography files from {src}")
+        log.info(f"Using existing orography files from {mod_dir}")
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         for file in reused:
             cp(file, out_dir / file.name)

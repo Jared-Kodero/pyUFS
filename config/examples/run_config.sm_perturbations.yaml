@@ -1,5 +1,5 @@
 # Global C96 with the top three soil layers dried by 20% at the initial time.
-# Methods and options: config/<release>/run_config.yaml section 10, src/sm_perturbations.py.
+# Methods and options: config/examples/plugins.yaml (sm_perturbations section), plugins/sm_perturbations/soil_moisture.py.
 description: C96 dry soil
 shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
@@ -10,10 +10,4 @@ gtype: uniform
 levels: 64
 generate_ic_data: true
 
-sm_perturbations:
-  target_var: smc
-  soil_layers: [0, 1, 2]
-  tiles: [1, 2, 3, 4, 5, 6]
-  method: mean_shift
-  mean_scale: -0.2
-  apply_on_restarts: 0
+plugins_config_path: ${UFS_UTILS_DIR}/config/examples/plugins.sm_perturbations.yaml

@@ -1,3 +1,7 @@
+"""
+GRIB I/O utilities using ecCodes.
+"""
+
 import os
 import sys
 from pathlib import Path

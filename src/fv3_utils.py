@@ -37,8 +37,8 @@ def find_tool(name: str) -> str:
 
 
 def exit_code(code: int = 0) -> None:
-    """Write the exit code to a file in the work directory"""
-    (paths["work_dir"] / "exit_code").write_text(str(code))
+    """Write the exit code to a file in the case directory"""
+    (paths["case_dir"] / "exit_code").write_text(str(code))
 
 
 @contextmanager
@@ -307,6 +307,15 @@ def _read_required_env_int(name: str) -> int:
         ) from exc
 
 
+def get_allocated_nodes() -> list[str]:
+    """Hostnames of the nodes allocated to the job.
+
+    case_run.sh exports them as the comma-separated CASE_NODE_LIST; the list is
+    empty where that variable is unset (tools, tests).
+    """
+    return [node for node in os.getenv("CASE_NODE_LIST", "").split(",") if node]
+
+
 def runtime_env_vars() -> dict[str, object]:
     """Read scheduler and case metadata from the runtime environment."""
     case_name = os.getenv("CASE_NAME")
@@ -321,6 +330,7 @@ def runtime_env_vars() -> dict[str, object]:
         "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", "0"))),
         "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", "0")),
         "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", "0")),
+        "resume_run": bool(int(os.getenv("CASE_CONTINUE_RUN", "0"))),
     }
 
     return {key: value for key, value in values.items() if value is not None}

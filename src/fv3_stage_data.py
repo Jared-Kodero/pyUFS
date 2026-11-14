@@ -120,14 +120,6 @@ def stage_files() -> None:
     if state.gtype in ("regional_gfdl", "regional_esg"):
         stage_regional_inputs()
 
-    # Empty TMP, including hidden entries such as the parent grid that
-    # regional_gfdl bracketing writes to TMP/.tmp_make_grid.
-    for entry in Path(state.tmp).iterdir():
-        if entry.is_dir() and not entry.is_symlink():
-            shutil.rmtree(entry)
-        else:
-            entry.unlink()
-
 
 def _link(link: Path, target: Path) -> None:
     link.unlink(missing_ok=True)

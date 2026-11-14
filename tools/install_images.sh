@@ -3,7 +3,7 @@
 #
 #   CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash install_images.sh
 #
-# Images are written to $CONTAINERS_DIR/{fregrid,preprocess,shield}.sif, which
+# Images are written to $CONTAINERS_DIR/{fregrid,preprocess,shield}.sif; which
 # must match fregrid_image, preprocess_image and shield_image in run_config.yaml.
 # Image tags default to "latest"; pin them with FREGRID_TAG, PREPROCESS_TAG and
 # SHIELD_TAG. A manifest of sources, checksums and conda packages is written to

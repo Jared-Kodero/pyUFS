@@ -6,7 +6,7 @@ AsciiDiagTable and YamlDiagTable. Every field of a table is a native
 output_name is the user's own name for it in the history files. The native field
 is the stable key: tables/diag_field.csv lists every pair the model registers,
 check_diag_fields() validates a table against it, and variables maps each native
-field name to its output name so that code downstream (derived_vars.py, the
+field name to its output name so that code downstream (plugins/derived, the
 regridder) finds a variable whatever the user called it.
 """
 
@@ -295,11 +295,11 @@ def output_names(
 
 
 def staged_diag_table() -> AsciiDiagTable | YamlDiagTable | None:
-    """The diag_table staged in the work directory for the model, if any."""
-    work_dir = Path(paths["work_dir"])
+    """The diag_table staged in the case directory for the model, if any."""
+    case_dir = Path(paths["case_dir"])
     for name in ("diag_table.yaml", "diag_table"):
-        if (work_dir / name).exists():
-            return read_diag_table(work_dir / name)
+        if (case_dir / name).exists():
+            return read_diag_table(case_dir / name)
     return None
 
 
@@ -307,7 +307,7 @@ def stream_handles() -> list[str]:
     """File names of the streams of the staged diag_table (HIST/<handle>.<nn>)."""
     table = staged_diag_table()
     if table is None:
-        raise FileNotFoundError(f"No diag_table staged in {paths['work_dir']}")
+        raise FileNotFoundError(f"No diag_table staged in {paths['case_dir']}")
     return table.stream_names()
 
 
@@ -366,15 +366,15 @@ def update_data_table():
     table no data override is applied.
     """
     for name in ("data_table", "data_table.yaml"):
-        (state.work_dir / name).unlink(missing_ok=True)
+        (state.case_dir / name).unlink(missing_ok=True)
     name = "data_table.yaml" if state.use_modern_diag else "data_table"
     if (state.run_dir / name).exists():
-        cp(state.run_dir / name, state.work_dir / name)
+        cp(state.run_dir / name, state.case_dir / name)
 
 
 def update_yaml_diag(restart_no: int):
     """Stage and update the modern YAML-based diagnostic table configuration."""
-    (state.work_dir / "diag_table.yaml").unlink(missing_ok=True)
+    (state.case_dir / "diag_table.yaml").unlink(missing_ok=True)
     dt = state.init_datetime
     src = state.run_dir / "diag_table.yaml"
     if not src.exists():
@@ -387,7 +387,7 @@ def update_yaml_diag(restart_no: int):
     table.data["base_date"] = f"{dt.year} {dt.month} {dt.day} {dt.hour} 0 0"
     for diag_file in table.data["diag_files"]:
         diag_file["file_name"] = f"HIST/{diag_file['file_name']}.{restart_no:02d}"
-    table.write(state.work_dir / "diag_table.yaml")
+    table.write(state.case_dir / "diag_table.yaml")
 
 
 def update_legacy_diag(restart_no: int):
@@ -398,7 +398,7 @@ def update_legacy_diag(restart_no: int):
     time, every stream is renamed HIST/<handle>.<restart_no>, and variable
     lines that name a stream the table does not define are dropped.
     """
-    (state.work_dir / "diag_table").unlink(missing_ok=True)
+    (state.case_dir / "diag_table").unlink(missing_ok=True)
     dt = state.init_datetime
 
     user_diag = state.run_dir / "diag_table"
@@ -433,7 +433,7 @@ def update_legacy_diag(restart_no: int):
         )
     }
     table.data["streams"] = {tag(name): item for name, item in table.streams.items()}
-    table.write(state.work_dir / "diag_table")
+    table.write(state.case_dir / "diag_table")
 
 
 def update_diag_table():
@@ -442,7 +442,7 @@ def update_diag_table():
 
     # Clean up both possible old outputs
     for name in ("diag_table", "diag_table.yaml"):
-        (state.work_dir / name).unlink(missing_ok=True)
+        (state.case_dir / name).unlink(missing_ok=True)
 
     if state.use_modern_diag:
         update_yaml_diag(restart_no)
@@ -455,8 +455,8 @@ def update_table_files():
 
     field_file, is_yaml = field_table_source()
     for name in ("field_table", "field_table.yaml"):
-        (state.work_dir / name).unlink(missing_ok=True)
-    cp(field_file, state.work_dir / ("field_table.yaml" if is_yaml else "field_table"))
+        (state.case_dir / name).unlink(missing_ok=True)
+    cp(field_file, state.case_dir / ("field_table.yaml" if is_yaml else "field_table"))
 
     # Delegate to diagnostic and data table updaters
     update_diag_table()

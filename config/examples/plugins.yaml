@@ -1,0 +1,102 @@
+# Reference for the plugins file named by plugins_config_path in run_config.yaml.
+# A mapping of plugin name to its settings; a plugin runs only when its section is set.
+# Sections run in the order derived, pamip, sm_perturbations, sst_perturbation. Unknown
+# plugins and unknown keys stop the run before grid generation, with the closest valid
+# name suggested. Ready examples: plugins.pamip.yaml, plugins.sst_perturbation.yaml,
+# plugins.sm_perturbations.yaml, plugins.derived.yaml.
+
+# pamip: PAMIP SST and sea-ice boundary conditions (Smith et al., GMD, 2019) and the
+# external climatologies.
+# Replaces the monthly SST/SIC climatologies. Download data to <fix_src>/external/PAMIP
+# with tools/get_pamip.py.
+# Experiments (SST / sea ice):
+#   1.1: present day / present day (control)
+#   1.6: present day / future Arctic
+#   1.5: present day / preindustrial Arctic
+#   1.3: preindustrial / present day
+#   1.4: future / present day (Tier 2)
+# Compare 1.6 - 1.1 to isolate Arctic sea-ice forcing.
+# On cold start, fields are regridded to baseline GRIB files in FIXED/PAMIP,
+# and ocean surface ICs are updated. Restarts retain the prepared files.
+# Surface fields cycle every 24 h with linear monthly interpolation;
+# AMIP II processing is not applied. With an experiment, CO2 is fixed at the value of
+# forcing_year (ictm = forcing_year * 10); volcanic aerosol and solar constant remain
+# unchanged. The SST is set by a global slab ocean that restores toward the climatology.
+# Protocol: 14 months from April 1 (discard 2), >= 100 members. Since GFS ICs
+# from 2000 are unavailable, use April 1 in a supported year; forcing is climatological.
+# baseline:
+#   null/pamip: use PAMIP fields directly (protocol).
+#   shield: add experiment-minus-1.1 anomalies to SHiELD climatologies.
+#   external: apply those anomalies to external_sst/sic/mask (all required).
+# With shield/external, 1.1 is the control; a null experiment is not.
+# fields selects both fields (null) or only sst/sic; selecting one field
+# omits the coupled ice-edge SST adjustment.
+# The external_* files are SHiELD-format GRIB files: 12 monthly SST and SIC fields plus
+# one land mask (sea-ice land flags > 1). They replace namsfc FNTSFC, FNAISC and FNMSKH,
+# work without an experiment, and are copied at cold start. With baseline pamip or
+# shield, PAMIP replaces external SST/SIC. Paths expand variables and ~; a relative
+# path is resolved from the case directory. Example ESA CCI paths under
+# <fix_src>/external/ESA:
+#   sst.ESACCI_1991_2020.monthly.clim.grb
+#   sic.ESACCI_1991_2020.monthly.clim.grb
+#   landmask.ESACCI.grb
+pamip:
+  experiment: "1.6" # PAMIP experiment ID, quoted text
+  baseline: null # null/pamip | shield | external
+  fields: null # null: both SST and SIC; sst or sic: one field only
+  forcing_year: 2000 # year of the fixed CO2 (e.g. 2005)
+  external_sst: null # monthly SST GRIB file
+  external_sic: null # monthly sea-ice GRIB file
+  external_mask: null # land-mask GRIB file
+
+# sst_perturbation: adds an SST anomaly to the SST climatology the run uses (the SHiELD
+# default, an external file or the PAMIP file), after pamip has set it. The anomaly is
+# applied at open-water points (land mask < 0.5 and sea-ice fraction <= 0.15 in that
+# month) inside a latitude/longitude box and the listed months. The weight rises
+# linearly from 0 at the box edge to 1 at taper degrees inside it. A perturbed copy is
+# written to FIXED/sst_perturbation and namsfc fntsfc points at it; the source file is
+# not changed. Do not set fntsfc in input.yaml, since a case-local value wins over the
+# plugin. The surface cycle applies the file from the first 24 h; the cold-start surface
+# state is not perturbed. With the slab ocean of the pamip plugin the file is the
+# restoring target, so the SST follows it with the restoring lag; for an imposed SST set
+# gfs_physics_nml do_ocean: false and namsfc ftsfs: 0 in input.yaml.
+sst_perturbation:
+  delta: 3.0 # K added to the SST (required); negative cools
+  months: [6, 7, 8] # calendar months of the climatology that change
+  lat: [50, 80] # [south, north], degrees north
+  lon: null # [west, east] degrees east (0 to 360; west > east wraps); null: all
+  taper: 5.0 # degrees
+
+# sm_perturbations: single mapping applied to soil restart files (sfc_data*.nc):
+#   target_var: smc | slc | stc
+#   soil_layers: 0-3 (default four-layer soil); tiles: 1-6 global, 7+ nests
+#   method: one method or a list, applied in order
+#   apply_on_restarts: 0 | "all" | [indices] (required; absent = no change)
+# Methods and arguments:
+#   std_shift:     X += n_sigma * sigma
+#   mean_shift:    X *= 1 + mean_scale
+#   anom_shift:    X = mu + (1 + anom_scale) * (X - mu)
+#   constant_fill: X = fill_value (number or "mean")
+#   climo_mean:    monthly climatology (use_climo: true; optional climo_file)
+# mu and sigma use valid soil points; default climatology is
+# fix/external/ERA5/sm_monthly_1950_2025.nc (segment-start month).
+# Optional: do_nudge (relax toward reference, tau_hours default 24) or do_hold
+# (retain perturbed layers). They are mutually exclusive and affect restarts >= 1.
+# Nudging weight = previous segment hours / tau_hours, clipped to [0, 1].
+# smc is clipped to [0.01, 0.99] m3/m3; smc edits preserve ice (smc - slc).
+# Perturbations can violate water or energy conservation.
+sm_perturbations:
+  target_var: smc
+  soil_layers: [0, 1, 2]
+  tiles: [1, 2, 3, 4, 5, 6]
+  method: mean_shift
+  mean_scale: -0.2
+  apply_on_restarts: 0
+
+# derived: the built-in derived variables are in plugins/derived. To add your own, set
+# module to a Python file that defines derive = [func, ...]. Each
+# func(ds, *, state, variables, **_) returns ds and is called once per output stream,
+# after the built-ins; skip streams that lack its inputs. The file is copied to the
+# case directory. Example: config/examples/derived_vars_example.py.
+derived:
+  module: ${UFS_UTILS_DIR}/config/examples/derived_vars_example.py

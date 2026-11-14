@@ -1,12 +1,10 @@
 import math
 from pathlib import Path
 
-import f90nml
 import numpy as np
 
-from fv3_diag_files import field_table_source, update_table_files
-from fv3_fixed_files import update_fixed_files
-from fv3_runtime import log, read_namelist, require_fix_files
+from fv3_diag_files import field_table_source
+from fv3_runtime import log, open_nml, read_namelist, require_fix_files, write_nml
 from fv3_state import state
 from fv3_timings import get_timings
 from fv3_update_fix import NAMSFC_FILES
@@ -14,10 +12,14 @@ from fv3_utils import cp, cres_to_deg, env_setup
 from regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
 from release import coupling_step_key, restart_overrides, template
 
+# Restoring time scale (days) of the slab ocean SST toward the SST climatology. The restoring
+# damps the response to a surface flux anomaly F to F * tau / (rho * cp * h), so a longer value
+# lets the SST respond more. Override with ocean_nml sst_restore_tscale in input.yaml.
+
 
 def restart_config():
 
-    for f in list(state.work_dir.glob("*.nml")):
+    for f in list(state.case_dir.glob("*.nml")):
         nml = read_namelist(f)
 
         nml["fv_core_nml"]["warm_start"] = True
@@ -33,11 +35,11 @@ def restart_config():
         for group, keys in restart_overrides(state.shield_release).items():
             nml.setdefault(group, {}).update(keys)
 
-        with open(f, "w") as nml_out:
-            f90nml.write(nml, nml_out)
+        write_nml(nml, f)
 
 
-def update_nml_configs():
+def update_nml_configs() -> None:
+    """Write the namelists. Plugins edit them afterwards with patch_nml."""
     env_setup()
 
     dt = state.init_datetime
@@ -68,9 +70,6 @@ def update_nml_configs():
         do_deep=state.do_deep,
         timings=timings,
     )
-
-    update_table_files()
-    update_fixed_files()
 
     # Update state with the calculated timings
     state.dt_atmos = timings["dt_atmos"]
@@ -108,13 +107,18 @@ def disable_deep_convection(nml: dict, tile: int, name: str):
 
 # for all nests
 def common_configs(nml: dict):
+
     nml["fv_core_nml"]["npz"] = state.levels - 1
     nml["external_ic_nml"]["levp"] = state.levels
     nml["fv_core_nml"]["warm_start"] = False
     nml["fv_core_nml"]["range_warn"] = False
     nml["atmos_model_nml"]["fprint"] = False
-    nml["atmos_model_nml"]["fdiag"] = state.diagnostic_interval_hours or 1
-    nml["gfs_physics_nml"]["fhzero"] = state.diagnostic_interval_hours or 1
+
+    _unset_diag_interval = 6 if state.run_length_units in ("months", "years") else 1
+    fdiag = state.diagnostic_interval_hours or _unset_diag_interval
+
+    nml["atmos_model_nml"]["fdiag"] = fdiag
+    nml["gfs_physics_nml"]["fhzero"] = fdiag
     nml["fv_core_nml"]["print_freq"] = state.fv3_print_freq or 0
 
     if state.fv3_debug:
@@ -156,7 +160,7 @@ def update_global_nml(
 ):
 
     nml_template_path = template(state.shield_release, "input_nml.yaml")
-    parent_save_path = state.work_dir / "input.nml"
+    parent_save_path = state.case_dir / "input.nml"
     user_nml = state.run_dir / "input"
 
     nml = read_namelist(nml_template_path)
@@ -218,8 +222,7 @@ def update_global_nml(
     nml = namelist_overrides(user_nml, nml, "global")
     nml = set_radiation(nml, "global", timings["dt_atmos"])
 
-    with open(parent_save_path, "w") as f:
-        f90nml.write(nml, f)
+    write_nml(nml, parent_save_path)
 
     return 0
 
@@ -238,7 +241,7 @@ def update_nest_nml(
 
     nest_nml_template_path = template(state.shield_release, "input_nestXX_nml.yaml")
     save_paths = [
-        state.work_dir / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
+        state.case_dir / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
     ]
     user_nmls = [state.run_dir / f"input_nest{i:02d}" for i in range(2, n_nests + 2)]
     tiles = [7 + i for i in range(n_nests)]
@@ -282,8 +285,7 @@ def update_nest_nml(
         nml = namelist_overrides(user_nml, nml, f"nest{i + 1:02d}")
         nml = set_radiation(nml, f"nest{i + 1:02d}", timings["dt_atmos"])
 
-        with open(out_file, "w") as f:
-            f90nml.write(nml, f)
+        write_nml(nml, out_file)
 
     return 0
 
@@ -368,20 +370,9 @@ def update_namsfc(nml):
     # The mixed-layer depth climatology is read at each surface cycle when
     # fnmldc is set (sfcsub.F) and used only by the slab ocean; it is not in
     # the NOAA fix bucket. Without the ocean model it is left out when absent.
-    prescribed = bool(state.pamip_experiment)
-    ocean = nml.get("gfs_physics_nml", {}).get("do_ocean", False) and not prescribed
+    ocean = nml.get("gfs_physics_nml", {}).get("do_ocean", False)
     if not ocean and not (am_dir / namsfc_files["fnmldc"]).exists():
         del namsfc_files["fnmldc"]
-
-    # fntsfc, fnaisc and fnmskh given in run_config were copied to FIXED/external
-    # (pamip_experiment.stage_external_files) and replace the SHiELD files
-    provided = {
-        key: getattr(state, key)
-        for key in ("fntsfc", "fnaisc", "fnmskh")
-        if getattr(state, key)
-    }
-    for key in provided:
-        namsfc_files.pop(key, None)
 
     require_fix_files([am_dir / f for f in namsfc_files.values()])
     for key, fname in namsfc_files.items():
@@ -391,30 +382,25 @@ def update_namsfc(nml):
 
         namsfc[key] = f"FIXED/{fname}"
 
-    namsfc.update(provided)
     nml["namsfc"] = namsfc
 
-    if state.pamip_experiment:
-        # state.fntsfc and state.fnaisc hold the PAMIP SST and sea-ice files set by
-        # write_boundary_files() (the files provided in run_config otherwise).
-
-        # SST, ice mask and ice concentration follow the PAMIP FIXED
-        # climatologies at every surface cycle; fsicl covers points already
-        # classified as ice (non-open-ocean branch of the sfcsub merge).
-        nml["namsfc"].update({"ftsfs": 0, "faiss": 0, "fsics": 0, "fsicl": 0})
-
-        phys = nml.setdefault("gfs_physics_nml", {})
-        phys["use_ext_sst"] = False
-
-        phys["do_ocean"] = False
-        phys["nstf_name"] = [0, 0, 1, 0, 5]
-
-        # Experiment settings (PAMIP_EXPERIMENTS), e.g. ictm = 20000 for the radiative forcing of year 2000
-        from pamip_experiment import PAMIP_EXPERIMENTS
-
-        for group, values in PAMIP_EXPERIMENTS[state.pamip_experiment][
-            "namelist"
-        ].items():
-            nml.setdefault(group, {}).update(values)
-
     return nml
+
+
+def patch_nml(settings: dict[str, dict]) -> None:
+    """Merge ``{group: {key: value}}`` into the global and nest namelists, then re-apply
+    the user's override files so that they still win."""
+    files = [("global", "input", state.case_dir / "input.nml")]
+    files += [
+        (
+            f"nest{i:02d}",
+            f"input_nest{i:02d}",
+            state.case_dir / f"input_nest{i:02d}.nml",
+        )
+        for i in range(2, state.n_nests + 2)
+    ]
+    for name, user_name, path in files:
+        nml = open_nml(path)
+        for group, entries in settings.items():
+            nml.setdefault(group, {}).update(entries)
+        write_nml(namelist_overrides(state.run_dir / user_name, nml, name), path)

@@ -1,6 +1,6 @@
 # PAMIP control (1.1) on the external baseline: the ESA SST CCI climatology of tools/esa_sst.py (SST, sea ice, land mask,
 # land filled with ERA5-Land) plus the PAMIP perturbation of experiment 1.1 minus 1.1. The two PAMIP cases
-# differ only in pamip_experiment. Needs the PAMIP NetCDF files in <fix_src>/external/PAMIP
+# differ only in the pamip experiment in plugins.yaml. Needs the PAMIP NetCDF files in <fix_src>/external/PAMIP
 # (tools/get_pamip.py) and the three ESA files in <fix_src>/external/ESA (python tools/esa_sst.py).
 # ICs come from GFS, so the date must lie in the GFS archive.
 
@@ -29,8 +29,4 @@ dt_cpld: 1200
 k_split: [3]
 n_split: [6]
 
-pamip_experiment: "1.1"
-pamip_baseline: external
-external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
-external_sic: external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb
-external_mask: external/ESA/landmask.ESACCI.grb
+plugins_config_path: plugins.yaml

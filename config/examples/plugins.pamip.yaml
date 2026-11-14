@@ -1,0 +1,6 @@
+# PAMIP experiment 1.6 (present-day SST, future Arctic sea ice). Use "1.1" for the control.
+# Keys: config/examples/plugins.yaml.
+pamip:
+  experiment: "1.6"
+  baseline: null # null or pamip: the PAMIP fields; shield or external: SHiELD or external_* climatologies + (1.6 - 1.1)
+  fields: null # null or both; sst or sic takes one field from the experiment

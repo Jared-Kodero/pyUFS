@@ -1,0 +1,3 @@
+# User derived-variable file. Keys: config/examples/plugins.yaml.
+derived:
+  module: ${UFS_UTILS_DIR}/config/examples/derived_vars_example.py

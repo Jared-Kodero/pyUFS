@@ -5,23 +5,25 @@ import numpy as np
 import xarray as xr
 from metpy.units import units
 
-from fv3_diag_files import variables
+log = logging.getLogger("PLUGINS")
 
-log = logging.getLogger("USER_DERIVED_VARS")
-
-# variables maps the native diag_table field name to the output name the user
-# gave it, for example variables["t_plev"] == "t". It is filled when the
-# diag_table is loaded (fv3_diag_files.load_variables), so the calc_* functions
-# below read their inputs as ds[variables["t_plev"]] and work with any output
-# names. A field that is not in the table maps to its own native name, which
-# is absent from the dataset, so the calculation is skipped with a warning.
-# Derived variables are written under fixed names.
+# Each function is called as f(ds, state=state, variables=variables) by
+# plugins.derived.add_derived_variables and listed in `derive` at the end of this file. variables maps
+# the native diag_table field name to the output name the user gave it, for
+# example variables["t_plev"] == "t". It is filled when the diag_table is loaded
+# (fv3_diag_files.load_variables), so the functions read their inputs as
+# ds[variables["t_plev"]] and work with any output names. A field that is not in
+# the table maps to its own native name, which is absent from the dataset, so the
+# calculation is skipped with a warning. Derived variables are written under
+# fixed names.
 
 g = 9.80665
 R_earth_m = 6371000.0  # Earth radius [m]
 
 
-def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
+def calc_moisture_trans(
+    ds: xr.Dataset, *, variables: dict[str, str], **_
+) -> xr.Dataset:
     required_vars = (
         variables["q_plev"],
         variables["u_plev"],
@@ -115,7 +117,9 @@ def calc_moisture_trans(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def calc_bulk_richardson(ds: xr.Dataset) -> xr.Dataset:
+def calc_bulk_richardson(
+    ds: xr.Dataset, *, variables: dict[str, str], **_
+) -> xr.Dataset:
     required_vars = (variables["cape"], variables["shear06"])
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
@@ -135,7 +139,7 @@ def calc_bulk_richardson(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def calc_mse(ds: xr.Dataset) -> xr.Dataset:
+def calc_mse(ds: xr.Dataset, *, variables: dict[str, str], **_) -> xr.Dataset:
     required_vars = (variables["t_plev"], variables["q_plev"], variables["h_plev"])
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
@@ -160,7 +164,9 @@ def calc_mse(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def calc_evaporative_fraction(ds: xr.Dataset) -> xr.Dataset:
+def calc_evaporative_fraction(
+    ds: xr.Dataset, *, variables: dict[str, str], **_
+) -> xr.Dataset:
     required_vars = (variables["shtfl_ave"], variables["lhtfl_ave"])
     if not all(var in ds.data_vars for var in required_vars):
         log.warning(
@@ -178,7 +184,7 @@ def calc_evaporative_fraction(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def calc_vpd2m(ds: xr.Dataset) -> xr.Dataset:
+def calc_vpd2m(ds: xr.Dataset, *, variables: dict[str, str], **_) -> xr.Dataset:
     """Calculate 2 meter vapor pressure deficit using MetPy."""
     required_vars = (variables["t2m"], variables["dpt2m"])
     if not all(var in ds.data_vars for var in required_vars):
@@ -202,12 +208,10 @@ def calc_vpd2m(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-# implement your derived func and call it here in calc_derived_vars
-def calc_derived_vars(ds: xr.Dataset) -> xr.Dataset:
-    """Calculate derived variables and add them to the dataset."""
-    ds = calc_moisture_trans(ds)
-    ds = calc_bulk_richardson(ds)
-    ds = calc_mse(ds)
-    ds = calc_vpd2m(ds)
-    ds = calc_evaporative_fraction(ds)
-    return ds
+derive = [
+    calc_moisture_trans,
+    calc_bulk_richardson,
+    calc_mse,
+    calc_vpd2m,
+    calc_evaporative_fraction,
+]

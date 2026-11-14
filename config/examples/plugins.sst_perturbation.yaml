@@ -1,0 +1,18 @@
+# PAMIP control 1.1 on the ESA baseline with +3 K added to open-water SST north of 50N in
+# June to August. Prescribed SST needs gfs_physics_nml do_ocean: false and namsfc
+# ftsfs: 0 in input.yaml; with the slab ocean the file is only the restoring target.
+# Keys: config/examples/plugins.yaml.
+pamip:
+  experiment: "1.1"
+  baseline: external
+  forcing_year: 2005
+  external_sst: /path/to/fix/external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
+  external_sic: /path/to/fix/external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb
+  external_mask: /path/to/fix/external/ESA/landmask.ESACCI.grb
+
+sst_perturbation:
+  delta: 3.0
+  months: [6, 7, 8]
+  lat: [50, 80]
+  lon: null
+  taper: 5.0

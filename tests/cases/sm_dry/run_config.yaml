@@ -25,10 +25,4 @@ dt_cpld: 150
 k_split: [2]
 n_split: [6]
 
-sm_perturbations:
-  target_var: smc
-  soil_layers: [0, 1, 2]
-  tiles: [1, 2, 3, 4, 5, 6]
-  method: mean_shift
-  mean_scale: -0.2
-  apply_on_restarts: 0
+plugins_config_path: plugins.yaml

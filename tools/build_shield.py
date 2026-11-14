@@ -163,9 +163,7 @@ def main() -> int:
         raw_dest = config.get("shield_exe")
         if not isinstance(raw_dest, str) or not raw_dest.strip():
             raise BuildError(f"{config_path}: shield_exe must be a nonempty path")
-        dest = Path(
-            os.path.expandvars(raw_dest.replace("{shield_release}", args.release))
-        ).expanduser()
+        dest = Path(raw_dest)
         config_dest = dest
 
         tag = f"FV3-{args.release}-public"

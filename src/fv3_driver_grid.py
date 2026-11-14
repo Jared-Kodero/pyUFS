@@ -41,7 +41,7 @@ def _stage_and_exit(src: Path, kind: str) -> None:
     in IC/<kind> for the next run (fv3_runtime.staged_files) and exit."""
     dest = state.ic_data / kind
     stage_for_reuse(src, dest, OROGRAPHY_KEYS if kind == "orography" else GRID_KEYS)
-    path = str(dest).replace(str(state.work_dir), str(state.case_dir))
+    path = str(dest)
     state.preprocess_only = False
     state.preprocess_grid_only = False
     state.preprocess_orog_only = False

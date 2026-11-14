@@ -43,12 +43,13 @@ BUCKET_PREFIX = "fix"
 S3_NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
 
 # chgres_cube variable maps are not in the NOAA bucket. They are taken from
-# the UFS_UTILS fork that the preprocessing image is built from, pinned to
-# the commit of that build (gaea branch, 2024-10-18).
+# parm/varmap_tables of ufs-community/UFS_UTILS, pinned to a commit (2026-08-07).
+# The tables used here match those of the UFS_UTILS build in the preprocessing
+# image apart from trailing whitespace.
 VARMAP_URL = os.environ.get(
     "UFS_PY_FIX_VARMAP_URL",
-    "https://raw.githubusercontent.com/kaiyuan-cheng/UFS_UTILS/"
-    + "0f7c355f2cf2c8f3b27d0c059e6d9f4a1612b578/parm/varmap_tables",
+    "https://raw.githubusercontent.com/ufs-community/UFS_UTILS/"
+    + "27a53fefc7a81e255c8406363c53eb188073fe48/parm/varmap_tables",
 )
 
 TIMEOUT_S = 120

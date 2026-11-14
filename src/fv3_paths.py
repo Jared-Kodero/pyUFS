@@ -8,27 +8,44 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fv3_state import FV3State
 
-env_paths = {}
-env_paths["work_dir"] = Path(os.getenv("WORK_DIR"))
-env_paths["fix_src"] = Path(os.getenv("FIX_SRC"))
-env_paths["ufs_exe"] = Path("/UFS_UTILS/exec")
-env_paths["run_dir"] = Path(os.getenv("CASE_PWD"))
-env_paths["case_dir"] = Path(os.getenv("CASE_DIR"))
-env_paths["archive_dir"] = Path(os.getenv("ARCHIVE_DIR"))
-env_paths["ufs_utils"] = Path(__file__).resolve().parent.parent
+
+def _env_path(name: str) -> Path | None:
+    """Path from an environment variable set by the launchers, or None.
+
+    Reading at import must not fail where the job environment is absent (tools,
+    tests); a missing value surfaces where the path is used.
+    """
+    value = os.getenv(name)
+    return Path(value) if value else None
+
+
+env_paths = {
+    "fix_src": _env_path("FIX_SRC"),
+    "ufs_exe": Path("/UFS_UTILS/exec"),
+    "run_dir": _env_path("CASE_PWD"),
+    "case_dir": _env_path("CASE_DIR"),
+    "archive_dir": _env_path("ARCHIVE_DIR"),
+    "ufs_utils": Path(__file__).resolve().parent.parent,
+}
 env_paths["configs"] = env_paths["ufs_utils"] / "config"
 
-case_paths = {}
-case_paths["tmp"] = env_paths["work_dir"] / "TMP"
-case_paths["hist"] = env_paths["work_dir"] / "HIST"
-case_paths["grid"] = env_paths["work_dir"] / "GRID"
-case_paths["logs"] = env_paths["work_dir"] / "LOGS"
-case_paths["fix"] = env_paths["work_dir"] / "FIXED"
-case_paths["input"] = env_paths["work_dir"] / "INPUT"
-case_paths["output"] = env_paths["work_dir"] / "OUTPUT"
-case_paths["restarts"] = env_paths["work_dir"] / "RESTART"
-case_paths["ic_data"] = env_paths["work_dir"] / "IC"
-case_paths["bc_data"] = env_paths["work_dir"] / "BC"
+# Subdirectories of the case directory (None while CASE_DIR is unset).
+CASE_SUBDIRS = {
+    "tmp": "TMP",
+    "hist": "HIST",
+    "grid": "GRID",
+    "logs": "LOGS",
+    "fix": "FIXED",
+    "input": "INPUT",
+    "output": "OUTPUT",
+    "restarts": "RESTART",
+    "ic_data": "IC",
+    "bc_data": "BC",
+}
+case_paths = {
+    key: env_paths["case_dir"] / sub if env_paths["case_dir"] else None
+    for key, sub in CASE_SUBDIRS.items()
+}
 
 paths = {**env_paths, **case_paths}
 
@@ -36,7 +53,7 @@ paths = {**env_paths, **case_paths}
 def configure_directories(state: FV3State) -> dict:
     state = parse_dirs(state)
 
-    config_restart_dir({**env_paths, **case_paths}, state)
+    config_restart_dir(paths, state)
 
     def _clear(path: Path) -> None:
         if not path.exists():
@@ -47,10 +64,20 @@ def configure_directories(state: FV3State) -> dict:
             path.unlink()
 
     if state.warm_start:
-        _clear(paths["restarts"])
-        _clear(paths["hist"])
+        # A resumed segment (case_continue.sh) clears nothing: HIST and RESTART
+        # may hold the finished work of the failed segment.
+        if not state.get("resume_run"):
+            _clear(paths["restarts"])
+            _clear(paths["hist"])
 
     else:
+        seg_dir = Path(paths["output"]) / "seg"
+        if seg_dir.is_dir() and any(seg_dir.iterdir()):
+            raise RuntimeError(
+                f"{seg_dir} holds regridded output of earlier segments, which a cold "
+                + "start would delete. Run case_continue.sh to resume the case, or "
+                + "remove the case directory to start over."
+            )
         _clear(paths["output"])
         _clear(paths["hist"])
         _clear(paths["restarts"])
@@ -62,7 +89,7 @@ def configure_directories(state: FV3State) -> dict:
         external = state.get("external_ic_dir")
         in_place = not state.generate_ic_data and (
             not external
-            or Path(external).resolve() == Path(paths["work_dir"]).resolve()
+            or Path(external).resolve() == Path(paths["case_dir"]).resolve()
         )
         if not in_place:
             _clear(paths["input"])
@@ -97,13 +124,13 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
     if not params.get("warm_start") or int(params.get("restart_no", 0)) == 0:
         return
 
-    work_dir = Path(paths["work_dir"])
+    case_dir = Path(paths["case_dir"])
     archive_dir = Path(paths["ic_data"])
     archive_dir.mkdir(parents=True, exist_ok=True)
 
     prev_input_data = Path(paths["input"])
     prev_model_restart = Path(paths["restarts"])
-    curr_input_data = work_dir / "INPUT"
+    curr_input_data = case_dir / "INPUT"
 
     restart_no = int(params.restart_no)
     archive_index = restart_no - 1
@@ -112,6 +139,15 @@ def config_restart_dir(paths: dict, params: FV3State) -> None:
         prev_ic_data = archive_dir / "INPUT"
     else:
         prev_ic_data = archive_dir / f"R{archive_index:03d}_INPUT"
+
+    # A resumed segment (case_continue.sh) whose failed attempt already promoted
+    # its restart: INPUT holds it, and IC/R<n>_INPUT the input it replaced.
+    if (
+        params.get("resume_run")
+        and prev_ic_data.exists()
+        and (curr_input_data / "coupler.res").exists()
+    ):
+        return
 
     if not prev_model_restart.exists() or not any(prev_model_restart.iterdir()):
         raise FileNotFoundError(
@@ -177,15 +213,13 @@ def relink_static_inputs(initial_input: Path, input_dir: Path) -> None:
 def parse_dirs(cfg: dict) -> dict:
 
     dir_keys = (
-        "jobtmp",
         "case_root",
         "fix_src",
-        "ufs_utils",
-        "archive_root",
         "shield_image",
         "fregrid_image",
         "preprocess_image",
         "containers_root",
+        "archive_root",
     )
 
     for k in dir_keys:
