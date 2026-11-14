@@ -71,7 +71,7 @@ def update_fixed_files():
                 f"co2historicaldata_{year}.txt not found in {fix_dir}"
             )
         link_fixed_file(fix_dir / path.name)
-    else:
+    elif state.pamip_experiment is None:  # pamip refreshes the CO2 table after patching
         for year in run_years():
             path = co2_file(year)
             if path is None:
