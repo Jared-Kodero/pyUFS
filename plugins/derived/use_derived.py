@@ -40,6 +40,7 @@ def validate(*, config: dict) -> None:
         raise FileNotFoundError(
             f"`module` is {config['module']!r}, which resolves to {path}."
         )
+    config["module"] = str(path)
 
 
 def apply(*, config: dict, state, restart: bool, **_) -> None:

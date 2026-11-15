@@ -57,7 +57,9 @@ def surface_domains() -> list[tuple[str, list[tuple[Path, Path, Path]]]]:
 
 
 def _path(value: str | None) -> str | None:
-    return os.path.expandvars(str(value)) if value else None
+    if not value:
+        return None
+    return str(Path(os.path.expandvars(str(value))).expanduser().resolve())
 
 
 def run_surface_cycle() -> None:

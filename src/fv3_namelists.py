@@ -161,7 +161,7 @@ def update_global_nml(
 
     nml_template_path = template(state.shield_release, "input_nml.yaml")
     parent_save_path = state.case_dir / "input.nml"
-    user_nml = state.run_dir / "input"
+    user_nml = state.submit_dir / "input"
 
     nml = read_namelist(nml_template_path)
     nml = common_configs(nml)
@@ -243,7 +243,7 @@ def update_nest_nml(
     save_paths = [
         state.case_dir / f"input_nest{i:02d}.nml" for i in range(2, n_nests + 2)
     ]
-    user_nmls = [state.run_dir / f"input_nest{i:02d}" for i in range(2, n_nests + 2)]
+    user_nmls = [state.submit_dir / f"input_nest{i:02d}" for i in range(2, n_nests + 2)]
     tiles = [7 + i for i in range(n_nests)]
 
     nest_pes = state.grid_pes  # includes parent tile pes
@@ -403,4 +403,4 @@ def patch_nml(settings: dict[str, dict]) -> None:
         nml = open_nml(path)
         for group, entries in settings.items():
             nml.setdefault(group, {}).update(entries)
-        write_nml(namelist_overrides(state.run_dir / user_name, nml, name), path)
+        write_nml(namelist_overrides(state.submit_dir / user_name, nml, name), path)

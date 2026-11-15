@@ -22,7 +22,7 @@ def _env_path(name: str) -> Path | None:
 env_paths = {
     "fix_src": _env_path("FIX_SRC"),
     "ufs_exe": Path("/UFS_UTILS/exec"),
-    "run_dir": _env_path("CASE_PWD"),
+    "submit_dir": _env_path("SUBMIT_DIR"),
     "case_dir": _env_path("CASE_DIR"),
     "archive_dir": _env_path("ARCHIVE_DIR"),
     "ufs_utils": Path(__file__).resolve().parent.parent,
@@ -225,5 +225,5 @@ def parse_dirs(cfg: dict) -> dict:
     for k in dir_keys:
         if cfg[k] is None:
             continue
-        cfg[k] = str(Path(os.path.expandvars(cfg[k])))
+        cfg[k] = str(Path(os.path.expandvars(cfg[k])).expanduser().absolute())
     return cfg

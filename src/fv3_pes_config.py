@@ -110,7 +110,7 @@ def calc_uniform_pes() -> None:
 
 def check_user_define_pes() -> bool:
 
-    user_nml = state.run_dir / "input"
+    user_nml = state.submit_dir / "input"
     suffixes = (".nml", ".yaml", ".yml")
 
     override_nml = None

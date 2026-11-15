@@ -31,7 +31,7 @@ def fixed_files_calls(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def clean_state():
-    keys = ("plugins", "case_dir", "run_dir", "fix", "n_nests")
+    keys = ("plugins", "case_dir", "submit_dir", "fix", "n_nests")
     saved = {key: state[key] for key in keys}
     state.plugins = {}
     yield
@@ -80,7 +80,7 @@ def test_checksum_changes_only_when_hashed_plugin_set(tmp_path):
 
 def write_case(tmp_path):
     state.case_dir = tmp_path
-    state.run_dir = tmp_path / "run"
+    state.submit_dir = tmp_path / "run"
     state.fix = tmp_path / "fix"
     state.n_nests = 0
     (tmp_path / "input.nml").write_text("&namsfc\n  fntsfc = 'FIXED/default.grb'\n/\n")

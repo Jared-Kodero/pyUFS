@@ -150,7 +150,7 @@ def load_block(domain: str) -> dict:
     the built-in default applies.
     """
     for name in config_candidates(domain):
-        path = state.run_dir / name
+        path = state.submit_dir / name
         if path.exists():
             block = read_namelist(path)
             if set(block) == {"config"} and isinstance(block["config"], dict):

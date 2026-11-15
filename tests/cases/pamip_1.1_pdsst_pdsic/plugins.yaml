@@ -1,6 +1,6 @@
 pamip:
   experiment: "1.1"
   baseline: external
-  external_sst: external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
-  external_sic: external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb
-  external_mask: external/ESA/landmask.ESACCI.grb
+  external_sst: ${FIX_SRC}/external/ESA/sst.ESACCI_1991_2020.monthly.clim.grb
+  external_sic: ${FIX_SRC}/external/ESA/sic.ESACCI_1991_2020.monthly.clim.grb
+  external_mask: ${FIX_SRC}/external/ESA/landmask.ESACCI.grb

@@ -271,8 +271,7 @@ def main():
     env = get_config()
 
     case_pwd = Path.cwd()
-    env["CASE_PWD"] = str(case_pwd)
-    env["CASE_DIR"] = case_pwd.name
+    env["SUBMIT_DIR"] = str(case_pwd)
     env["CASE_PARENT_DIR"] = case_pwd.parent.name
     env["UFS_UTILS_DIR"] = str(SCRIPT_DIR.parent.parent)
     env["CASE_NAME"] = env["CASE_NAME"] or case_pwd.name

@@ -48,7 +48,7 @@ SLURM request
                              ``append`` for resubmitted segments
 Case identity and control
     CASE_NAME                case name; ``<name>/memNN`` for ensemble members
-    CASE_PWD, CASE_DIR, CASE_PARENT_DIR   submission directory and its names
+    SUBMIT_DIR, CASE_PARENT_DIR   submission directory (cwd of every job step) and its parent name
     CASE_ENSEMBLES, CASE_ENSEMBLE_ID      member count; member number (0 = single case)
     CASE_RESUBMIT_INDEX, CASE_RESUBMIT_MAX   segment counter and ``resubmit``
     CASE_ARCHIVE, CASE_PREPROCESS_ONLY    0/1 switches
@@ -231,7 +231,7 @@ def get_paths(cfg: dict):
             value = ",".join(os.path.expandvars(str(e).strip()) for e in entries)
             value = base64.b64encode(value.encode("utf-8")).decode("utf-8")
         else:
-            value = str(Path(os.path.expandvars(value)))
+            value = str(Path(os.path.expandvars(value)).expanduser().absolute())
 
         if v in ("case_root", "archive_root") and not Path(value).exists():
             Path(value).mkdir(parents=True, exist_ok=True)
@@ -536,8 +536,7 @@ def main():
     case_parent_dir = case_pwd.parent.name
     ufs_utils_dir = SCRIPT_DIR.parent.parent  # case_submit.py lives in launchers/
 
-    env["CASE_PWD"] = str(case_pwd)
-    env["CASE_DIR"] = case_dir
+    env["SUBMIT_DIR"] = str(case_pwd)
     env["CASE_PARENT_DIR"] = case_parent_dir
     env["UFS_UTILS_DIR"] = str(ufs_utils_dir)
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir

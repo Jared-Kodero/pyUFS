@@ -11,7 +11,7 @@ set -e
 module purge
 
 
-cd "$CASE_PWD"
+cd "$SUBMIT_DIR"
 
 export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
 export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
@@ -134,7 +134,7 @@ if (( EXIT_CODE == 0 )); then
 
             # Only the final restart, state.yaml and run_config.yaml are kept; the grid,
             # orography and ICs are rebuilt from them (case_continue.sh --restart-dir).
-            cp "$CASE_PWD/run_config.yaml" "$CASE_DIR/"
+            cp "$SUBMIT_DIR/run_config.yaml" "$CASE_DIR/"
             tar --use-compress-program='pigz -p 32' -cf "$ARCHIVE_DIR/restart.tar.gz" \
                 -C "$CASE_DIR" RESTART state.yaml run_config.yaml
                 

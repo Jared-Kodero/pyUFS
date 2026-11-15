@@ -40,7 +40,7 @@ PATH_FIELDS = frozenset(
     {
         "fix_src",
         "ufs_exe",
-        "run_dir",
+        "submit_dir",
         "case_dir",
         "archive_dir",
         "ufs_utils",
@@ -237,7 +237,7 @@ class FV3State:
 
     # --- Paths (fv3_paths) -------------------------------------------------
     ufs_exe: Path | None = None
-    run_dir: Path | None = None
+    submit_dir: Path | None = None
     case_dir: Path | None = None
     archive_dir: Path | None = None
     configs: Path | None = None

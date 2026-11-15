@@ -35,7 +35,7 @@
 # one land mask (sea-ice land flags > 1). They replace namsfc FNTSFC, FNAISC and FNMSKH,
 # work without an experiment, and are copied at cold start. With baseline pamip or
 # shield, PAMIP replaces external SST/SIC. Paths expand variables and ~; a relative
-# path is resolved from the case directory. Example ESA CCI paths under
+# path is resolved from the submit directory. Example ESA CCI paths under
 # <fix_src>/external/ESA:
 #   sst.ESACCI_1991_2020.monthly.clim.grb
 #   sic.ESACCI_1991_2020.monthly.clim.grb

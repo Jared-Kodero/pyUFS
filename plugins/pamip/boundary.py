@@ -213,7 +213,7 @@ def write_boundary_files(
                 ("sst", "RdBu_r", "SST difference (K)"),
                 ("sic", "RdBu", "Sea-ice fraction difference"),
             ):
-                figure = Path(state.run_dir) / f"pamip_{tag}_{kind}_change.png"
+                figure = Path(state.submit_dir) / f"pamip_{tag}_{kind}_change.png"
                 lock = figure.with_suffix(".lock")
                 try:
                     if figure.exists():

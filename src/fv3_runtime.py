@@ -86,7 +86,7 @@ def merged_run_config() -> dict:
 
     The same merge is applied by launchers/case_submit.py at submission.
     """
-    case = read_namelist(Path(paths["run_dir"]) / "run_config.yaml") or {}
+    case = read_namelist(Path(paths["submit_dir"]) / "run_config.yaml") or {}
     release = resolve_release(case.get("shield_release"))
     default = read_namelist(Path(paths["configs"]) / release / "run_config.yaml")
 
@@ -295,7 +295,7 @@ def require_fix_files(files: list[Path], sub_dir: str = "") -> None:
 
 @contextmanager
 def tmp_cwd(path: Path | str):
-    cwd = paths["case_dir"]
+    cwd = Path.cwd()
     try:
         os.chdir(path)
         yield

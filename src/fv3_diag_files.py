@@ -352,7 +352,7 @@ def field_table_source() -> tuple[Path, bool]:
     format sets field_manager_nml use_field_table_yaml.
     """
     for name, is_yaml in (("field_table.yaml", True), ("field_table", False)):
-        path = state.run_dir / name
+        path = state.submit_dir / name
         if path.exists():
             return path, is_yaml
     return state.ufs_utils / "templates" / "field_table.yaml", True
@@ -368,15 +368,15 @@ def update_data_table():
     for name in ("data_table", "data_table.yaml"):
         (state.case_dir / name).unlink(missing_ok=True)
     name = "data_table.yaml" if state.use_modern_diag else "data_table"
-    if (state.run_dir / name).exists():
-        cp(state.run_dir / name, state.case_dir / name)
+    if (state.submit_dir / name).exists():
+        cp(state.submit_dir / name, state.case_dir / name)
 
 
 def update_yaml_diag(restart_no: int):
     """Stage and update the modern YAML-based diagnostic table configuration."""
     (state.case_dir / "diag_table.yaml").unlink(missing_ok=True)
     dt = state.init_datetime
-    src = state.run_dir / "diag_table.yaml"
+    src = state.submit_dir / "diag_table.yaml"
     if not src.exists():
         raise FileNotFoundError(f"use_modern_diag: true requires {src}")
 
@@ -401,7 +401,7 @@ def update_legacy_diag(restart_no: int):
     (state.case_dir / "diag_table").unlink(missing_ok=True)
     dt = state.init_datetime
 
-    user_diag = state.run_dir / "diag_table"
+    user_diag = state.submit_dir / "diag_table"
     # Month and year segments default to monthly means instead of hourly output.
     monthly = state.run_length_units in ("months", "years")
     template_diag = (

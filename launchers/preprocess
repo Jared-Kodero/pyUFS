@@ -1,7 +1,5 @@
 #!/bin/sh
 
-cd "$CASE_DIR" || exit 1
-
 set +e
 /preprocess "$UFS_UTILS_DIR/src/driver.py"
 exit_code=$?

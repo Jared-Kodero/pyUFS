@@ -52,7 +52,7 @@ USER_FILES = {
 def _log_initial_state() -> None:
     log.info("Configuration file: %s", state.run_config)
     log.info("Case directory: %s", state.case_dir)
-    log.info("Current directory: %s", state.run_dir)
+    log.info("Submit directory: %s", state.submit_dir)
     log.info("Archive directory: %s", state.archive_dir)
     log.info("Fixed/static directory: %s", state.fix_src)
 
@@ -147,7 +147,10 @@ def validate_ufs_utils_options() -> None:
         "ims_ice_file",
         "five_min_ice_file",
     ):
-        if state[key] and not Path(os.path.expandvars(str(state[key]))).exists():
+        if (
+            state[key]
+            and not Path(os.path.expandvars(str(state[key]))).expanduser().exists()
+        ):
             raise FileNotFoundError(f"{key} not found: {state[key]}")
     for flag in ("run_global_cycle", "run_cpld_gridgen"):
         if state[flag] and state.gtype not in GLOBAL_GTYPES:
@@ -160,7 +163,7 @@ def _load_initial_state() -> None:
     require_minimum_cpus()
 
     runtime_env = runtime_env_vars()
-    runtime_config_path = Path(paths["run_dir"]) / "run_config.yaml"
+    runtime_config_path = Path(paths["submit_dir"]) / "run_config.yaml"
     merged_config = merged_run_config()
 
     plugins_file = merged_config.pop("plugins_config_path", None)
@@ -195,7 +198,9 @@ def _load_initial_state() -> None:
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
     if plugins_file:
-        plugins_path = Path(os.path.expandvars(plugins_file)).expanduser().resolve()
+        plugins_path = (
+            paths["submit_dir"] / Path(os.path.expandvars(plugins_file)).expanduser()
+        ).resolve()
         state.plugins = fv3_plugins.load_plugins(plugins_path)
         log.info("Plugins file: %s", plugins_path)
     # Fail before grid and IC generation; files are written after preprocessing.
@@ -302,8 +307,6 @@ def init_driver() -> None:
     if restart_dir:
         verify_restart_config(Path(restart_state))
 
-    os.chdir(state.case_dir)
-
     if not state.generate_ic_data:
         init_external_ic()
     else:
@@ -354,7 +357,6 @@ def init_driver() -> None:
             return
 
     state.checksum = compute_checksum(state)
-    os.chdir(state.case_dir)
     calc_cpu_alloc(state.grid)
     update_nml_configs()
     update_table_files()

@@ -861,7 +861,7 @@ def plot_nests(
 
     plt.title("Resolved Nest Bounds")
 
-    outfile = state.run_dir / "nest_grids.png"
+    outfile = state.submit_dir / "nest_grids.png"
     outfile.unlink(missing_ok=True)
     plt.savefig(outfile, dpi=FIG_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -892,7 +892,7 @@ def plot_tiles(grid_dir: Path):
         tile_colors = tile_palette(n_nests)
         face_titles, nest_labels = tile_labels(len(datasets), parents)
 
-        outfile = state.run_dir / "grid_faces.png"
+        outfile = state.submit_dir / "grid_faces.png"
         outfile.unlink(missing_ok=True)
 
         plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, outfile)
@@ -906,10 +906,10 @@ def plot_tiles(grid_dir: Path):
 def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
 
-    # Ensemble members share run_dir: the first to take the lock plots. Their
+    # Ensemble members share submit_dir: the first to take the lock plots. Their
     # start is staggered so the lock is rarely contended; a lock left by a
     # killed job is ignored after an hour.
-    plot_lock = state.run_dir / "plot.lock"
+    plot_lock = state.submit_dir / "plot.lock"
     if state.n_ensembles:
         time.sleep(random.uniform(0, 60))
     try:
