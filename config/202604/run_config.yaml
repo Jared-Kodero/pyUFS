@@ -155,5 +155,5 @@ make_gsl_orog: false # Generate GSL drag files; unused by SHiELD physics.
 #   derived:           user file of derived variables
 # Keys and examples: config/examples/plugins.yaml. The file is read at the cold start
 # and its content is stored in state.yaml, so later edits do not affect a running case.
-plugins_config_path: null # Path to the plugins file ($VAR and ~ expanded; a relative path is taken from the submit directory); null: no plugins.
-run_config: null # Acts like an additional run configuration file; appended to the main run_config.yaml.  can be str or list of str.
+plugins_config: null # Path to the plugins file ($VAR and ~ expanded; a relative path is taken from the submit directory); null: no plugins.
+include: null # Acts like an additional run configuration file; appended to the main run_config.yaml.  can be str or list of str.

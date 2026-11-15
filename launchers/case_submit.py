@@ -86,6 +86,7 @@ except ImportError:
 # repository root is therefore SCRIPT_DIR.parent.parent.
 SCRIPT_DIR = Path(__file__).resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
+from fv3_runtime import merge_config_includes
 from release import case_release, resolve_shield_exe
 
 # The case file is always taken from the directory the command is run in.
@@ -131,22 +132,7 @@ def read_yaml(path: Path):
         with open(path, "r") as f:
             data = yaml.safe_load(f) or {}
 
-        extra_settings = data.get("run_config")
-        if isinstance(extra_settings, str):
-            extra_settings = [extra_settings]
-
-        for extra_path in map(Path, extra_settings or []):
-            if extra_path.exists():
-                with open(extra_path, "r") as extra_f:
-                    extra_data = yaml.safe_load(extra_f) or {}
-
-                # Check for duplicate keys using set intersection
-                if duplicates := data.keys() & extra_data.keys():
-                    raise ValueError(
-                        f"Key(s) found in both {path.name} and {extra_path.name}: {list(duplicates)}"
-                    )
-
-                data.update(extra_data)
+        data = merge_config_includes(data, path)
 
         valid_keys = list(DEFAULT_KEYS)
 

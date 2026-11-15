@@ -12,7 +12,7 @@ from fv3_fixed_files import update_fixed_files
 from fv3_namelists import restart_config
 from fv3_paths import configure_directories
 from fv3_runscripts import gen_shield_run_sh
-from fv3_runtime import merged_run_config
+from fv3_runtime import load_run_config
 from fv3_state import (
     compute_checksum,
     load_fv3_state,
@@ -70,7 +70,7 @@ def _load_restart_state() -> None:
             "state.yaml has no run_config checksum (written by an earlier "
             + "version); run_config.yaml edits are not checked"
         )
-    elif compute_checksum(merged_run_config()) != state.config_checksum:
+    elif compute_checksum(load_run_config()) != state.config_checksum:
         raise RuntimeError(
             "The grid or start-time settings of run_config.yaml changed after the "
             + "cold start (c_res, gtype, levels, target_lon/lat, stretch_factor, "

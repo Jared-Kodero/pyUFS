@@ -29,7 +29,7 @@ string to `None`).
 
 ## Plugins file
 
-`plugins_config_path` in `run_config.yaml` names a YAML file that maps plugin names to
+`plugins_config` in `run_config.yaml` names a YAML file that maps plugin names to
 their settings (`config/examples/plugins.yaml` documents every key). The cold start
 reads it with `fv3_plugins.load_plugins` into `state.plugins`, a plain dict of dicts that
 `state.yaml` stores, so restarts and the regridding stage never read the file again. A

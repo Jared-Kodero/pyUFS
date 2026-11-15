@@ -21,7 +21,7 @@ from fv3_pes_config import calc_cpu_alloc, get_grid_info
 from fv3_plot_grid import plot_grid
 from fv3_restart_driver import restart_driver, stage_restart, verify_restart_config
 from fv3_runscripts import gen_shield_run_sh
-from fv3_runtime import log, merged_run_config, to_list
+from fv3_runtime import load_run_config, log, to_list
 from fv3_state import compute_checksum, save_fv3_state, state
 from fv3_utils import (
     cres_to_deg,
@@ -164,9 +164,9 @@ def _load_initial_state() -> None:
 
     runtime_env = runtime_env_vars()
     runtime_config_path = Path(paths["submit_dir"]) / "run_config.yaml"
-    merged_config = merged_run_config()
+    merged_config = load_run_config()
 
-    plugins_file = merged_config.pop("plugins_config_path", None)
+    plugins_file = merged_config.pop("plugins_config", None)
     state.clear()
     state.update(merged_config)
     # Checked by every restart segment, so edits to the grid or start-time
@@ -365,7 +365,7 @@ def init_driver() -> None:
     fv3_plugins.do_plugins(restart=False)
 
     save_fv3_state()
-
+    log.info(f"Total PEs needed for run: {state.total_pes}")
     log.info("Preprocessing complete")
 
     if restart_dir:

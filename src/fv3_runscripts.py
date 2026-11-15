@@ -23,8 +23,6 @@ def gen_shield_run_sh() -> None:
     container_launcher = " ".join(mpi_launcher)
 
     gen_shield_container_scripts(native_modules, native_launcher, container_launcher)
-    if state.restart_no == 0:
-        log.info(f"Total PEs needed for run: {state.total_pes}")
 
 
 def gen_shield_container_scripts(

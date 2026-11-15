@@ -10,4 +10,4 @@ gtype: uniform
 levels: 64
 generate_ic_data: true
 
-plugins_config_path: ${UFS_UTILS_DIR}/config/examples/plugins.sm_perturbations.yaml
+plugins_config: ${UFS_UTILS_DIR}/config/examples/plugins.sm_perturbations.yaml

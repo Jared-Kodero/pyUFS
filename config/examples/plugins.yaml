@@ -1,4 +1,4 @@
-# Reference for the plugins file named by plugins_config_path in run_config.yaml.
+# Reference for the plugins file named by plugins_config in run_config.yaml.
 # A mapping of plugin name to its settings; a plugin runs only when its section is set.
 # Sections run in the order derived, pamip, sm_perturbations, sst_perturbation. Unknown
 # plugins and unknown keys stop the run before grid generation, with the closest valid

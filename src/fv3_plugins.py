@@ -2,7 +2,7 @@
 
 This is the only module in src/ that imports plugins. A plugin is a package in plugins/
 listed in plugins.__all__; its hooks are called only when its section is in the
-plugins file (``plugins_config_path`` in run_config.yaml), which the cold start loads
+plugins file (``plugins_config`` in run_config.yaml), which the cold start loads
 into ``state.plugins`` as a mapping of plugin name to its settings.
 
 A plugin never imports from src/. Every hook receives its settings (``config``), the
@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 import fv3_utils
+from fv3_runtime import merge_config_includes
 from fv3_state import state
 
 if TYPE_CHECKING:
@@ -48,6 +49,9 @@ def load_plugins(path: Path) -> dict[str, dict]:
     """Read the plugins file into ``{plugin: settings}``. Sections that are null or
     empty are dropped, so a plugin is active exactly when its name is a key."""
     data = yaml.safe_load(Path(path).read_text()) or {}
+    data = merge_config_includes(data, path)
+    data.pop("include", None)
+
     plugins = {}
     for name, user in data.items():
         if name not in manifest.__all__:

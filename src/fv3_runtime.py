@@ -40,7 +40,7 @@ def log_release() -> None:
     except OSError:
         pass
 
-    config = merged_run_config()
+    config = load_run_config()
     shield_exe = config.get("shield_exe")
     try:
         # A missing executable that the container replaces is logged as the container.
@@ -81,34 +81,43 @@ def get_newres(gridfile: Path) -> int:
     return int(res_equiv)
 
 
-def merged_run_config() -> dict:
-    """The case run_config.yaml, with unset or null keys from config/<release>/run_config.yaml.
+def merge_config_includes(conf: dict, conf_path: Path) -> dict:
+    include_paths = conf.pop("include", None)
+    if isinstance(include_paths, str):
+        include_paths = [include_paths]
 
-    The same merge is applied by launchers/case_submit.py at submission.
-    """
-    case = read_namelist(Path(paths["submit_dir"]) / "run_config.yaml") or {}
-    release = resolve_release(case.get("shield_release"))
-    default = read_namelist(Path(paths["configs"]) / release / "run_config.yaml")
-
-    extra_settings = case.get("run_config")
-    if isinstance(extra_settings, str):
-        extra_settings = [extra_settings]
-
-    merged = dict(case)
-    for extra_path in map(Path, extra_settings or []):
-        if extra_path.exists():
-            extra_data = read_namelist(extra_path) or {}
-            if duplicates := merged.keys() & extra_data.keys():
+    base = {}
+    for include_path in map(Path, include_paths or []):
+        if include_path.exists():
+            included = merge_config_includes(
+                read_namelist(include_path) or {}, include_path
+            )
+            conflicts = [
+                k for k in base.keys() & included.keys() if base[k] != included[k]
+            ]
+            if conflicts:
                 raise ValueError(
-                    f"Key(s) found in both run_config.yaml and {extra_path.name}: {list(duplicates)}"
+                    f"Key(s) {conflicts} in {include_path} are already set by an earlier include of {conf_path}"
                 )
-            merged.update(extra_data)
+            base.update(included)
+    return base | conf
 
-    for key, value in default.items():
-        if merged.get(key) is None and value is not None:
-            merged[key] = value
-    merged["shield_release"] = release  # always the validated string
-    return merged
+
+def load_run_config() -> dict:
+    conf_path = Path(paths["submit_dir"]) / "run_config.yaml"
+    conf = read_namelist(conf_path) or {}
+    release = resolve_release(conf.get("shield_release"))
+    release_defaults = read_namelist(
+        Path(paths["configs"]) / release / "run_config.yaml"
+    )
+
+    conf = merge_config_includes(conf, conf_path)
+
+    for key, value in release_defaults.items():
+        if conf.get(key) is None and value is not None:
+            conf[key] = value
+    conf["shield_release"] = release
+    return conf
 
 
 # run_config.yaml keys that determine the grid and its orography. Files staged
@@ -137,7 +146,7 @@ STAGED_RECORD = ".grid_settings.yaml"
 
 
 def _grid_settings(keys: tuple = OROGRAPHY_KEYS) -> dict:
-    cfg = merged_run_config()
+    cfg = load_run_config()
     settings = {k: to_builtin(cfg.get(k)) for k in keys}
     if "c_res" in settings:
         # "C96" and 96 name the same grid; staged records store the integer.

@@ -29,4 +29,4 @@ dt_cpld: 1200
 k_split: [3]
 n_split: [6]
 
-plugins_config_path: plugins.yaml
+plugins_config: plugins.yaml
