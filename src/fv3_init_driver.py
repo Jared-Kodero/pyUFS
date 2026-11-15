@@ -198,9 +198,7 @@ def _load_initial_state() -> None:
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
     if plugins_file:
-        plugins_path = (
-            paths["submit_dir"] / Path(os.path.expandvars(plugins_file)).expanduser()
-        ).resolve()
+        plugins_path = (Path(os.path.expandvars(plugins_file)).expanduser()).resolve()
         state.plugins = fv3_plugins.load_plugins(plugins_path)
         log.info("Plugins file: %s", plugins_path)
     # Fail before grid and IC generation; files are written after preprocessing.

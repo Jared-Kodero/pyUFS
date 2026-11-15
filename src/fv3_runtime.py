@@ -81,16 +81,25 @@ def get_newres(gridfile: Path) -> int:
     return int(res_equiv)
 
 
-def merge_config_includes(conf: dict, conf_path: Path) -> dict:
+def merge_config_includes(
+    conf: dict, conf_path: Path, stack: frozenset[Path] = frozenset()
+) -> dict:
+    conf_path = Path(os.path.expandvars(str(conf_path))).expanduser().resolve()
+    stack |= {conf_path}
     include_paths = conf.pop("include", None)
     if isinstance(include_paths, str):
         include_paths = [include_paths]
 
     base = {}
-    for include_path in map(Path, include_paths or []):
+    for path in include_paths or []:
+        include_path = Path(os.path.expandvars(str(path))).expanduser()
+        include_path = (conf_path.parent / include_path).resolve()
+
+        if include_path in stack:
+            raise ValueError(f"Circular include of {include_path} in {conf_path}")
         if include_path.exists():
             included = merge_config_includes(
-                read_namelist(include_path) or {}, include_path
+                read_namelist(include_path) or {}, include_path, stack
             )
             conflicts = [
                 k for k in base.keys() & included.keys() if base[k] != included[k]

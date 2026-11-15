@@ -50,7 +50,6 @@ def load_plugins(path: Path) -> dict[str, dict]:
     empty are dropped, so a plugin is active exactly when its name is a key."""
     data = yaml.safe_load(Path(path).read_text()) or {}
     data = merge_config_includes(data, path)
-    data.pop("include", None)
 
     plugins = {}
     for name, user in data.items():
