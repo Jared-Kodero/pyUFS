@@ -82,6 +82,13 @@ def _load_restart_state() -> None:
     state.checksum = current_checksum
     state.node_list[state.restart_no] = get_allocated_nodes()
 
+    # need to get the PREV_SESSION_ELAPSED_TIME an kind get avg walltime from the environment variable SESSION_ELAPSED_TIME
+    if state.restart_no == 0:
+        state.avg_walltime = 0.0
+    else:
+        prev_elapsed = float(os.environ["PREV_SESSION_ELAPSED_TIME"])
+        state.avg_walltime += (prev_elapsed - state.avg_walltime) / state.restart_no
+
 
 def restart_driver() -> None:
     _load_restart_state()

@@ -294,13 +294,8 @@ def _load_initial_state() -> None:
             get_centers(state)
 
     available_cpus = require_minimum_cpus()
-    if available_cpus < 32:
+    if available_cpus < 32 and not os.environ.get("CASE_MEMORY_FLAG"):
         state.preprocess_dask_scheduler = "synchronous"
-        log.info(
-            "Preprocess Dask scheduler coerced to: %s (available CPUs: %d < 32)",
-            state.preprocess_dask_scheduler,
-            available_cpus,
-        )
 
     _log_initial_state()
 

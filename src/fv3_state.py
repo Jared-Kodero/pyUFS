@@ -93,6 +93,7 @@ class FV3State:
     constraint_node: str | None = None
     exclusive_node: bool | None = None
     walltime: int | None = None
+    avg_walltime: float | None = None
     n_nodes: int | None = None
     n_cpus: int | None = None
     partition: str | None = None

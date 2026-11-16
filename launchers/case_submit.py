@@ -581,6 +581,8 @@ def main():
         iter_env = {
             **env,
             "TOTAL_WALLTIME_TIME": 0,
+            "SESSION_ELAPSED_TIME": 0,
+            "PREV_SESSION_ELAPSED_TIME": 0,
             "CASE_ENSEMBLE_ID": ensemble_id,
             "SLURM_JOB_NAME": slurm_job_name,
             "SLURM_OPEN_MODE": "truncate",
@@ -613,6 +615,7 @@ def main():
             iter_env = {
                 **env,
                 "TOTAL_WALLTIME_TIME": 0,
+                "PREV_SESSION_ELAPSED_TIME": 0,
                 "CASE_ENSEMBLE_ID": ensemble_id,
                 "SLURM_JOB_NAME": slurm_job_name,
                 "SLURM_OPEN_MODE": "truncate",
