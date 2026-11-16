@@ -20,7 +20,7 @@ container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Existing paths mou
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules for the native executable only.
 
 # 1. SLURM submission
-# n_cpus is rounded down to a multiple of n_nodes; preprocessing needs >= 32 CPUs.
+# n_cpus is rounded down to a multiple of n_nodes
 # Multi-node jobs need a native shield_exe.
 constraint_node: null # SLURM --constraint; null omits it.
 exclusive_node: false # Request an exclusive node.

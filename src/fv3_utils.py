@@ -336,16 +336,15 @@ def runtime_env_vars() -> dict[str, object]:
     return {key: value for key, value in values.items() if value is not None}
 
 
-def require_minimum_cpus(minimum: int = 32) -> int:
+def require_minimum_cpus() -> int:
     """Validate the number of CPUs visible to the current process."""
-    try:
-        available = len(os.sched_getaffinity(0))
-    except AttributeError:
-        available = os.cpu_count() or 1
 
-    if available < minimum:
+    minimum_node_cpus = 6
+    available = len(os.sched_getaffinity(0))
+
+    if available < minimum_node_cpus:
         raise RuntimeError(
-            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum} per node is required."
+            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum_node_cpus} per node is required."
         )
 
     return available

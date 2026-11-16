@@ -160,7 +160,6 @@ def validate_ufs_utils_options() -> None:
 
 
 def _load_initial_state() -> None:
-    require_minimum_cpus()
 
     runtime_env = runtime_env_vars()
     runtime_config_path = Path(paths["submit_dir"]) / "run_config.yaml"
@@ -293,6 +292,15 @@ def _load_initial_state() -> None:
                     + "lat_min and lat_max in run_config.yaml."
                 )
             get_centers(state)
+
+    available_cpus = require_minimum_cpus()
+    if available_cpus < 32:
+        state.preprocess_dask_scheduler = "synchronous"
+        log.info(
+            "Preprocess Dask scheduler coerced to: %s (available CPUs: %d < 32)",
+            state.preprocess_dask_scheduler,
+            available_cpus,
+        )
 
     _log_initial_state()
 

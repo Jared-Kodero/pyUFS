@@ -86,7 +86,6 @@ except ImportError:
 # repository root is therefore SCRIPT_DIR.parent.parent.
 SCRIPT_DIR = Path(__file__).resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
-from fv3_runtime import merge_config_includes
 from release import case_release, resolve_shield_exe
 
 # The case file is always taken from the directory the command is run in.
@@ -105,75 +104,100 @@ except ValueError as error:
 DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "config" / RELEASE / "run_config.yaml"
 
 
-with open(DEFAULT_CFG_PATH, "r") as f:
-    DEFAULT_CFG = yaml.safe_load(f)
-# The default file is the complete list of valid keys.
-DEFAULT_KEYS = DEFAULT_CFG.keys()
+def report_yaml_error(yaml_error, path):
+    if not hasattr(yaml_error, "problem_mark"):
+        return False
+
+    mark = yaml_error.problem_mark
+    lines = Path(path).read_text().splitlines() or [""]
+    v = lines[min(mark.line, len(lines) - 1)]
+
+    print(
+        "ERROR: Bad Yaml file ! \n",
+        f"File path: {path}\n",
+        f"Line: {mark.line + 1},  Column: {mark.column + 1}, {yaml_error.problem}\n",
+        f"\t-> {v}\n",
+        f"\t   {' ' * mark.column}^",
+    )
+
+    return True
 
 
 def read_yaml(path: Path):
-    """Load a YAML file and check its top-level keys against the default file.
-
-    An unknown key stops the submission with the closest valid key suggested
-    (difflib, cutoff 0.6), which catches typos before any job is queued. A YAML
-    syntax error is reported with the offending line and a caret marker. Only
-    key names are checked here; values are validated where they are used.
-
-    Returns the parsed mapping (empty for an empty file).
-    """
-
-    def _read_yaml_txt(path: Path, line_no: int):
-        """Return the stripped text of a 1-based line and its length."""
-        with open(path, "r") as f:
-            v = f.readlines()[line_no - 1].strip()
-            return v, len(v)
-
     try:
+        data = None
         with open(path, "r") as f:
             data = yaml.safe_load(f) or {}
-
-        data = merge_config_includes(data, path)
-
-        valid_keys = list(DEFAULT_KEYS)
-
-        for key in data:
-            if key not in DEFAULT_KEYS:
-                suggestions = get_close_matches(
-                    key,
-                    valid_keys,
-                    n=1,
-                    cutoff=0.6,
-                )
-
-                message = (
-                    f"ERROR: Unknown configuration key in run_config.yaml: `{key}`."
-                )
-
-                if suggestions:
-                    message += f" Did you mean {suggestions[0]!r}?"
-
-                print(message)
-                print(f"\nPlease check the configuration file: {path}")
-                print(
-                    f"For a full list of keys and description of each key, refer to the default configuration file:\n\t{DEFAULT_CFG_PATH}"
-                )
-                sys.exit(1)
-
+        return data
     except yaml.YAMLError as e:
-        if hasattr(e, "problem_mark"):
-            mark = e.problem_mark
-            v, n = _read_yaml_txt(path, mark.line)
-            print(
-                "ERROR: Bad Yaml file ! \n",
-                f"File path: {path}\n",
-                f"Line: {mark.line},  Column: {mark.column}, {e.problem}\n",
-                f"\t-> {v}\n",
-                f"\t   {'^' * n}",
-            )
-        else:
-            logger.error(f"Invalid YAML file: {path}")
+        report_yaml_error(e, path)
         sys.exit(1)
-    return data
+
+
+def merge_config_includes(
+    conf: dict, conf_path: Path, stack: frozenset[Path] = frozenset()
+) -> dict:
+    conf_path = Path(os.path.expandvars(str(conf_path))).expanduser().resolve()
+    stack |= {conf_path}
+    include_paths = conf.pop("include", None)
+    if isinstance(include_paths, str):
+        include_paths = [include_paths]
+
+    base = {}
+    for path in include_paths or []:
+        include_path = Path(os.path.expandvars(str(path))).expanduser()
+        include_path = (conf_path.parent / include_path).resolve()
+
+        if include_path in stack:
+            raise ValueError(f"Circular include of {include_path} in {conf_path}")
+        if include_path.exists():
+            included = merge_config_includes(
+                yaml.safe_load(open(include_path, "r")) or {}, include_path, stack
+            )
+            conflicts = [
+                k for k in base.keys() & included.keys() if base[k] != included[k]
+            ]
+            if conflicts:
+                raise ValueError(
+                    f"Key(s) {conflicts} in {include_path} are already set by an earlier include of {conf_path}"
+                )
+            base.update(included)
+    return base | conf
+
+
+DEFAULT_CFG = read_yaml(DEFAULT_CFG_PATH)
+DEFAULT_CFG = merge_config_includes(DEFAULT_CFG, DEFAULT_CFG_PATH)
+DEFAULT_KEYS = DEFAULT_CFG.keys()
+
+
+def validate_yaml(data, path: Path):
+    valid_keys = list(DEFAULT_KEYS)
+
+    for key in data:
+        if key not in DEFAULT_KEYS:
+            suggestions = get_close_matches(
+                key,
+                valid_keys,
+                n=1,
+                cutoff=0.6,
+            )
+
+            message = f"ERROR: Unknown configuration key in run_config.yaml: `{key}`."
+
+            if suggestions:
+                message += f" Did you mean {suggestions[0]!r}?"
+
+            print(message)
+            print(f"\nPlease check the configuration file: {path}")
+            print(
+                f"For a full list of keys and description of each key, refer to the default configuration file:\n\t{DEFAULT_CFG_PATH}"
+            )
+            sys.exit(1)
+
+        if key == "plugins_config":
+            if data[key]:
+                # try loading yaml
+                _ = read_yaml(data[key])
 
 
 def get_paths(cfg: dict):
@@ -316,11 +340,12 @@ def get_config():
     increments it for each later segment up to ``resubmit``.
     """
     user_cfg = read_yaml(RUN_CFG_PATH)
-    default_cfg = read_yaml(DEFAULT_CFG_PATH)
+    user_cfg = merge_config_includes(user_cfg, RUN_CFG_PATH)
+    validate_yaml(user_cfg, RUN_CFG_PATH)
 
     # Unset or null case keys take the repository default, as in the init
     # driver (fv3_init_driver._load_initial_state).
-    cfg = {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
+    cfg = {**DEFAULT_CFG, **{k: v for k, v in user_cfg.items() if v is not None}}
 
     preprocess_grid_only = int(bool(cfg["preprocess_grid_only"]))
     preprocess_orog_only = int(bool(cfg["preprocess_orog_only"]))
@@ -399,6 +424,10 @@ def get_config():
         sys.exit(1)
     if cfg["run_length_units"] not in ("hours", "days", "months", "years"):
         logger.error("run_length_units must be hours, days, months or years")
+        sys.exit(1)
+
+    if cfg["preprocess_dask_scheduler"] not in ("processes", "synchronous"):
+        logger.error("preprocess_dask_scheduler must be 'processes' or 'synchronous'")
         sys.exit(1)
 
     walltime = f"{walltime}:00:00"  # sbatch --time accepts H:MM:SS
