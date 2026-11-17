@@ -29,7 +29,7 @@ n_nodes: 4 # SLURM node count.
 n_cpus: 192 # Total MPI tasks; rounded down to a multiple of n_nodes.
 partition: batch # SLURM partition.
 n_cpus_per_task: 1 # CPUs per task.
-mem: 0 # Memory [GB]; 0 uses scheduler default (also if <= 2 GB per task).
+job_mem_gb: null # Total job memory [GB]; null uses the scheduler default (also when <= 2 GB per task).
 sbatch_options: "" # Additional sbatch flags, passed unchanged.
 logfile: shield_driver # Driver log basename; ".log" is added (a trailing ".log" is ignored); ensembles add a member number.
 

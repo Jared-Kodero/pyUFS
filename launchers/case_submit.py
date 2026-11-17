@@ -38,7 +38,7 @@ SLURM request
     CASE_NTASKS_PER_NODE     ``n_cpus // n_nodes``
     CASE_CPUS_PER_TASK       CPUs per task
     CASE_PARTITION           partition
-    CASE_MEM                 requested memory in GB (0 = scheduler default)
+    CASE_JOB_MEM_GB          requested memory in GB (None = scheduler default)
     CASE_MEMORY_FLAG         ``--mem=<n>g``, ``--mem-per-cpu=<n>g`` or empty
     CASE_NODE_EXCLUSIVE_FLAG ``--exclusive`` or empty
     CASE_NODE_CONSTRAINT_FLAG ``--constraint=<value>`` or empty
@@ -280,9 +280,10 @@ def get_runtime_flags(cfg: dict) -> dict:
     exclusive = cfg["CASE_EXCLUSIVE_NODE"]
     constraint = cfg["CASE_NODE_CONSTRAINT"]
     n_tasks = cfg["CASE_NTASKS"]
-    memory = cfg["CASE_MEM"]
+    memory = cfg["CASE_JOB_MEM_GB"]
 
-    if memory > n_tasks * 2:  # more than 2 GB per task, else leave to the scheduler
+    # More than 2 GB per task, else leave it to the scheduler.
+    if memory is not None and memory > n_tasks * 2:
         mem_per_cpu = memory // n_tasks
     else:
         mem_per_cpu = None
@@ -365,7 +366,7 @@ def get_config():
     logfile = cfg["logfile"]
 
     cpu_per_task = int(cfg["n_cpus_per_task"])
-    mem = int(cfg["mem"])
+    job_mem_gb = cfg["job_mem_gb"]
 
     # Round n_cpus down to a whole number of tasks per node.
     ntasks_per_node = n_tasks // n_nodes
@@ -442,7 +443,7 @@ def get_config():
     paths = get_paths(user_cfg)
 
     env = {
-        "CASE_MEM": mem,
+        "CASE_JOB_MEM_GB": job_mem_gb,
         "CASE_TIME_LIMIT": walltime,
         "CASE_NNODES": n_nodes,
         "CASE_OUTPUT": logfile,
@@ -577,8 +578,6 @@ def main():
         iter_env = {
             **env,
             "TOTAL_WALLTIME_TIME": 0,
-            "SESSION_ELAPSED_TIME": 0,
-            "PREV_SESSION_ELAPSED_TIME": 0,
             "CASE_ENSEMBLE_ID": ensemble_id,
             "SLURM_JOB_NAME": slurm_job_name,
             "SLURM_OPEN_MODE": "truncate",
@@ -611,7 +610,6 @@ def main():
             iter_env = {
                 **env,
                 "TOTAL_WALLTIME_TIME": 0,
-                "PREV_SESSION_ELAPSED_TIME": 0,
                 "CASE_ENSEMBLE_ID": ensemble_id,
                 "SLURM_JOB_NAME": slurm_job_name,
                 "SLURM_OPEN_MODE": "truncate",

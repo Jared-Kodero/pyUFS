@@ -15,7 +15,7 @@ import xarray as xr
 
 import fv3_plugins
 from fv3_diag_files import load_variables, stream_handles, variables
-from fv3_state import load_fv3_state, save_fv3_state, setup_logging
+from fv3_state import load_fv3_state, save_fv3_state, setup_logging, update_walltime
 from fv3_utils import cres_to_deg, env_setup, exit_code
 from pyfregrid import fregrid
 
@@ -841,6 +841,7 @@ def regrid():
         os.system(f"rm -rf {Path(state.output) / 'seg'}")
 
     state.regrid_progress = {"last": state.restart_no, "total": state.total_restarts}
+    update_walltime()
     save_fv3_state()
 
 

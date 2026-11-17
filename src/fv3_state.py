@@ -4,6 +4,8 @@ import dataclasses
 import hashlib
 import json
 import logging
+import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -100,7 +102,7 @@ class FV3State:
     preprocess_node_hostname: str | None = None
     partition: str | None = None
     n_cpus_per_task: int | None = None
-    mem: int | None = None
+    job_mem_gb: int | None = None
     sbatch_options: str | None = None
     logfile: str | None = None
     # 2. Case metadata and output
@@ -208,6 +210,8 @@ class FV3State:
     model_start_date: list[int] = field(default_factory=list)
     # Nodes of the latest attempt of each segment: {segment: [hostnames]}.
     node_list: dict[int, list[str]] = field(default_factory=dict)
+    # Elapsed hours of each segment's job so far: {segment: hours}.
+    segment_walltimes: dict[int, float] = field(default_factory=dict)
     # Newest segment whose output is regridded: {"last": segment, "total": segments}.
     regrid_progress: dict[str, int] = field(default_factory=dict)
 
@@ -371,6 +375,19 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
     return hashlib.sha256(hash_data_str.encode("utf-8")).hexdigest()
 
 
+def update_walltime() -> None:
+    """Record this segment's elapsed job time and update avg_walltime [hours].
+
+    Safe to call several times per segment: the entry for the segment is
+    overwritten, so the last call (the end of the regrid) holds the full time.
+    """
+    start = int(os.environ["SESSION_START_TIME"])
+    state.segment_walltimes[state.restart_no] = (time.time() - start) / 3600
+    state.avg_walltime = sum(state.segment_walltimes.values()) / len(
+        state.segment_walltimes
+    )
+
+
 def save_fv3_state(cfg: FV3State | None = None, path: Path | None = None) -> None:
     """Save the state to a YAML file, excluding the per-run case paths."""
 
@@ -410,6 +427,7 @@ def load_fv3_state() -> FV3State:
     if not isinstance(data, dict):
         raise TypeError("Invalid state file format")
 
+    data.pop("mem", None)  # renamed job_mem_gb; state.yaml of earlier segments
     # The model start is a cycle plus forecast_hour, so any hour.
     data["init_datetime"] = parse_datetime(data["init_datetime"], cycle=False)
     if data.get("ic_cycle") is not None:

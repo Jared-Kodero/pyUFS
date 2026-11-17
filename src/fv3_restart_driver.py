@@ -19,6 +19,7 @@ from fv3_state import (
     log,
     save_fv3_state,
     state,
+    update_walltime,
 )
 from fv3_utils import (
     env_setup,
@@ -82,13 +83,6 @@ def _load_restart_state() -> None:
     state.checksum = current_checksum
     state.node_list[state.restart_no] = get_allocated_nodes()
 
-    # need to get the PREV_SESSION_ELAPSED_TIME an kind get avg walltime from the environment variable SESSION_ELAPSED_TIME
-    if state.restart_no == 0:
-        state.avg_walltime = 0.0
-    else:
-        prev_elapsed = float(os.environ["PREV_SESSION_ELAPSED_TIME"])
-        state.avg_walltime += (prev_elapsed - state.avg_walltime) / state.restart_no
-
 
 def restart_driver() -> None:
     _load_restart_state()
@@ -97,7 +91,7 @@ def restart_driver() -> None:
     if state.resume_run:  # set by case_continue.sh for the segment it resumes
         log.info(
             f"Resuming {state.case_name} at segment {state.restart_no} "
-            f"({state.total_restarts} segments in total)"
+            + f"({state.total_restarts} segments in total)"
         )
 
     for file in state.case_dir.glob("*.out"):
@@ -115,6 +109,7 @@ def restart_driver() -> None:
 
     fv3_plugins.do_plugins(restart=True)
     state.resume_run = False  # applies to this segment only
+    update_walltime()
     save_fv3_state()
 
 

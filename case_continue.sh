@@ -4,7 +4,7 @@
 # case directory (the one holding run_config.yaml) after fixing the cause of the
 # failure; it hands over to launchers/case_continue.py, which resumes from the
 # last good restart on disk. With an ensemble, pass --ensembles (all members) or
-# --mem N [N ...] (selected members); arguments go through to the launcher.
+# --member N [N ...] (selected members); arguments go through to the launcher.
 #
 # Deactivate any active Conda environment for this script process, so the
 # submission does not depend on it.

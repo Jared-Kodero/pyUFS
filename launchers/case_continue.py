@@ -31,7 +31,7 @@ from ``run_config.yaml``, which must keep the grid and start-time settings of
 the archived case (checked against ``DIR/state.yaml``). The
 segment is the one that starts at the model time of ``DIR/RESTART/coupler.res``, and
 raising ``resubmit`` in ``run_config.yaml`` extends the run. With
-``--ensembles`` or ``--mem`` the restart of member N is read from
+``--ensembles`` or ``--member`` the restart of member N is read from
 ``DIR/memNN``.
 
 Ensembles
@@ -42,8 +42,8 @@ their own last restart::
 
     case_continue.sh                  single case (an error if n_ensembles > 0)
     case_continue.sh --ensembles      every member except those in skip_ensembles
-    case_continue.sh --mem 2          member 2 only
-    case_continue.sh --mem 2 5        members 2 and 5
+    case_continue.sh --member 2        member 2 only
+    case_continue.sh --member 2 5      members 2 and 5
 
 A member with no case directory (not started, or already archived) or whose
 last restart is the final segment is reported and skipped; the others are still
@@ -87,7 +87,7 @@ def parse_args(argv=None):
         help="resume every ensemble member (except those in skip_ensembles)",
     )
     group.add_argument(
-        "--mem",
+        "--member",
         type=int,
         nargs="+",
         metavar="N",
@@ -242,27 +242,27 @@ def resume(
 def select_members(args, env: dict, skipped: list) -> list:
     """Ensemble members to resume (``[None]`` for a single case)."""
     n_ensembles = int(env["CASE_ENSEMBLES"])
-    ensemble_requested = args.ensembles or args.mem is not None
+    ensemble_requested = args.ensembles or args.member is not None
 
     if ensemble_requested and n_ensembles < 1:
         logger.error(
-            "--ensembles and --mem need ensemble_run: true and n_ensembles >= 1."
+            "--ensembles and --member need ensemble_run: true and n_ensembles >= 1."
         )
         sys.exit(1)
     if not ensemble_requested and n_ensembles > 0:
         logger.error(
-            "This is an ensemble case: use --ensembles for all members or --mem N for one."
+            "This is an ensemble case: use --ensembles for all members or --member N for one."
         )
         sys.exit(1)
 
     if not ensemble_requested:
         return [None]
-    if args.mem is not None:
-        bad = sorted({m for m in args.mem if not 1 <= m <= n_ensembles})
+    if args.member is not None:
+        bad = sorted({m for m in args.member if not 1 <= m <= n_ensembles})
         if bad:
             logger.error(f"Members {bad} are outside 1..{n_ensembles}.")
             sys.exit(1)
-        return sorted(set(args.mem))
+        return sorted(set(args.member))
     return [m for m in range(1, n_ensembles + 1) if m not in skipped]
 
 

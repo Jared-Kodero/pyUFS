@@ -129,7 +129,7 @@ Start from [config/202411/run_config.yaml](config/202411/run_config.yaml) (or `c
 | `n_cpus` | 192 | Tasks, rounded down to a multiple of `n_nodes` (`--ntasks`, `--ntasks-per-node`). |
 | `n_cpus_per_task` | 1 | `--cpus-per-task`. |
 | `partition` | batch | `--partition`. |
-| `mem` | 0 | Total memory in GB. `--mem=<mem>g` on one node, `--mem-per-cpu=<mem // tasks>g` on several; omitted when not above 2 GB per task. |
+| `job_mem_gb` | null | Total memory in GB. `--mem=<mem>g` on one node, `--mem-per-cpu=<mem // tasks>g` on several; omitted when not above 2 GB per task. |
 | `constraint_node` | null | `--constraint=<value>`; omitted when null. |
 | `exclusive_node` | false | `--exclusive`. |
 | `sbatch_options` | "" | Extra raw options, appended unchanged, e.g. `"--account=myproj --mail-type=END"`. |
@@ -400,13 +400,13 @@ Segments follow one another automatically; `case_continue.sh` is for a case that
 
 The continued segment clears nothing (`RESTART`, `HIST`, `OUTPUT`, `IC`) and accepts a restart that was already promoted. A normal cold start, by contrast, refuses to run while `OUTPUT/seg` holds regridded output; use `case_continue.sh`, or remove the case directory to start over. If the model finished but the regridding failed, check `OUTPUT/seg` before continuing.
 
-For an ensemble, `case_continue.sh --ensembles` resumes every member except those in `skip_ensembles`, and `case_continue.sh --mem 2 5` resumes only members 2 and 5. Each member is resumed from its own restart in `<case>/memNN`, so members that stopped at different segments each continue from their own. A member with no case directory (not started or already archived) or whose last restart is the final segment is reported and skipped; the others are still submitted. With no arguments an ensemble case is refused, and `--ensembles` or `--mem` on a single case is refused. The exit status is 1 if any member fails its checks or nothing was submitted.
+For an ensemble, `case_continue.sh --ensembles` resumes every member except those in `skip_ensembles`, and `case_continue.sh --member 2 5` resumes only members 2 and 5. Each member is resumed from its own restart in `<case>/memNN`, so members that stopped at different segments each continue from their own. A member with no case directory (not started or already archived) or whose last restart is the final segment is reported and skipped; the others are still submitted. With no arguments an ensemble case is refused, and `--ensembles` or `--member` on a single case is refused. The exit status is 1 if any member fails its checks or nothing was submitted.
 
 `state.yaml` records `node_list` (the nodes of the latest attempt of each segment) and `regrid_progress` (`last` regridded segment and `total` segments).
 
 ### 15.2 Starting from an archived restart
 
-With `archive_data: true` the archive holds `restart.tar.gz`, which holds `RESTART/` (the final restart files), `state.yaml` and `run_config.yaml` side by side. Unpack it into a directory `DIR` and run `case_continue.sh --restart-dir DIR` from a new case directory whose `run_config.yaml` keeps the grid and start-time settings of the archived case (checked against `DIR/state.yaml`). The preprocess rebuilds the grid, orography and initial conditions, then the run continues from the model time in `RESTART/coupler.res`. All other settings come from `state.yaml`, so only `resubmit` and the resource settings can change; raise `resubmit` to extend a finished case. The directory must be under a `container_bindpath` directory. With `--ensembles` or `--mem`, member N reads `DIR/memNN`.
+With `archive_data: true` the archive holds `restart.tar.gz`, which holds `RESTART/` (the final restart files), `state.yaml` and `run_config.yaml` side by side. Unpack it into a directory `DIR` and run `case_continue.sh --restart-dir DIR` from a new case directory whose `run_config.yaml` keeps the grid and start-time settings of the archived case (checked against `DIR/state.yaml`). The preprocess rebuilds the grid, orography and initial conditions, then the run continues from the model time in `RESTART/coupler.res`. All other settings come from `state.yaml`, so only `resubmit` and the resource settings can change; raise `resubmit` to extend a finished case. The directory must be under a `container_bindpath` directory. With `--ensembles` or `--member`, member N reads `DIR/memNN`.
 
 ## 16. Ensembles
 
