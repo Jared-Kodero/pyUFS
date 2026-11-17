@@ -64,7 +64,6 @@ run_length_units: hours # hours | days | months | years; calendar units need sta
 forecast_hour: 0 # IC lead [h]; regional runs require a multiple of 3.
 resubmit: 0 # Number of restarts; total segments = resubmit + 1.
 continue_run: false # Driver-managed; later segments restart from prior output.
-preprocess_dask_scheduler: processes # processes (parallel) | synchronous (debug); no threads.
 
 # 4. Ensemble configuration
 # Each member runs as a separate job with its own work directory and log.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 from pathlib import Path
 
 import pandas as pd
@@ -296,6 +297,11 @@ def _load_initial_state() -> None:
     available_cpus = require_minimum_cpus()
     if available_cpus < 32 and not os.environ.get("CASE_MEMORY_FLAG"):
         state.preprocess_dask_scheduler = "synchronous"
+    else:
+        state.preprocess_dask_scheduler = "processes"
+
+    state.preprocess_node_cpu_count = available_cpus
+    state.preprocess_node_hostname = socket.gethostname()
 
     _log_initial_state()
 

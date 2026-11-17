@@ -426,10 +426,6 @@ def get_config():
         logger.error("run_length_units must be hours, days, months or years")
         sys.exit(1)
 
-    if cfg["preprocess_dask_scheduler"] not in ("processes", "synchronous"):
-        logger.error("preprocess_dask_scheduler must be 'processes' or 'synchronous'")
-        sys.exit(1)
-
     walltime = f"{walltime}:00:00"  # sbatch --time accepts H:MM:SS
     resubmit_max = int(cfg["resubmit"])
     archive_data = int(bool(cfg["archive_data"]))

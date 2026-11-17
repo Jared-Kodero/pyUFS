@@ -96,6 +96,8 @@ class FV3State:
     avg_walltime: float | None = None
     n_nodes: int | None = None
     n_cpus: int | None = None
+    preprocess_node_cpu_count: int | None = None
+    preprocess_node_hostname: str | None = None
     partition: str | None = None
     n_cpus_per_task: int | None = None
     mem: int | None = None
