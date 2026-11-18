@@ -69,7 +69,7 @@ def gen_shield_container_scripts(
 def write_shield_sh(
     exe: str, log_file: Path, exit_code: Path, modules: str, launcher: str
 ) -> None:
-    template_path = state.ufs_utils / "launchers" / "shield.launcher"
+    template_path = state.pyufs / "launchers" / "shield.launcher"
     output_path = state.case_dir / "shield"
 
     # read template

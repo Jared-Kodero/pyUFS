@@ -546,11 +546,11 @@ def main():
     case_pwd = Path.cwd()
     case_dir = case_pwd.name
     case_parent_dir = case_pwd.parent.name
-    ufs_utils_dir = SCRIPT_DIR.parent.parent  # case_submit.py lives in launchers/
+    pyufs_dir = SCRIPT_DIR.parent.parent  # case_submit.py lives in launchers/
 
     env["SUBMIT_DIR"] = str(case_pwd)
     env["CASE_PARENT_DIR"] = case_parent_dir
-    env["UFS_UTILS_DIR"] = str(ufs_utils_dir)
+    env["UFS_UTILS_DIR"] = str(pyufs_dir)
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir
     # Fail before submitting if the run directory would contain this one.
     check_case_dirs(
@@ -559,7 +559,7 @@ def main():
 
     n_ensembles = int(env["CASE_ENSEMBLES"])
     logfile = env["CASE_OUTPUT"]
-    script = ufs_utils_dir / "launchers" / "sbatch.sh"
+    script = pyufs_dir / "launchers" / "sbatch.sh"
     skipped_ensembles = env.pop("CASE_SKIP_ENSEMBLES")
 
     jobs = [i for i in range(n_ensembles)]

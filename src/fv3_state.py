@@ -45,7 +45,7 @@ PATH_FIELDS = frozenset(
         "submit_dir",
         "case_dir",
         "archive_dir",
-        "ufs_utils",
+        "pyufs",
         "configs",
         "tmp",
         "hist",
@@ -85,7 +85,7 @@ class FV3State:
     preprocess_image: str | None = None
     containers_root: str | None = None
     fix_src: Path | None = None
-    ufs_utils: Path | None = None  # derived: the checkout containing this file
+    pyufs: Path | None = None  # derived: the checkout containing this file
     archive_root: str | None = None
     shield_release: str | None = None
     shield_exe: str | None = None
@@ -382,9 +382,9 @@ def update_walltime() -> None:
     overwritten, so the last call (the end of the regrid) holds the full time.
     """
     start = int(os.environ["SESSION_START_TIME"])
-    state.segment_walltimes[state.restart_no] = (time.time() - start) / 3600
-    state.avg_walltime = sum(state.segment_walltimes.values()) / len(
-        state.segment_walltimes
+    state.segment_walltimes[state.restart_no] = round((time.time() - start) / 3600, 2)
+    state.avg_walltime = round(
+        sum(state.segment_walltimes.values()) / len(state.segment_walltimes), 2
     )
 
 
@@ -427,7 +427,6 @@ def load_fv3_state() -> FV3State:
     if not isinstance(data, dict):
         raise TypeError("Invalid state file format")
 
-    data.pop("mem", None)  # renamed job_mem_gb; state.yaml of earlier segments
     # The model start is a cycle plus forecast_hour, so any hour.
     data["init_datetime"] = parse_datetime(data["init_datetime"], cycle=False)
     if data.get("ic_cycle") is not None:

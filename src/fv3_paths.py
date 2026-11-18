@@ -25,9 +25,9 @@ env_paths = {
     "submit_dir": _env_path("SUBMIT_DIR"),
     "case_dir": _env_path("CASE_DIR"),
     "archive_dir": _env_path("ARCHIVE_DIR"),
-    "ufs_utils": Path(__file__).resolve().parent.parent,
+    "pyufs": Path(__file__).resolve().parent.parent,
 }
-env_paths["configs"] = env_paths["ufs_utils"] / "config"
+env_paths["configs"] = env_paths["pyufs"] / "config"
 
 # Subdirectories of the case directory (None while CASE_DIR is unset).
 CASE_SUBDIRS = {

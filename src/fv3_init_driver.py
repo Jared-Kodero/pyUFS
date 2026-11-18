@@ -125,7 +125,7 @@ def _log_initial_state() -> None:
             log.info("%s: %s (%s)", label, path, modified.strftime("%Y-%m-%d"))
 
 
-def validate_ufs_utils_options() -> None:
+def validate_pyufs_options() -> None:
     """Check the global_cycle, emcsfc and cpld_gridgen settings (section 5a)."""
     for flag, needs in (
         ("run_emcsfc_snow", ("ims_snow_file",)),
@@ -204,7 +204,7 @@ def _load_initial_state() -> None:
     # Fail before grid and IC generation; files are written after preprocessing.
     fv3_plugins.validate()
     if state.generate_ic_data:
-        validate_ufs_utils_options()
+        validate_pyufs_options()
     state.continue_run = False
     state.warm_start = False
     state.restart_no = 0

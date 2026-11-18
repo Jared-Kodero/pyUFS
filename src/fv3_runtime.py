@@ -32,7 +32,7 @@ def log_release() -> None:
     """
     branch = "unknown"
     try:
-        head = (Path(paths["ufs_utils"]) / ".git" / "HEAD").read_text().strip()
+        head = (Path(paths["pyufs"]) / ".git" / "HEAD").read_text().strip()
         if head.startswith("ref:"):
             branch = head.removeprefix("ref: refs/heads/")
         else:
@@ -333,7 +333,7 @@ def handle_errors(exc_type, value, tb):
     user_frames = [
         f
         for f in traceback.extract_tb(tb)
-        if Path(_norm_path(f.filename)).is_relative_to(paths["ufs_utils"] / "src")
+        if Path(_norm_path(f.filename)).is_relative_to(paths["pyufs"] / "src")
         and f.filename.endswith(".py")
     ]
     sys_frames = [f for f in traceback.extract_tb(tb)]

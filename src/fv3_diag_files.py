@@ -355,7 +355,7 @@ def field_table_source() -> tuple[Path, bool]:
         path = state.submit_dir / name
         if path.exists():
             return path, is_yaml
-    return state.ufs_utils / "templates" / "field_table.yaml", True
+    return state.pyufs / "templates" / "field_table.yaml", True
 
 
 def update_data_table():
@@ -405,9 +405,7 @@ def update_legacy_diag(restart_no: int):
     # Month and year segments default to monthly means instead of hourly output.
     monthly = state.run_length_units in ("months", "years")
     template_diag = (
-        state.ufs_utils
-        / "templates"
-        / ("diag_table.monthly" if monthly else "diag_table")
+        state.pyufs / "templates" / ("diag_table.monthly" if monthly else "diag_table")
     )
     table = AsciiDiagTable(user_diag if user_diag.exists() else template_diag)
     check_diag_fields(table)

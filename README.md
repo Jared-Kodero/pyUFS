@@ -48,7 +48,7 @@ Set `shield_release: "202604"` in the case `run_config.yaml`, or omit it for the
 - SHiELD: https://www.gfdl.noaa.gov/shield/
 - FV3: https://www.gfdl.noaa.gov/fv3/fv3-documentation-and-references/
 - FV3 namelist guide: https://www.gfdl.noaa.gov/wp-content/uploads/2017/09/fv3_namelist_Feb2017.pdf
-- UFS_UTILS: https://noaa-emcufs-utils.readthedocs.io/en/latest/ufs_utils.html
+- UFS_UTILS: https://noaa-emcufs-utils.readthedocs.io/en/latest/pyufs.html
 - UFS Weather Model: https://ufs-weather-model.readthedocs.io/en/develop/Introduction.html
 - FMS: https://noaa-gfdl.github.io/FMS/md_docs_doxygenGuide.html
 

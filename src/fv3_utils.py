@@ -293,20 +293,6 @@ def segment_hours(init: pd.Timestamp, length: int, units: str, count: int) -> li
     return [(b - a) // pd.Timedelta(hours=1) for a, b in pairwise(edges)]
 
 
-def _read_required_env_int(name: str) -> int:
-    value = os.getenv(name)
-
-    if value is None:
-        raise RuntimeError(f"Required environment variable {name} is not set.")
-
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"Environment variable {name} must be an integer, got {value!r}."
-        ) from exc
-
-
 def get_allocated_nodes() -> list[str]:
     """Hostnames of the nodes allocated to the job.
 
@@ -322,11 +308,11 @@ def runtime_env_vars() -> dict[str, object]:
 
     values: dict[str, object] = {
         "case_name": case_name,
-        "n_cpus": _read_required_env_int("CASE_NTASKS"),
+        "n_cpus": int(os.getenv("CASE_NTASKS", "0")),
         "n_nodes": int(os.getenv("CASE_NNODES", "1")),
         "ensemble_id": int(os.getenv("CASE_ENSEMBLE_ID", "0")),
         "n_ensembles": int(os.getenv("CASE_ENSEMBLES", "0")),
-        "n_cpus_per_node": _read_required_env_int("CASE_NTASKS_PER_NODE"),
+        "n_cpus_per_node": int(os.getenv("CASE_NTASKS_PER_NODE", "0")),
         "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", "0"))),
         "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", "0")),
         "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", "0")),
