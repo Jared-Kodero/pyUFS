@@ -160,7 +160,7 @@ def clear_dir(directory: str | Path) -> None:
 
 def env_setup():
     """
-    Set up environment variables for UFS_UTILS_DIR execution.
+    Set up environment variables for PYUFS_DIR execution.
     """
     python_path = str(Path(sys.executable).resolve().parent)
     openmpi_bin = "/opt/openmpi/bin"

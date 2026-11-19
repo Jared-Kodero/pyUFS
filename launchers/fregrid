@@ -3,7 +3,7 @@
 cd "$CASE_DIR" || exit 1
 
 set +e
-/fregrid "$UFS_UTILS_DIR/src/fv3_regrid.py"
+/fregrid "$PYUFS_DIR/src/fv3_regrid.py"
 exit_code=$?
 set -e
 

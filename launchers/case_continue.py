@@ -233,7 +233,7 @@ def resume(
         "CASE_LOG_FILE": str(names["log_file"]),
     }
     proc_env = {**os.environ, **{k: str(v) for k, v in iter_env.items()}}
-    run(Path(env["UFS_UTILS_DIR"]) / "launchers" / "sbatch.sh", proc_env, case_pwd)
+    run(Path(env["PYUFS_DIR"]) / "launchers" / "sbatch.sh", proc_env, case_pwd)
     logger.info(
         f"Case {names['case_name']} resubmitted from segment {segment} ({current})"
     )
@@ -273,7 +273,7 @@ def main():
     case_pwd = Path.cwd()
     env["SUBMIT_DIR"] = str(case_pwd)
     env["CASE_PARENT_DIR"] = case_pwd.parent.name
-    env["UFS_UTILS_DIR"] = str(SCRIPT_DIR.parent.parent)
+    env["PYUFS_DIR"] = str(SCRIPT_DIR.parent.parent)
     env["CASE_NAME"] = env["CASE_NAME"] or case_pwd.name
     skipped = env.pop("CASE_SKIP_ENSEMBLES")
 

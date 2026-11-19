@@ -115,7 +115,8 @@ Start from [config/202411/run_config.yaml](config/202411/run_config.yaml) (or `c
 | `containers_root` | Where `tools/install_images.sh` writes images. |
 | `case_root` | Root of the case tree, `case_root/<parent>/<case_name>`. Default `/jobtmp/$USER/gfdl_shield`. |
 | `container_bindpath` | Host paths bound into the containers (list or comma-separated string). Each must exist on the compute nodes. |
-| `archive_root` | Archive base; outputs go to `<archive_root>/<parent>/<case_name>`. |
+| `archive_root` | Archive base; outputs go to `<archive_root>/<archive_subdir>/<parent>/<case_name>`. |
+| `archive_subdir` | Directory below `archive_root` that groups cases, for example `hindcast`. Required when `archive_data` is true; submission stops if it is unset. |
 | `shield_release` | `"202411"` (default) or `"202604"`. An unquoted `202604` is accepted; any other value stops the submission. |
 | `shield_exe` | Full path of a native executable, used as written. Required for multi-node runs; `""` selects the single-node container. If the file is missing, a single-node `202411` case uses the container with a warning; any other case stops. `null` uses the repository default. |
 | `modules` | Host modules loaded before a native executable runs. |

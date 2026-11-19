@@ -19,7 +19,6 @@ from fv3_state import (
     log,
     save_fv3_state,
     state,
-    update_walltime,
 )
 from fv3_utils import (
     env_setup,
@@ -109,7 +108,6 @@ def restart_driver() -> None:
 
     fv3_plugins.do_plugins(restart=True)
     state.resume_run = False  # applies to this segment only
-    update_walltime()
     save_fv3_state()
 
 

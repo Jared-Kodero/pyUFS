@@ -45,7 +45,7 @@ $CASE_SBATCH_OPTIONS \
 --output=/dev/null \
 --open-mode=$SLURM_OPEN_MODE \
 --export="$EXPORT_VARS" \
-"$UFS_UTILS_DIR/launchers/case_run.sh") || EXIT_CODE=$?
+"$PYUFS_DIR/launchers/case_run.sh") || EXIT_CODE=$?
 export EXIT_CODE
 export JOB_ID
 

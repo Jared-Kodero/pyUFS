@@ -99,4 +99,4 @@ sm_perturbations:
 # after the built-ins; skip streams that lack its inputs. The file is copied to the
 # case directory. Example: config/examples/derived_vars_example.py.
 derived:
-  module: ${UFS_UTILS_DIR}/config/examples/derived_vars_example.py
+  module: ${PYUFS_DIR}/config/examples/derived_vars_example.py

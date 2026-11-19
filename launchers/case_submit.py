@@ -52,11 +52,12 @@ Case identity and control
     CASE_ENSEMBLES, CASE_ENSEMBLE_ID      member count; member number (0 = single case)
     CASE_RESUBMIT_INDEX, CASE_RESUBMIT_MAX   segment counter and ``resubmit``
     CASE_ARCHIVE, CASE_PREPROCESS_ONLY    0/1 switches
+    CASE_ARCHIVE_SUBDIR      ``archive_subdir``: directory below ``archive_root``
     CASE_OUTPUT, CASE_LOG_FILE            ``logfile`` base name; per-job log path
     CASE_DATA_SYMLINK        ``run`` (single case) or ``memNN`` (ensemble) link
                              created in the case directory
 Paths
-    UFS_UTILS_DIR, FIX_SRC, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
+    PYUFS_DIR, FIX_SRC, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
     SHIELD_SIF, FREGRID_SIF, PREPROCESS_SIF, CONTAINERS_DIR,
     CONTAINER_BINDPATH (base64 encoded, see ``get_paths``)
 
@@ -430,6 +431,10 @@ def get_config():
     walltime = f"{walltime}:00:00"  # sbatch --time accepts H:MM:SS
     resubmit_max = int(cfg["resubmit"])
     archive_data = int(bool(cfg["archive_data"]))
+    archive_subdir = cfg["archive_subdir"] or ""
+    if archive_data and not archive_subdir:
+        logger.error("archive_subdir must be set when archive_data is true")
+        sys.exit(1)
 
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
     case_name = cfg["case_name"] or env_case_name
@@ -441,6 +446,16 @@ def get_config():
 
     # Paths are resolved from the case file so that unset keys take the default.
     paths = get_paths(user_cfg)
+
+    archive_root = Path(paths["ARCHIVE_ROOT_DIR"]).resolve()
+    if archive_data and (
+        archive_subdir.startswith(("/", "~"))
+        or archive_root not in (archive_root / archive_subdir).resolve().parents
+    ):
+        logger.error(
+            f"archive_subdir {archive_subdir} must be a path below {archive_root}"
+        )
+        sys.exit(1)
 
     env = {
         "CASE_JOB_MEM_GB": job_mem_gb,
@@ -459,6 +474,7 @@ def get_config():
         "CASE_RESUBMIT_INDEX": 0,
         "CASE_RESUBMIT_MAX": resubmit_max,
         "CASE_ARCHIVE": archive_data,
+        "CASE_ARCHIVE_SUBDIR": archive_subdir,
         "CASE_PREPROCESS_ONLY": preprocess_only,
         "CASE_NAME": case_name,
         **paths,
@@ -550,7 +566,7 @@ def main():
 
     env["SUBMIT_DIR"] = str(case_pwd)
     env["CASE_PARENT_DIR"] = case_parent_dir
-    env["UFS_UTILS_DIR"] = str(pyufs_dir)
+    env["PYUFS_DIR"] = str(pyufs_dir)
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir
     # Fail before submitting if the run directory would contain this one.
     check_case_dirs(

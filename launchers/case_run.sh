@@ -14,7 +14,7 @@ module purge
 cd "$SUBMIT_DIR"
 
 export CASE_DIR="$CASE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
-export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_PARENT_DIR/$CASE_NAME"
+export ARCHIVE_DIR="$ARCHIVE_ROOT_DIR/$CASE_ARCHIVE_SUBDIR/$CASE_PARENT_DIR/$CASE_NAME"
 
 
 
@@ -34,7 +34,7 @@ mkdir -p "$CASE_DIR"
 
 # BUILD MISSING IMAGES (run as a child process so its module/env changes do not leak)
 if [ ! -f "$SHIELD_SIF" ] || [ ! -f "$PREPROCESS_SIF" ] || [ ! -f "$FREGRID_SIF" ]; then
-    bash "$UFS_UTILS_DIR/tools/install_images.sh" > "$CASE_DIR"/image_build.log 2>&1
+    bash "$PYUFS_DIR/tools/install_images.sh" > "$CASE_DIR"/image_build.log 2>&1
     for SIF in "$SHIELD_SIF" "$PREPROCESS_SIF" "$FREGRID_SIF"; do
         if [ ! -f "$SIF" ]; then
             echo "Case.Run - ERROR - image $SIF not found after build; images are written to $CONTAINERS_DIR" >&2
@@ -77,8 +77,8 @@ export APPTAINER_HOME=$HOME
 export APPTAINER_BINDPATH=$(printf "%s" "$CONTAINER_BINDPATH" | base64 -d)
 
 
-FREGRID="apptainer exec $FREGRID_SIF $UFS_UTILS_DIR/launchers/fregrid"
-PREPROCESS="apptainer exec $PREPROCESS_SIF $UFS_UTILS_DIR/launchers/preprocess"
+FREGRID="apptainer exec $FREGRID_SIF $PYUFS_DIR/launchers/fregrid"
+PREPROCESS="apptainer exec $PREPROCESS_SIF $PYUFS_DIR/launchers/preprocess"
 SHIELD_PREFIX="apptainer exec $SHIELD_SIF"
 
 
@@ -166,7 +166,7 @@ if (( EXIT_CODE == 0 && CASE_RESUBMIT_INDEX < CASE_RESUBMIT_MAX )); then
     CASE_RESUBMIT_INDEX=$((CASE_RESUBMIT_INDEX + 1))
     export CASE_CONTINUE_RUN=0  # only the segment started by case_continue.sh resumes
     unset CASE_RESTART_DIR CASE_RESTART_STATE  # only the first job stages a restart
-    source "$UFS_UTILS_DIR/launchers/sbatch.sh"
+    source "$PYUFS_DIR/launchers/sbatch.sh"
     scontrol top "$JOB_ID"
     exit 0
 fi

@@ -1,6 +1,6 @@
 """Example derived-variable module: 2 m temperature in degrees Celsius.
 
-Set `module: ${UFS_UTILS_DIR}/config/examples/derived_vars_example.py` in the `derived`
+Set `module: ${PYUFS_DIR}/config/examples/derived_vars_example.py` in the `derived`
 section of the plugins file. Functions are called once per output stream, so skip a
 stream that lacks the inputs.
 """

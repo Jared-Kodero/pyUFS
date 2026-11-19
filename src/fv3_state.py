@@ -87,6 +87,7 @@ class FV3State:
     fix_src: Path | None = None
     pyufs: Path | None = None  # derived: the checkout containing this file
     archive_root: str | None = None
+    archive_subdir: str | None = None
     shield_release: str | None = None
     shield_exe: str | None = None
     container_bindpath: list[str] | None = None
@@ -376,10 +377,10 @@ def compute_checksum(data: dict | FV3State, hash_keys: list | None = None) -> st
 
 
 def update_walltime() -> None:
-    """Record this segment's elapsed job time and update avg_walltime [hours].
+    """Record this completed segment's elapsed job time and update avg_walltime [hours].
 
-    Safe to call several times per segment: the entry for the segment is
-    overwritten, so the last call (the end of the regrid) holds the full time.
+    Call once, at the end of the segment (after the regrid), so that only
+    completed segments enter the average.
     """
     start = int(os.environ["SESSION_START_TIME"])
     state.segment_walltimes[state.restart_no] = round((time.time() - start) / 3600, 2)

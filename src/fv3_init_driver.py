@@ -23,7 +23,7 @@ from fv3_plot_grid import plot_grid
 from fv3_restart_driver import restart_driver, stage_restart, verify_restart_config
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import load_run_config, log, to_list
-from fv3_state import compute_checksum, save_fv3_state, state, update_walltime
+from fv3_state import compute_checksum, save_fv3_state, state
 from fv3_utils import (
     cres_to_deg,
     format_forecast_length,
@@ -371,7 +371,6 @@ def init_driver() -> None:
     gen_shield_run_sh()
     fv3_plugins.do_plugins(restart=False)
 
-    update_walltime()
     save_fv3_state()
     log.info(f"Total PEs needed for run: {state.total_pes}")
     log.info("Preprocessing complete")

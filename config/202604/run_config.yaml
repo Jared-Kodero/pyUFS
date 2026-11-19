@@ -11,6 +11,7 @@ shield_release: "202604" # Release tag for model and template selection.
 fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Writable static-data directory; missing files are downloaded here.
 case_root: /jobtmp/$USER/gfdl_shield # Case and run directory (<parent>/<case_name>); set it to scratch or any shared path to keep cases.
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive # Archive base directory.
+archive_subdir: null # Directory below archive_root that groups cases, e.g. hindcast; required when archive_data is true. Outputs go to <archive_root>/<archive_subdir>/<parent>/<case_name>.
 shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bin/FV3-202604-public_SHiELD_nh.repro.64bit.gnu.x # Native executable (required for multi-node); "" uses the container on one node. If the file is missing, a single-node 202411 case uses the container with a warning; otherwise submission stops.
 shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model container.
 fregrid_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/fregrid.sif # Regridding container.
