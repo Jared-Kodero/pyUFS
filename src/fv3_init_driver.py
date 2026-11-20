@@ -210,6 +210,7 @@ def _load_initial_state() -> None:
     state.restart_no = 0
     state.resubmit_idx = 0
     state.total_restarts = state.resubmit + 1
+    state.merged_files = []
     state.node_list = {0: get_allocated_nodes()}
 
     state.total_run_hours = sum(

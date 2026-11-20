@@ -378,7 +378,7 @@ The derived variables of `plugins/derived/derived_vars.py` (`ivt`, `ivtu`, `ivtv
 
 After the model runs, native history is remapped to latitude-longitude: the global grid at the resolution of `c_res`, each nest over its box (a box across 180 degrees gives longitudes above 180) and a regional domain over its bounding box, with missing values outside. Files are named `global`, `regional`, `nest02`, `nest03`, ... Conservative remapping averages only valid source values. Fields without horizontal dimensions (`average_T1`, `average_T2`, `average_DT`, `time_bnds`) are copied unchanged.
 
-`merge_freq` combines per-segment regridded files by concatenation along time (no averaging): `-1` merges the whole run into one file per stream and grid on the final segment, `0` keeps one file per segment, and `n` merges every `n` segments, flushing the remainder at the end.
+`merge_freq` combines per-segment regridded files by concatenation along time (no averaging): `-1` merges the whole run into one file per stream and grid on the final segment, `0` keeps one file per segment, and `n` merges every `n` segments, flushing the remainder at the end. Merging happens once, on the final segment: nothing is finalized earlier, except with `0`, where each segment is published as it completes. The merged run is split into chunks of `n` segments, named `<stream>.<grid>_<nn>.nc` with `nn` counting from 1, zero-padded to the width of the number of chunks (at least two digits); a single chunk has no suffix. With `0` the files are numbered by segment in the same way. The per-segment files in `OUTPUT/seg` are deleted chunk by chunk as each chunk is merged, so the extra storage is one chunk.
 
 ### 14.1 Grid visualization
 
@@ -403,7 +403,7 @@ The continued segment clears nothing (`RESTART`, `HIST`, `OUTPUT`, `IC`) and acc
 
 For an ensemble, `case_continue.sh --ensembles` resumes every member except those in `skip_ensembles`, and `case_continue.sh --member 2 5` resumes only members 2 and 5. Each member is resumed from its own restart in `<case>/memNN`, so members that stopped at different segments each continue from their own. A member with no case directory (not started or already archived) or whose last restart is the final segment is reported and skipped; the others are still submitted. With no arguments an ensemble case is refused, and `--ensembles` or `--member` on a single case is refused. The exit status is 1 if any member fails its checks or nothing was submitted.
 
-`state.yaml` records `node_list` (the nodes of the latest attempt of each segment) and `regrid_progress` (`last` regridded segment and `total` segments).
+`state.yaml` records `node_list` (the nodes of the latest attempt of each segment), `regrid_progress` (`last` regridded segment and `total` segments) and `merged_files` (merged output files already finalized, which a rerun of the final segment skips).
 
 ### 15.2 Starting from an archived restart
 

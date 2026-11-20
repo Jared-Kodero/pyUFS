@@ -40,29 +40,32 @@ def segment_index(stream: str) -> int:
     return int(state.restart_no or 0)
 
 
-def segment_name(handle: str, seg: int, group: str) -> str:
-    """Name of a per-restart regridded file, before merging.
+def restart_tag(n: int, total: int) -> str:
+    """Zero-padded file number, at least two digits and wide enough for total."""
+    return f"{n:0{max(2, len(str(total)))}d}"
 
-    The seg tag marks these as intermediates and keeps them outside the
-    grammar of the merged names, so a merge can never select its own
-    target as an input.
+
+def segment_name(handle: str, seg: int, group: str) -> str:
+    """Name of the file of restart seg (0-based) as <handle>.<group>_<nn>.nc.
+
+    nn counts restarts from 1. Per-restart intermediates live in output/seg and
+    merges read only that directory, so a merge never selects its own target.
     """
-    return f"{handle}.seg{seg:02d}.{group}.nc"
+    return f"{handle}.{group}_{restart_tag(seg + 1, state.total_restarts)}.nc"
 
 
 def parse_segment(path: Path, handle: str) -> tuple[int, str] | None:
     """Identify a per-restart regridded file.
 
-    Returns (restart index, tile group) for names of the form
-    <handle>.seg<nn>.global.nc, <handle>.seg<nn>.regional.nc or
-    <handle>.seg<nn>.tile<N>.nc, and None for anything else, including
-    merged files.
+    Returns (0-based restart index, tile group) for names of the form
+    <handle>.global_<nn>.nc, <handle>.regional_<nn>.nc or
+    <handle>.tile<N>_<nn>.nc, and None for anything else.
     """
-    pattern = rf"^{re.escape(handle)}\.seg(\d+)\.(global|regional|tile\d+)\.nc$"
+    pattern = rf"^{re.escape(handle)}\.(global|regional|tile\d+)_(\d+)\.nc$"
     match = re.match(pattern, path.name)
     if match is None:
         return None
-    return int(match.group(1)), match.group(2)
+    return int(match.group(2)) - 1, match.group(1)
 
 
 def group_alias(group: str, n_nests: int) -> str:
@@ -95,54 +98,6 @@ def get_merge_freq() -> int:
         )
 
     return merge_freq
-
-
-def merge_window(
-    restart_no: int, total_restarts: int, merge_freq: int
-) -> tuple[int, int] | None:
-    """Return the inclusive restart range to merge at this restart, or None.
-
-    merge_freq  < 0 : merge the complete run once, on the final restart
-    merge_freq == 0 : never merge, publish one file per restart segment
-    merge_freq  > 0 : merge every merge_freq restarts, flushing any
-                      remainder on the final restart
-    """
-    last = total_restarts - 1
-
-    if merge_freq == 0:
-        return None
-
-    if merge_freq < 0:
-        return (0, last) if restart_no == last else None
-
-    if (restart_no + 1) % merge_freq != 0 and restart_no != last:
-        return None
-
-    first = (restart_no // merge_freq) * merge_freq
-    return first, restart_no
-
-
-def merged_name(
-    handle: str,
-    alias: str,
-    first: int,
-    total_restarts: int,
-    merge_freq: int,
-) -> str:
-    """Name of the merged file.
-
-    A single merge covering the whole run is untagged. Chunked merges are
-    numbered sequentially from 01, padded so that the names sort in time
-    order.
-    """
-    if merge_freq <= 0 or merge_freq >= total_restarts:
-        return f"{handle}.{alias}.nc"
-
-    n_chunks = -(-total_restarts // merge_freq)
-    width = max(2, len(str(n_chunks)))
-    chunk = first // merge_freq + 1
-
-    return f"{handle}.{chunk:0{width}d}.{alias}.nc"
 
 
 def pack_encoding(ds: xr.Dataset, pack: bool) -> dict[str, dict]:
@@ -225,15 +180,13 @@ def merge_files(inputs: list[Path], target: Path) -> None:
     """Concatenate inputs along time into target.
 
     The merged file is written to a scratch path and moved into place only
-    on success, so target is never left truncated or removed if the
-    concatenation fails. An existing target is treated as an additional
-    input. All time records are retained and sorted chronologically.
+    on success, so target is never left truncated if the concatenation
+    fails. The inputs are kept, which makes a rerun overwrite the target
+    with identical content.
     """
-    sources = [target] + inputs if target.exists() else list(inputs)
-
-    if len(sources) > 1:
+    if len(inputs) > 1:
         ds = xr.open_mfdataset(
-            [str(p) for p in sources],
+            [str(p) for p in inputs],
             combine="nested",
             concat_dim="time",
             coords="minimal",
@@ -244,7 +197,7 @@ def merge_files(inputs: list[Path], target: Path) -> None:
             preprocess=without_static,
         )
     else:
-        ds = without_static(xr.open_dataset(sources[0]))
+        ds = without_static(xr.open_dataset(inputs[0]))
 
     tmp = target.with_name(f".{target.name}.merge")
 
@@ -260,10 +213,6 @@ def merge_files(inputs: list[Path], target: Path) -> None:
         ds.close()
 
     os.replace(tmp, target)
-
-    for p in inputs:
-        if p != target:
-            p.unlink(missing_ok=True)
 
 
 def promote_segment_outputs(
@@ -285,7 +234,7 @@ def promote_segment_outputs(
     promoted: list[tuple[Path, str]] = []
 
     for handle, seg in current:
-        for path in segment_dir.glob(f"{handle}.seg{seg:02d}.*.nc"):
+        for path in segment_dir.glob(f"{handle}.*.nc"):
             parsed = parse_segment(path, handle)
             if parsed is None:
                 continue
@@ -293,7 +242,7 @@ def promote_segment_outputs(
             if idx != seg:
                 continue
             alias = group_alias(group, n_nests)
-            target = output_dir / f"{handle}.seg{seg:02d}.{alias}.nc"
+            target = output_dir / segment_name(handle, seg, alias)
             os.replace(path, target)
             promoted.append((target, alias))
 
@@ -310,42 +259,57 @@ def merge_outputs(
 ) -> list[tuple[Path, str]]:
     """Finalize per-restart regridded files according to merge_freq.
 
-    Returns the final files written by this call as (path, group alias).
+    merge_freq == 0 publishes each restart as it completes. Otherwise nothing
+    is written until the final restart, when all segments are concatenated in
+    chunks of merge_freq restarts (the whole run if merge_freq < 0) and named
+    <handle>.<alias>_<nn>.nc, zero-padded to the width of the chunk count
+    (at least 2). A single chunk is untagged.
+
+    Each chunk gets its static fields and is recorded in state.merged_files
+    before its seg inputs are deleted, which bounds the extra storage to one
+    chunk. A rerun skips recorded chunks, whose inputs may be gone.
+
+    Returns the final files of this call as (path, group alias).
     """
     if merge_freq == 0:
-        return promote_segment_outputs(output_dir, streams, n_nests)
+        promoted = promote_segment_outputs(output_dir, streams, n_nests)
+        for path, alias in promoted:
+            add_static_fields(path, alias)
+        return promoted
 
-    window = merge_window(restart_no, total_restarts, merge_freq)
-
-    if window is None:
+    if restart_no != total_restarts - 1:
         return []
 
-    first, last = window
+    size = total_restarts if merge_freq < 0 else merge_freq
+    n_chunks = -(-total_restarts // size)
     output_dir = Path(output_dir)
-    segment_dir = output_dir / "seg"
     handles = list(dict.fromkeys(stream_family(s) for s in streams))
     merged: list[tuple[Path, str]] = []
 
     for handle in handles:
-        segments: dict[str, list[tuple[int, Path]]] = {}
+        chunks: dict[tuple[str, int], list[tuple[int, Path]]] = {}
 
-        for path in segment_dir.glob(f"{handle}.*.nc"):
+        for path in (output_dir / "seg").glob(f"{handle}.*.nc"):
             parsed = parse_segment(path, handle)
             if parsed is None:
-                continue  # merged output or unrelated file
-            idx, group = parsed
-            if not first <= idx <= last:
                 continue
-            segments.setdefault(group, []).append((idx, path))
+            idx, group = parsed
+            chunks.setdefault((group, idx // size), []).append((idx, path))
 
-        for group, items in sorted(segments.items()):
-            inputs = [path for _, path in sorted(items)]
+        for (group, chunk), items in sorted(chunks.items()):
             alias = group_alias(group, n_nests)
-            target = output_dir / merged_name(
-                handle, alias, first, total_restarts, merge_freq
-            )
+            tag = "" if n_chunks == 1 else f"_{restart_tag(chunk + 1, n_chunks)}"
+            target = output_dir / f"{handle}.{alias}{tag}.nc"
 
-            merge_files(inputs, target)
+            if target.name not in state.merged_files:
+                inputs = [path for _, path in sorted(items)]
+                merge_files(inputs, target)
+                add_static_fields(target, alias)
+                state.merged_files.append(target.name)
+                save_fv3_state()
+                for path in inputs:
+                    path.unlink()
+
             merged.append((target, alias))
 
     return merged
@@ -814,17 +778,14 @@ def regrid():
         regrid_nest_tiles(streams, state.c_res)
     shutil.rmtree(state.tmp / "regrid_weights", ignore_errors=True)
 
-    merge_freq = get_merge_freq()
-    final_files = merge_outputs(
+    merge_outputs(
         state.output,
         streams,
         state.n_nests,
         state.restart_no,
         state.total_restarts,
-        merge_freq,
+        get_merge_freq(),
     )
-    for path, alias in final_files:
-        add_static_fields(path, alias)
 
     static_path = Path(state.case_dir) / "STATIC"
 
@@ -838,7 +799,7 @@ def regrid():
             f.rename(dest)
 
     if state.resubmit_idx == state.resubmit:
-        os.system(f"rm -rf {Path(state.output) / 'seg'}")
+        shutil.rmtree(Path(state.output) / "seg", ignore_errors=True)
 
     state.regrid_progress = {"last": state.restart_no, "total": state.total_restarts}
     update_walltime()

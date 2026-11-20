@@ -215,6 +215,8 @@ class FV3State:
     segment_walltimes: dict[int, float] = field(default_factory=dict)
     # Newest segment whose output is regridded: {"last": segment, "total": segments}.
     regrid_progress: dict[str, int] = field(default_factory=dict)
+    # Merged output files already finalized by the regridder, by file name.
+    merged_files: list[str] = field(default_factory=list)
 
     # --- Derived grid geometry and nesting --------------------------------
     res_km: list[float] = field(default_factory=list)
