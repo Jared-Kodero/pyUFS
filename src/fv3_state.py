@@ -111,7 +111,7 @@ class FV3State:
     description: str | None = None
     fv3_debug: bool | None = None
     archive_data: bool | None = None
-    merge_freq: int | None = None
+    merge_freq: int = -1  # -1: merge at end; 0: no merging; n: every n segments
     use_modern_diag: bool | None = None
     pack_output: bool | None = None
     # 3. Execution control
@@ -217,6 +217,8 @@ class FV3State:
     regrid_progress: dict[str, int] = field(default_factory=dict)
     # Merged output files already finalized by the regridder, by file name.
     merged_files: list[str] = field(default_factory=list)
+    # Diag_table file handles (streams) of the current segment, set when staged.
+    diag_handles: list[str] = field(default_factory=list)
 
     # --- Derived grid geometry and nesting --------------------------------
     res_km: list[float] = field(default_factory=list)

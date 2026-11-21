@@ -14,7 +14,7 @@ import numpy as np
 import xarray as xr
 
 import fv3_plugins
-from fv3_diag_files import load_variables, stream_handles, variables
+from fv3_diag_files import load_variables, variables
 from fv3_state import load_fv3_state, save_fv3_state, setup_logging, update_walltime
 from fv3_utils import cres_to_deg, env_setup, exit_code
 from pyfregrid import fregrid
@@ -25,79 +25,6 @@ state = load_fv3_state()
 log = logging.getLogger("REGRIDDER")
 
 py_ncpus = len(os.sched_getaffinity(0))
-
-
-def stream_family(stream: str) -> str:
-    """Return the diag_table file handle stripped of path and restart tag."""
-    return str(Path(stream).name).split(".")[0]
-
-
-def segment_index(stream: str) -> int:
-    """Restart index carried by the diag_table stream name, HIST/<handle>.<nn>."""
-    tag = str(Path(stream).name).split(".")[-1]
-    if tag.isdigit():
-        return int(tag)
-    return int(state.restart_no or 0)
-
-
-def restart_tag(n: int, total: int) -> str:
-    """Zero-padded file number, at least two digits and wide enough for total."""
-    return f"{n:0{max(2, len(str(total)))}d}"
-
-
-def segment_name(handle: str, seg: int, group: str) -> str:
-    """Name of the file of restart seg (0-based) as <handle>.<group>_<nn>.nc.
-
-    nn counts restarts from 1. Per-restart intermediates live in output/seg and
-    merges read only that directory, so a merge never selects its own target.
-    """
-    return f"{handle}.{group}_{restart_tag(seg + 1, state.total_restarts)}.nc"
-
-
-def parse_segment(path: Path, handle: str) -> tuple[int, str] | None:
-    """Identify a per-restart regridded file.
-
-    Returns (0-based restart index, tile group) for names of the form
-    <handle>.global_<nn>.nc, <handle>.regional_<nn>.nc or
-    <handle>.tile<N>_<nn>.nc, and None for anything else.
-    """
-    pattern = rf"^{re.escape(handle)}\.(global|regional|tile\d+)_(\d+)\.nc$"
-    match = re.match(pattern, path.name)
-    if match is None:
-        return None
-    return int(match.group(2)) - 1, match.group(1)
-
-
-def group_alias(group: str, n_nests: int) -> str:
-    """Map a tile group onto its output name: global, regional, nest02, ..."""
-    if group in ("global", "regional"):
-        return group
-    nest = int(group.removeprefix("tile")) - 6
-    if 1 <= nest <= n_nests:
-        return f"nest{nest + 1:02d}"
-    return group
-
-
-def get_merge_freq() -> int:
-    """Read and validate merge_freq from the run state.
-
-    -1 (default) merges the whole run, 0 disables merging, n > 0 merges
-    every n restart segments.
-    """
-    merge_freq = state.get("merge_freq")
-
-    if merge_freq is None:
-        return -1
-
-    if isinstance(merge_freq, bool) or not isinstance(merge_freq, int):
-        raise TypeError(f"merge_freq must be an integer, got {merge_freq!r}")
-
-    if merge_freq < -1:
-        raise ValueError(
-            f"merge_freq must be -1, 0 or a positive integer, got {merge_freq}"
-        )
-
-    return merge_freq
 
 
 def pack_encoding(ds: xr.Dataset, pack: bool) -> dict[str, dict]:
@@ -168,7 +95,7 @@ def pack_encoding(ds: xr.Dataset, pack: bool) -> dict[str, dict]:
 
 
 # Static fields are attached once to each final file by add_static_fields(), so
-# seg files and merge inputs never carry them.
+# per-restart files and merge inputs never carry them.
 STATIC_FIELDS = ("HGTsfc", "pk", "bk", "hyam", "hybm")
 
 
@@ -181,138 +108,74 @@ def merge_files(inputs: list[Path], target: Path) -> None:
 
     The merged file is written to a scratch path and moved into place only
     on success, so target is never left truncated if the concatenation
-    fails. The inputs are kept, which makes a rerun overwrite the target
-    with identical content.
+    fails.
     """
-    if len(inputs) > 1:
-        ds = xr.open_mfdataset(
-            [str(p) for p in inputs],
-            combine="nested",
-            concat_dim="time",
-            coords="minimal",
-            data_vars="minimal",
-            compat="override",
-            join="exact",
-            decode_times=True,
-            preprocess=without_static,
-        )
-    else:
-        ds = without_static(xr.open_dataset(inputs[0]))
+    ds = xr.open_mfdataset(
+        [str(p) for p in inputs],
+        combine="nested",
+        concat_dim="time",
+        coords="minimal",
+        data_vars="minimal",
+        compat="override",
+        join="exact",
+        decode_times=True,
+        preprocess=without_static,
+    )
 
     tmp = target.with_name(f".{target.name}.merge")
 
     try:
-        if "time" in ds.dims:
-            ds = ds.sortby("time")
-        pack = pack_encoding(ds, bool(state.get("pack_output")))
+        out = ds.sortby("time")
+        pack = pack_encoding(out, bool(state.get("pack_output")))
         encoding = {
-            var: {"zlib": True, "complevel": 4, **pack[var]} for var in ds.data_vars
+            var: {"zlib": True, "complevel": 4, **pack[var]} for var in out.data_vars
         }
-        ds.to_netcdf(tmp, format="NETCDF4", encoding=encoding)
+        out.to_netcdf(tmp, format="NETCDF4", encoding=encoding)
     finally:
-        ds.close()
+        ds.close()  # sortby returns a new object, so close the opened files here
 
     os.replace(tmp, target)
 
 
-def promote_segment_outputs(
-    output_dir: Path, streams: list, n_nests: int
-) -> list[tuple[Path, str]]:
-    """Move the current restart's unmerged segment files into output_dir.
+def merge_outputs() -> None:
+    """Merge the per-restart files of OUTPUT into chunks of merge_freq restarts.
 
-    Returns the promoted files as (path, group alias).
-
-    Segment indices are taken from the stream names so each restart is promoted
-    independently. Existing targets are atomically replaced, which makes a
-    rerun of the same restart deterministic without affecting other restarts.
+    Called on the final restart. The whole run is one chunk if merge_freq < 0.
+    The per-restart files are moved to OUTPUT/.tmp, merged there and written back
+    to OUTPUT as <handle>.<alias>_<nn>.nc, with nn counting chunks from 1 and
+    zero-padded to at least two digits (_01, ..., _99, _001, ...); a single chunk
+    has no suffix. Chunks are recorded in state.merged_files before they are
+    written, so a rerun finishes only the missing ones.
     """
-    output_dir = Path(output_dir)
-    segment_dir = output_dir / "seg"
-    current = sorted(
-        {(stream_family(stream), segment_index(stream)) for stream in streams}
-    )
-    promoted: list[tuple[Path, str]] = []
+    size = state.total_restarts if state.merge_freq < 0 else state.merge_freq
+    width = max(2, len(str(-(-state.total_restarts // size))))
+    tmp = state.output / ".tmp"
+    tmp.mkdir(exist_ok=True)
 
-    for handle, seg in current:
-        for path in segment_dir.glob(f"{handle}.*.nc"):
-            parsed = parse_segment(path, handle)
-            if parsed is None:
-                continue
-            idx, group = parsed
-            if idx != seg:
-                continue
-            alias = group_alias(group, n_nests)
-            target = output_dir / segment_name(handle, seg, alias)
-            os.replace(path, target)
-            promoted.append((target, alias))
+    for path in sorted(state.output.glob("*.nc")):
+        is_part = re.fullmatch(r".+\.(global|regional|nest\d+)_\d+", path.stem)
+        if is_part and path.name not in state.merged_files:
+            path.replace(tmp / path.name)
 
-    return promoted
+    chunks: dict[tuple[str, int], list[Path]] = {}
+    for path in sorted(tmp.glob("*.nc")):
+        prefix, n = path.stem.rsplit("_", 1)
+        chunks.setdefault((prefix, (int(n) - 1) // size + 1), []).append(path)
 
+    for (prefix, chunk), inputs in chunks.items():
+        tag = "" if size >= state.total_restarts else f"_{chunk:0{width}d}"
+        target = state.output / f"{prefix}{tag}.nc"
 
-def merge_outputs(
-    output_dir: Path,
-    streams: list,
-    n_nests: int,
-    restart_no: int,
-    total_restarts: int,
-    merge_freq: int,
-) -> list[tuple[Path, str]]:
-    """Finalize per-restart regridded files according to merge_freq.
+        if target.name not in state.merged_files:
+            state.merged_files.append(target.name)
+            save_fv3_state()
+        if not target.exists():
+            merge_files(inputs, target)
+        add_static_fields(target, prefix.rsplit(".", 1)[1])
+        for path in inputs:
+            path.unlink()
 
-    merge_freq == 0 publishes each restart as it completes. Otherwise nothing
-    is written until the final restart, when all segments are concatenated in
-    chunks of merge_freq restarts (the whole run if merge_freq < 0) and named
-    <handle>.<alias>_<nn>.nc, zero-padded to the width of the chunk count
-    (at least 2). A single chunk is untagged.
-
-    Each chunk gets its static fields and is recorded in state.merged_files
-    before its seg inputs are deleted, which bounds the extra storage to one
-    chunk. A rerun skips recorded chunks, whose inputs may be gone.
-
-    Returns the final files of this call as (path, group alias).
-    """
-    if merge_freq == 0:
-        promoted = promote_segment_outputs(output_dir, streams, n_nests)
-        for path, alias in promoted:
-            add_static_fields(path, alias)
-        return promoted
-
-    if restart_no != total_restarts - 1:
-        return []
-
-    size = total_restarts if merge_freq < 0 else merge_freq
-    n_chunks = -(-total_restarts // size)
-    output_dir = Path(output_dir)
-    handles = list(dict.fromkeys(stream_family(s) for s in streams))
-    merged: list[tuple[Path, str]] = []
-
-    for handle in handles:
-        chunks: dict[tuple[str, int], list[tuple[int, Path]]] = {}
-
-        for path in (output_dir / "seg").glob(f"{handle}.*.nc"):
-            parsed = parse_segment(path, handle)
-            if parsed is None:
-                continue
-            idx, group = parsed
-            chunks.setdefault((group, idx // size), []).append((idx, path))
-
-        for (group, chunk), items in sorted(chunks.items()):
-            alias = group_alias(group, n_nests)
-            tag = "" if n_chunks == 1 else f"_{restart_tag(chunk + 1, n_chunks)}"
-            target = output_dir / f"{handle}.{alias}{tag}.nc"
-
-            if target.name not in state.merged_files:
-                inputs = [path for _, path in sorted(items)]
-                merge_files(inputs, target)
-                add_static_fields(target, alias)
-                state.merged_files.append(target.name)
-                save_fv3_state()
-                for path in inputs:
-                    path.unlink()
-
-            merged.append((target, alias))
-
-    return merged
+    shutil.rmtree(tmp)
 
 
 def post_process(ds: xr.Dataset, data_attrs: dict, dim_attrs: dict) -> xr.Dataset:
@@ -511,8 +374,7 @@ def call_fregrid(
     input_mosaic: Path,
     nx: int,
     ny: int,
-    stream: str,
-    output_file: str,
+    handle: str,
     step: float,
     lon_begin: float,
     lon_end: float,
@@ -526,20 +388,15 @@ def call_fregrid(
     if not Path(input_mosaic).exists():
         raise FileNotFoundError(f"Input mosaic file {input_mosaic} does not exist.")
 
-    if not Path(output_file).parent.exists():
-        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    stream = f"{handle}.{state.restart_no:02d}"
+    tiles_type = "global" if name == "GLOBAL" else "nest"
+    input_file = stream if name == "GLOBAL" else f"{stream}{static_suffix}"
+    hist_ds_file = state.hist / f"{stream}{static_suffix}.nc"
 
-    stream_path = Path(stream)
-
-    if name == "GLOBAL":
-        tiles_type = "global"
-        input_file = stream_path.name
-        hist_ds_file = state.hist / f"{input_file}.tile6.nc"
-
-    else:  # NEST or REGIONAL: one tile, no tile suffix for a regional domain
-        tiles_type = "nest"
-        input_file = stream_path.stem  # removes .nc
-        hist_ds_file = state.hist / f"{input_file}.nc"
+    # Per-restart files stay in OUTPUT; merge_outputs replaces them at the end.
+    width = max(2, len(str(state.total_restarts)))
+    output_file = state.output / f"{handle}.{alias}_{state.restart_no + 1:0{width}d}.nc"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
 
     with xr.open_dataset(hist_ds_file) as ds:
         data_vars, other_vars = horizontal_fields(ds)
@@ -622,13 +479,16 @@ def call_fregrid(
         }
 
         # Segments are final files only when merging is disabled.
-        pack = state.pack_output and get_merge_freq() == 0
+        pack = state.pack_output and state.merge_freq == 0
         ds.to_netcdf(output_file, encoding=pack_encoding(ds, True) if pack else None)
+
+    if state.merge_freq == 0:
+        add_static_fields(output_file, alias)
 
     shutil.rmtree(state.tmp / "fregrid")
 
 
-def regrid_global_tiles(streams: list, c_res: int):
+def regrid_global_tiles(handles: list, c_res: int):
     if state.gtype == "nest":
         g_input_mosaic = state.case_dir / "GRID" / f"C{c_res}_coarse_mosaic.nc"
     else:
@@ -644,20 +504,12 @@ def regrid_global_tiles(streams: list, c_res: int):
     nx = int(360 / step)
     ny = int(180 / step)
 
-    for stream in streams:
-        input_file = stream
-        output_file = (
-            state.output
-            / "seg"
-            / segment_name(stream_family(stream), segment_index(stream), "global")
-        )
-
+    for handle in handles:
         call_fregrid(
             g_input_mosaic,
             nx,
             ny,
-            input_file,
-            output_file,
+            handle,
             step,
             lon_begin,
             lon_end,
@@ -669,7 +521,7 @@ def regrid_global_tiles(streams: list, c_res: int):
         )
 
 
-def regrid_nest_tiles(streams: list, c_res: int):
+def regrid_nest_tiles(handles: list, c_res: int):
     if state.gtype != "nest":
         return
 
@@ -700,22 +552,12 @@ def regrid_nest_tiles(streams: list, c_res: int):
             log.error(f"Input mosaic file {input_mosaic} does not exist. Aborting!")
             sys.exit(1)
 
-        for stream in streams:
-            input_file = f"{stream}.nest{nest_idx:02d}.tile{tile}.nc"
-            output_file = (
-                state.output
-                / "seg"
-                / segment_name(
-                    stream_family(stream), segment_index(stream), f"tile{tile}"
-                )
-            )
-
+        for handle in handles:
             call_fregrid(
                 input_mosaic,
                 nx,
                 ny,
-                input_file,
-                output_file,
+                handle,
                 n_step,
                 lon_min,
                 lon_max,
@@ -727,7 +569,7 @@ def regrid_nest_tiles(streams: list, c_res: int):
             )
 
 
-def regrid_regional_tile(streams: list, c_res: int):
+def regrid_regional_tile(handles: list, c_res: int):
     """Regrid a standalone regional domain onto its lat-lon bounding box.
 
     The history is written on the compute domain, the halo-0 grid of
@@ -742,18 +584,12 @@ def regrid_regional_tile(streams: list, c_res: int):
     nx = max(1, int(np.round((lon_end - lon_begin) / step)))
     ny = max(1, int(np.round((lat_end - lat_begin) / step)))
 
-    for stream in streams:
-        output_file = (
-            state.output
-            / "seg"
-            / segment_name(stream_family(stream), segment_index(stream), "regional")
-        )
+    for handle in handles:
         call_fregrid(
             grid_file,
             nx,
             ny,
-            f"{stream}.nc",
-            output_file,
+            handle,
             step,
             lon_begin,
             lon_end,
@@ -768,24 +604,18 @@ def regrid_regional_tile(streams: list, c_res: int):
 def regrid():
     env_setup()
     load_variables()  # output names of the staged diag_table
-    streams = stream_handles()
-    # remove spec and static files from streams
-    streams = [s for s in streams if "spec" not in s and "static" not in s]
+    # remove spec and static files from the streams
+    handles = [h for h in state.diag_handles if "spec" not in h and "static" not in h]
     if state.gtype in ("regional_gfdl", "regional_esg"):
-        regrid_regional_tile(streams, state.c_res)
+        regrid_regional_tile(handles, state.c_res)
     else:
-        regrid_global_tiles(streams, state.c_res)
-        regrid_nest_tiles(streams, state.c_res)
+        regrid_global_tiles(handles, state.c_res)
+        regrid_nest_tiles(handles, state.c_res)
     shutil.rmtree(state.tmp / "regrid_weights", ignore_errors=True)
 
-    merge_outputs(
-        state.output,
-        streams,
-        state.n_nests,
-        state.restart_no,
-        state.total_restarts,
-        get_merge_freq(),
-    )
+    last = state.restart_no == state.total_restarts - 1
+    if last and state.merge_freq != 0:
+        merge_outputs()
 
     static_path = Path(state.case_dir) / "STATIC"
 
@@ -798,8 +628,9 @@ def regrid():
                 continue
             f.rename(dest)
 
-    if state.resubmit_idx == state.resubmit:
-        shutil.rmtree(Path(state.output) / "seg", ignore_errors=True)
+    if last:  # bookkeeping of the regridder is not archived with the state
+        state.merged_files = []
+        state.diag_handles = []
 
     state.regrid_progress = {"last": state.restart_no, "total": state.total_restarts}
     update_walltime()

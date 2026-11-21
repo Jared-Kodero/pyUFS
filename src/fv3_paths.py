@@ -71,10 +71,9 @@ def configure_directories(state: FV3State) -> dict:
             _clear(paths["hist"])
 
     else:
-        seg_dir = Path(paths["output"]) / "seg"
-        if seg_dir.is_dir() and any(seg_dir.iterdir()):
+        if any(Path(paths["output"]).glob("*.*_[0-9]*.nc")):
             raise RuntimeError(
-                f"{seg_dir} holds regridded output of earlier segments, which a cold "
+                f"{paths['output']} holds regridded output of earlier segments, which a cold "
                 + "start would delete. Run case_continue.sh to resume the case, or "
                 + "remove the case directory to start over."
             )

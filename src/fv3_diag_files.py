@@ -303,14 +303,6 @@ def staged_diag_table() -> AsciiDiagTable | YamlDiagTable | None:
     return None
 
 
-def stream_handles() -> list[str]:
-    """File names of the streams of the staged diag_table (HIST/<handle>.<nn>)."""
-    table = staged_diag_table()
-    if table is None:
-        raise FileNotFoundError(f"No diag_table staged in {paths['case_dir']}")
-    return table.stream_names()
-
-
 class _Variables(dict):
     """dict[str, str] of native field name to output name.
 
@@ -383,6 +375,7 @@ def update_yaml_diag(restart_no: int):
     table = YamlDiagTable(src)
     check_diag_fields(table)
     load_variables(table)
+    state.diag_handles = table.stream_names()
     table.data["title"] = str(state.description)
     table.data["base_date"] = f"{dt.year} {dt.month} {dt.day} {dt.hour} 0 0"
     for diag_file in table.data["diag_files"]:
@@ -410,6 +403,7 @@ def update_legacy_diag(restart_no: int):
     table = AsciiDiagTable(user_diag if user_diag.exists() else template_diag)
     check_diag_fields(table)
     load_variables(table)
+    state.diag_handles = table.stream_names()
 
     def tag(handle: str) -> str:
         return f"HIST/{handle}.{restart_no:02d}"
