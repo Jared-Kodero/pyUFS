@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import time
 from pathlib import Path
 from typing import Literal
@@ -13,7 +12,7 @@ from pyproj import Proj
 
 from fv3_runtime import log
 from fv3_state import save_fv3_state, state
-from fv3_utils import run_cmd
+from fv3_utils import find_tool, remove_path, run_cmd
 
 
 def wget(url: str, output_path: Path, attempts: int = 5) -> bool:
@@ -31,7 +30,7 @@ def wget(url: str, output_path: Path, attempts: int = 5) -> bool:
     # mid-download never leaves a truncated file that a rerun would reuse.
     partial = output_path.with_name(f".{output_path.name}.part")
     cmd = [
-        "/wget",
+        find_tool("wget"),
         "-q",
         "--no-check-certificate",
         "--tries=3",
@@ -232,8 +231,8 @@ def validate_hrrr_bounds(tile: int) -> str:
 def preprocess_only():
     files_to_rm = []
     for pattern in ["*.out", "shield.native", "*table*"]:
-        files_to_rm.extend(state.work_dir.glob(pattern))
-    subprocess.run(["rm", "-rf", *map(str, files_to_rm)], check=True)
+        files_to_rm.extend(state.case_dir.glob(pattern))
+    remove_path(*files_to_rm)
     state.resubmit_idx = 0
     state.restart_no = 0
     state.preprocess_only = False

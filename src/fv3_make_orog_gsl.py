@@ -2,9 +2,9 @@ from pathlib import Path
 
 import dask
 
-from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
+from fv3_runtime import get_launcher, log, require_fix_files, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def _run_make_orog_gsl(
@@ -60,14 +60,14 @@ def _run_make_orog_gsl(
             link.unlink(missing_ok=True)
             link.symlink_to(src)
 
-        cp(orog_gsl, ".")
+        copy_path(orog_gsl, ".")
 
         # Write grid_info.dat
         with open("grid_info.dat", "w") as f:
             f.write(f"{tile}\n{c_res}\n{halo}\n")
 
         with open("grid_info.dat", "r") as fin:
-            cmd = [f"{orog_gsl}"]
+            cmd = [*get_launcher(1, serial=True), f"{orog_gsl}"]
             result, msgs = run_cmd(cmd, stdin=fin, stdout=log_file, stderr=log_file)
 
         if result != 0:
@@ -76,7 +76,7 @@ def _run_make_orog_gsl(
 
         # Move outputs
         for nc in workdir.glob("C*oro_data_*.nc"):
-            cp(nc, f"{out_dir}/")
+            copy_path(nc, f"{out_dir}/")
 
         log.info(f"ORO_DATA FILES CREATED IN: {out_dir}")
         return list(out_dir.glob("C*oro_data_*.nc"))

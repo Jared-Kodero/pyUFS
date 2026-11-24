@@ -5,7 +5,7 @@ import f90nml
 
 from fv3_runtime import get_launcher, log, require_fix_files
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def _run_single_sfc_climo(
@@ -73,7 +73,7 @@ def _run_single_sfc_climo(
         if not f.exists():
             missing_files.append(f)
     if missing_files:
-        require_fix_files(missing_files, sub_dir="sfc_climo")
+        require_fix_files(missing_files)
 
     for f in [orog_dir_mdl / fn for fn in orog_files] + [mosaic_file_mdl]:
         if not f.exists():
@@ -102,7 +102,7 @@ def _run_single_sfc_climo(
         else:
             dest = out_dir / f"C{c_res}.{f.name}"
 
-        cp(f, dest)
+        copy_path(f, dest)
 
     written_files = []
 
@@ -119,7 +119,7 @@ def _run_single_sfc_climo(
         if dest.is_symlink() or dest.exists():
             dest.unlink()
 
-        cp(f, dest)
+        copy_path(f, dest)
         written_files.append(dest)
 
     if name.startswith("tile_") and grid_type == "nest" and halo > 0:
@@ -235,7 +235,7 @@ def run_sfc_climo_gen(
     if not orog_dir:
         orog_dir = fix_dir / "fix_fv3_gmted2010" / f"C{c_res}"
         if not orog_dir.exists():
-            require_fix_files([orog_dir], sub_dir="fix_fv3_gmted2010")
+            require_fix_files([orog_dir])
 
     local_cpus = len(os.sched_getaffinity(0))
 

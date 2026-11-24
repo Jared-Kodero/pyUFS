@@ -3,7 +3,7 @@ from pathlib import Path
 import dask
 import xarray as xr
 
-from fv3_runtime import log
+from fv3_runtime import get_launcher, log
 from fv3_state import state
 from fv3_utils import run_cmd
 
@@ -24,15 +24,22 @@ def _run_lakefrac(
     lake_cutoff: float,
     exec_dir: Path,
     log_file: Path,
+    local_state: dict | None = None,
 ) -> None:
     """Add lake_frac and lake_depth to one tile's orography (lakefrac)."""
+    state.update(local_state)
     cmd = [
+        *get_launcher(1, serial=True),
         str(Path(exec_dir) / "lakefrac"),
         f"{tile}",
         f"{c_res}",
         f"{topo}",
-        f"{lake_cutoff}",
     ]
+    if state.native_prepro_exe:
+        # lake status source, lake depth source, cutoff, binary_lake
+        cmd += ["GLDBV2", "GLDBV2", f"{lake_cutoff}", "0"]
+    else:
+        cmd.append(f"{lake_cutoff}")
     result, msgs = run_cmd(cmd, cwd=workdir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
@@ -125,6 +132,7 @@ def run_add_lakefrac(
             lake_cutoff,
             exec_dir,
             state.logs / f"add_lakefrac_tile{tile}.log",
+            state.to_dict(),
         )
         for tile in tiles
     ]

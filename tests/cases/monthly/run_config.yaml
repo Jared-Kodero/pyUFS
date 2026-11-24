@@ -25,4 +25,4 @@ n_split: [6]
 
 # No case diag_table: templates/diag_table.monthly is selected automatically.
 # Physics schemes are those of templates/input_nml.yaml; only the timing differs
-# (time step above, monthly profile in src/fv3_namelists.py).
+# (time step above; for month segments src/fv3_namelists.py only raises fhswr and fhlwr to 3600 s).

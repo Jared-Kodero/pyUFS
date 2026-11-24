@@ -10,6 +10,6 @@ conda deactivate >/dev/null 2>&1
 
 # The repository is located from this file's directory; the case itself is
 # read from the current working directory.
-UFS_UTILS_DIR="$(cd "$(dirname "$0")" && pwd)"
+PYUFS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-"$UFS_UTILS_DIR/launchers/case_submit.py"
+"$PYUFS_DIR/launchers/case_submit.py"

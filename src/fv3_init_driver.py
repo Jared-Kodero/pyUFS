@@ -1,27 +1,33 @@
 from __future__ import annotations
 
 import os
+import socket
 from pathlib import Path
 
 import pandas as pd
 
+import fv3_plugins
 from chgres_cube import run_chgres_cube
 from cpld_gridgen import gridgen_res, run_cpld_gridgen
+from fv3_diag_files import update_table_files
 from fv3_driver_grid import run_driver
 from fv3_ensemble_driver import ensemble_config
 from fv3_external_ic import init_external_ic
+from fv3_fixed_files import update_fixed_files
 from fv3_ic_data import preprocess_only
 from fv3_namelists import update_nml_configs
 from fv3_nesting import get_centers, nest_info, validate_nests
-from fv3_paths import configure_directories, paths
-from fv3_pes_config import calc_cpu_alloc
+from fv3_paths import CONTAINER_UFS_BIN_DIR, configure_directories, paths
+from fv3_pes_config import calc_cpu_alloc, get_grid_info
 from fv3_plot_grid import plot_grid
+from fv3_restart_driver import restart_driver, stage_restart, verify_restart_config
 from fv3_runscripts import gen_shield_run_sh
-from fv3_runtime import log, merged_run_config, to_list
+from fv3_runtime import load_run_config, log, to_list
 from fv3_state import compute_checksum, save_fv3_state, state
 from fv3_utils import (
     cres_to_deg,
     format_forecast_length,
+    get_allocated_nodes,
     parse_datetime,
     parse_resolution,
     require_minimum_cpus,
@@ -29,35 +35,44 @@ from fv3_utils import (
     segment_hours,
 )
 from global_cycle_driver import GLOBAL_GTYPES, run_surface_cycle
-from pamip_experiment import (
-    set_cold_start_surface,
-    stage_external_files,
-    validate_pamip_options,
-    write_boundary_files,
-)
 from regional_bc import BC_INTERVAL_HOURS
-from sm_perturbations import apply_sm_perturbations
+
+# Files the user may supply; logged with their full path when set.
+USER_FILES = {
+    "external_ic_dir": "External IC directory",
+    "ims_snow_file": "IMS snow file",
+    "ims_ice_file": "IMS ice file",
+    "five_min_ice_file": "Five-minute ice file",
+    "global_cycle_sst_file": "Global cycle SST file",
+    "global_cycle_ice_file": "Global cycle ice file",
+    "global_cycle_snow_file": "Global cycle snow file",
+}
 
 
 def _log_initial_state() -> None:
     log.info("Configuration file: %s", state.run_config)
     log.info("Case directory: %s", state.case_dir)
-    log.info("Current directory: %s", state.run_dir)
-    log.info("Working directory: %s", state.work_dir)
+    log.info("Submit directory: %s", state.submit_dir)
     log.info("Archive directory: %s", state.archive_dir)
     log.info("Fixed/static directory: %s", state.fix_src)
 
-    log_path = str(state.logs).replace(str(state.work_dir), str(state.case_dir))
-    log.info("Logs directory: %s", log_path)
+    log.info("Logs directory: %s", state.logs)
 
     if state.shield_exe:
         log.info("Model executable: %s", state.shield_exe)
     else:
         log.info("Model executable: container image (SHiELD)")
+    log.info("Preprocessing executables: %s", state.ufs_bin_dir)
+    log.info("Python executable: %s", state.python)
 
     log.info("Description: %s", state.description)
     log.info("Initial run mode selected")
-    log.info("Full Grid/IC regeneration will be performed.")
+    if state.generate_ic_data:
+        log.info("Full Grid/IC regeneration will be performed.")
+    else:
+        log.info(
+            "Grid and initial conditions are taken from external_ic_dir or the case directory."
+        )
 
     if state.preprocess_only:
         log.info(
@@ -92,12 +107,7 @@ def _log_initial_state() -> None:
     log.info("Grid type: %s", state.gtype)
     log.info("Global cubed-sphere resolution: C%s", state.c_res)
 
-    for tile in range(1, 7):
-        log.info(
-            "Global tile %s resolution: %.2f km",
-            tile,
-            state.res_km[0],
-        )
+    log.info("Global tiles 1-6 resolution: %.2f km", state.res_km[0])
 
     if state.gtype == "nest":
         for message in nest_info:
@@ -109,8 +119,14 @@ def _log_initial_state() -> None:
     log.info("Target longitude: %s", state.target_lon)
     log.info("Target latitude: %s", state.target_lat)
 
+    for key, label in USER_FILES.items():
+        if state[key]:
+            path = Path(os.path.expandvars(str(state[key]))).expanduser().resolve()
+            modified = pd.Timestamp(path.stat().st_mtime, unit="s")
+            log.info("%s: %s (%s)", label, path, modified.strftime("%Y-%m-%d"))
 
-def validate_ufs_utils_options() -> None:
+
+def validate_pyufs_options() -> None:
     """Check the global_cycle, emcsfc and cpld_gridgen settings (section 5a)."""
     for flag, needs in (
         ("run_emcsfc_snow", ("ims_snow_file",)),
@@ -133,7 +149,10 @@ def validate_ufs_utils_options() -> None:
         "ims_ice_file",
         "five_min_ice_file",
     ):
-        if state[key] and not Path(os.path.expandvars(str(state[key]))).exists():
+        if (
+            state[key]
+            and not Path(os.path.expandvars(str(state[key]))).expanduser().exists()
+        ):
             raise FileNotFoundError(f"{key} not found: {state[key]}")
     for flag in ("run_global_cycle", "run_cpld_gridgen"):
         if state[flag] and state.gtype not in GLOBAL_GTYPES:
@@ -143,18 +162,28 @@ def validate_ufs_utils_options() -> None:
 
 
 def _load_initial_state() -> None:
-    require_minimum_cpus()
 
     runtime_env = runtime_env_vars()
-    runtime_config_path = Path(paths["run_dir"]) / "run_config.yaml"
-    merged_config = merged_run_config()
+    runtime_config_path = Path(paths["submit_dir"]) / "run_config.yaml"
+    merged_config = load_run_config()
 
+    plugins_file = merged_config.pop("plugins_config", None)
     state.clear()
     state.update(merged_config)
     # Checked by every restart segment, so edits to the grid or start-time
     # keys of run_config.yaml after the cold start are caught.
     state.config_checksum = compute_checksum(merged_config)
     state.update(runtime_env)
+    # case_submit.py checked that the set paths exist. Unset shield_exe runs the
+    # container; unset ufs_bin_dir uses the UFS_UTILS in the preprocess image.
+    state.shield_exe = (
+        os.path.expandvars(state.shield_exe) if state.shield_exe else None
+    )
+    # A set ufs_bin_dir means native UFS_UTILS (newer interfaces), else the container.
+    state.native_prepro_exe = bool(state.ufs_bin_dir)
+    _ufs_bin_dir = state.ufs_bin_dir or CONTAINER_UFS_BIN_DIR
+    state.ufs_bin_dir = Path(os.path.expandvars(str(_ufs_bin_dir)))
+
     for key in ("init_datetime", "run_length"):
         if state[key] is None:
             raise ValueError(f"run_config.yaml must set {key}")
@@ -171,15 +200,21 @@ def _load_initial_state() -> None:
     state.init_datetime = state.ic_cycle + pd.Timedelta(hours=state.forecast_hour)
     state.run_config = runtime_config_path
     state.c_res = parse_resolution(state.c_res)
+    if plugins_file:
+        plugins_path = (Path(os.path.expandvars(plugins_file)).expanduser()).resolve()
+        state.plugins = fv3_plugins.load_plugins(plugins_path)
+        log.info("Plugins file: %s", plugins_path)
     # Fail before grid and IC generation; files are written after preprocessing.
-    validate_pamip_options()
+    fv3_plugins.validate()
     if state.generate_ic_data:
-        validate_ufs_utils_options()
+        validate_pyufs_options()
     state.continue_run = False
     state.warm_start = False
     state.restart_no = 0
     state.resubmit_idx = 0
     state.total_restarts = state.resubmit + 1
+    state.merged_files = []
+    state.node_list = {0: get_allocated_nodes()}
 
     state.total_run_hours = sum(
         segment_hours(
@@ -263,13 +298,25 @@ def _load_initial_state() -> None:
                 )
             get_centers(state)
 
+    available_cpus = require_minimum_cpus()
+    if available_cpus < 32 and not os.environ.get("CASE_MEMORY_FLAG"):
+        state.preprocess_dask_scheduler = "synchronous"
+    else:
+        state.preprocess_dask_scheduler = "processes"
+
+    state.preprocess_node_cpu_count = available_cpus
+    state.preprocess_node_hostname = socket.gethostname()
+
     _log_initial_state()
 
 
 def init_driver() -> None:
     _load_initial_state()
 
-    os.chdir(state.work_dir)
+    restart_dir = os.environ.get("CASE_RESTART_DIR")
+    restart_state = os.environ.get("CASE_RESTART_STATE")
+    if restart_dir:
+        verify_restart_config(Path(restart_state))
 
     if not state.generate_ic_data:
         init_external_ic()
@@ -303,10 +350,11 @@ def init_driver() -> None:
             dely=state.dely,
             orog_dir=state.fix_src / "orog",
             tmp=state.tmp,
-            exe_dir=state.ufs_exe,
+            exe_dir=state.ufs_bin_dir,
             fix_dir=state.fix_src,
         )
 
+        get_grid_info(state.tmp / "grid")
         run_chgres_cube()
         run_surface_cycle()
         run_cpld_gridgen()
@@ -320,16 +368,17 @@ def init_driver() -> None:
             return
 
     state.checksum = compute_checksum(state)
-    os.chdir(state.work_dir)
     calc_cpu_alloc(state.grid)
-    apply_sm_perturbations()
-    stage_external_files()
-    pamip_fields = write_boundary_files()
-    if pamip_fields is not None and state.restart_no == 0:
-        set_cold_start_surface(pamip_fields)
     update_nml_configs()
+    update_table_files()
+    update_fixed_files()
     gen_shield_run_sh()
+    fv3_plugins.do_plugins(restart=False)
 
     save_fv3_state()
-
+    log.info(f"Total PEs needed for run: {state.total_pes}")
     log.info("Preprocessing complete")
+
+    if restart_dir:
+        stage_restart(Path(restart_dir), Path(restart_state))
+        restart_driver()

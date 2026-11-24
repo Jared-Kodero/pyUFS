@@ -13,7 +13,7 @@ from fv3_ic_data import get_ic_data, validate_hrrr_bounds
 from fv3_runtime import get_launcher, read_namelist
 from fv3_stage_data import stage_files
 from fv3_state import state
-from fv3_utils import cp, env_setup, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 log = logging.getLogger("PREPROCESS")
 
@@ -150,7 +150,7 @@ def load_block(domain: str) -> dict:
     the built-in default applies.
     """
     for name in config_candidates(domain):
-        path = state.run_dir / name
+        path = state.submit_dir / name
         if path.exists():
             block = read_namelist(path)
             if set(block) == {"config"} and isinstance(block["config"], dict):
@@ -393,7 +393,7 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
     # Stage this domain's mosaic onto the shared canonical path.
     canonical = Path(cfg.mosaic_file_target_grid)
     canonical.unlink(missing_ok=True)
-    cp(spec.source_mosaic, canonical)
+    copy_path(spec.source_mosaic, canonical)
 
     # Record which model supplied each field group.
     source = state.ic_source.setdefault(domain, {"atm": None, "sfc": None, "nst": None})
@@ -411,7 +411,7 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
     with open(tmp_dir / "fort.41", "w") as fh:
         f90nml.write({"config": config}, fh)
 
-    cmd = [*get_launcher(n_cpus), str(state.ufs_exe / "chgres_cube")]
+    cmd = [*get_launcher(n_cpus), str(state.ufs_bin_dir / "chgres_cube")]
     result, msgs = run_cmd(cmd, cwd=tmp_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)
@@ -420,9 +420,19 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
     return tmp_dir
 
 
-def run_chgres_cube() -> None:
-    env_setup()
+def domain_ranks(domain: str, n_cpus: int) -> int:
+    """MPI ranks for one domain.
 
+    A nest is a single tile split into 1 x N strips, and ESMF cannot regrid a
+    decomposition element narrower than 2 cells, so keep >= 3 rows per rank.
+    """
+    if not domain.startswith("nest"):
+        return n_cpus
+    ny = state.npy[int(domain[4:]) - 1] - 1
+    return max(1, min(n_cpus, ny // 3))
+
+
+def run_chgres_cube() -> None:
     if not state.levels:
         raise ValueError("Vertical levels must be specified in run_config.yaml")
 
@@ -431,7 +441,12 @@ def run_chgres_cube() -> None:
     (state.tmp / "chgres_cube" / "mosaics").mkdir(parents=True, exist_ok=True)
 
     specs = build_run_specs()
-    n_cpus = min(60, (len(os.sched_getaffinity(0)) // 6) * 6)
+
+    if state.native_prepro_exe:
+        n_cpus = (state.n_cpus // 6) * 6
+
+    else:
+        n_cpus = min(60, (len(os.sched_getaffinity(0)) // 6) * 6)
 
     log.info("Running chgres_cube to generate initial conditions")
 
@@ -455,7 +470,7 @@ def run_chgres_cube() -> None:
 
     try:
         for spec in specs:
-            run_chgres(spec, n_cpus)
+            run_chgres(spec, domain_ranks(spec.domain, n_cpus))
 
         if is_regional:
             regional = next(spec for spec in specs if spec.domain == "regional")

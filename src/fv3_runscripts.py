@@ -2,29 +2,19 @@ import logging
 import os
 from pathlib import Path
 
+from fv3_runtime import SRUN
 from fv3_state import state
 
 log = logging.getLogger("PREPROCESS")
 
 
 def gen_shield_run_sh() -> None:
-    slurm_mpi_launcher = [
-        "srun",
-        "--mpi=pmix",
-        "--distribution=block:block",
-        "--cpu-bind=cores",
-        "--ntasks-per-core=1",
-        "--kill-on-bad-exit=1",
-        "-n",
-    ]
     mpi_launcher = ["mpirun", "-np"]
     native_modules = state.modules
-    native_launcher = " ".join(slurm_mpi_launcher)
+    native_launcher = " ".join([*SRUN, "-n"])
     container_launcher = " ".join(mpi_launcher)
 
     gen_shield_container_scripts(native_modules, native_launcher, container_launcher)
-    if state.restart_no == 0:
-        log.info(f"Total PEs needed for run: {state.total_pes}")
 
 
 def gen_shield_container_scripts(
@@ -34,8 +24,10 @@ def gen_shield_container_scripts(
         raise RuntimeError(
             "Set `shield_exe` in run_config.yaml when running in multi-node mode."
         )
-    os.system(f"mkdir -p {state.logs}/preprocess")
-    os.system(f"mv {state.logs}/*.log {state.logs}/preprocess/")
+    preprocess_logs = state.logs / "preprocess"
+    preprocess_logs.mkdir(parents=True, exist_ok=True)
+    for log_path in state.logs.glob("*.log"):
+        log_path.replace(preprocess_logs / log_path.name)
 
     restart_no = state.get("restart_no", 0)
     log_file = state.logs / "shield" / f"shield_{restart_no:03d}.log"
@@ -52,7 +44,7 @@ def gen_shield_container_scripts(
             "launcher": native_launcher,
         }
 
-        (state.work_dir / "shield.native").touch()
+        (state.case_dir / "shield.native").touch()
 
     else:
         cfg = {
@@ -63,7 +55,7 @@ def gen_shield_container_scripts(
         }
 
     write_shield_sh(
-        exit_code=state.work_dir / "exit_code",
+        exit_code=state.case_dir / "exit_code",
         **cfg,
     )
 
@@ -71,8 +63,8 @@ def gen_shield_container_scripts(
 def write_shield_sh(
     exe: str, log_file: Path, exit_code: Path, modules: str, launcher: str
 ) -> None:
-    template_path = state.ufs_utils / "launchers" / "shield.launcher"
-    output_path = state.work_dir / "shield"
+    template_path = state.pyufs / "launchers" / "shield.launcher"
+    output_path = state.case_dir / "shield"
 
     # read template
     with open(template_path, "r") as f:
@@ -85,7 +77,7 @@ def write_shield_sh(
 
     # replace placeholders
     content = content.replace("__MODULES__", str(modules))
-    content = content.replace("__WORK_DIR__", str(state.work_dir))
+    content = content.replace("__CASE_DIR__", str(state.case_dir))
     content = content.replace("__LAUNCHER__", str(launcher))
     content = content.replace("__TOTAL_PES__", str(state.total_pes))
     content = content.replace("__EXECUTABLE__", str(exe))

@@ -117,7 +117,7 @@ def classify_nesting(params: FV3State) -> FV3State:
 
 def gen_global_nest_parent(c_res: int, grid_dir: Path | None = None) -> Path:
     log_file = state.logs / "make_global_grid.log"
-    make_hgrid = state.ufs_exe / "make_hgrid"
+    make_hgrid = state.ufs_bin_dir / "make_hgrid"
 
     nlon = c_res * 2
 
@@ -140,7 +140,7 @@ def gen_global_nest_parent(c_res: int, grid_dir: Path | None = None) -> Path:
     ]
 
     if grid_dir is None:
-        grid_dir = state.tmp / ".tmp_make_grid"
+        grid_dir = state.tmp / "make_grid"
         grid_dir.mkdir(parents=True, exist_ok=True)
 
     result, msgs = run_cmd(cmd, cwd=grid_dir, stdout=log_file, stderr=log_file)
@@ -244,7 +244,6 @@ def get_nest_indices(
     tile_idx: int,
     grid_dir: Path | None = None,
     parent_tile: int | None = None,
-    i_refine_ratio: int | None = None,
     tile: int | None = None,
 ) -> dict:
     """Bracket nest `tile_idx` (0-based) on its parent tile and record it.

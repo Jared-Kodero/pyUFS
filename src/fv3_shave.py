@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fv3_runtime import log
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def run_single_shave(
@@ -48,8 +48,8 @@ def run_single_shave(
     out_orog_final = tmp_ic_dir / f"C{c_res}_oro_data.tile{tile}.{halo_tag}.nc"
     out_grid_final = tmp_ic_dir / f"C{c_res}_grid.tile{tile}.{halo_tag}.nc"
 
-    cp(out_orog, out_orog_final)
-    cp(out_grid, out_grid_final)
+    copy_path(out_orog, out_orog_final)
+    copy_path(out_grid, out_grid_final)
 
 
 def run_shave(
@@ -67,8 +67,8 @@ def run_shave(
     """
     Crop FV3 regional grid and orography files using the external `shave` utility.
 
-    This function runs the `shave` executable three times—once each for
-    `(halo + 1)`, `halo`, and `halo = 0`—to create successively smaller
+    This function runs the `shave` executable three times, once each for
+    `(halo + 1)`, `halo`, and `halo = 0`, to create successively smaller
     versions of regional FV3 input files. These cropped files are used for
     boundary condition generation, model initialization, and runtime
     configurations that require different halo extents.
@@ -113,4 +113,4 @@ def run_shave(
     run_single_shave(0, idim, jdim, c_res, tile, cmd, tmp_dir, tmp_ic_dir, log_file)
 
     for mosaic in grid_dir.glob(f"C{c_res}_*mosaic.nc"):
-        cp(mosaic, tmp_dir)
+        copy_path(mosaic, tmp_dir)

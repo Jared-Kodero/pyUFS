@@ -2,9 +2,9 @@ from pathlib import Path
 
 import dask
 
-from fv3_runtime import log, require_fix_files, staged_files, tmp_cwd
+from fv3_runtime import get_launcher, log, require_fix_files, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def _run_make_orog(
@@ -56,20 +56,20 @@ def _run_make_orog(
     }
     missing_files = [f for f in files if not f.exists()]
     if missing_files:
-        require_fix_files(missing_files, sub_dir="orog")
+        require_fix_files(missing_files)
 
     # Prepare working directory
     with tmp_cwd(workdir):
         for src, dst in files.items():
-            cp(src, dst)
+            copy_path(src, dst)
 
         if inorogexist:
-            cp(inputorog, ".")
+            copy_path(inputorog, ".")
 
         if not is_latlon:
-            cp(grid_dir / out_grid, ".")
+            copy_path(grid_dir / out_grid, ".")
 
-        cp(orog, ".")
+        copy_path(orog, ".")
 
         # Input file
         mtnres, jcap, NR, NF1, NF2, efac, blat = 1, 0, 0, 0, 0, 0, 0
@@ -79,10 +79,12 @@ def _run_make_orog(
             )
             f.write(f"{out_grid}\n")
             f.write(f"{orogfile}\n")
+            # mask_only and merge_file, read by UFS_UTILS 1.12 (ignored by the container's)
+            f.write(".false.\nnone\n")
 
         # Run executable
         with open("INPS", "r") as fin:
-            cmd = [f"{orog}"]
+            cmd = [*get_launcher(1, serial=True), f"{orog}"]
 
             result, msgs = run_cmd(cmd, stdin=fin, stdout=log_file, stderr=log_file)
 
@@ -96,7 +98,7 @@ def _run_make_orog(
         else:
             outfile = f"oro.C{c_res}.tile{tile}.nc"
 
-        cp("out.oro.nc", out_dir / outfile)
+        copy_path("out.oro.nc", out_dir / outfile)
 
 
 def run_make_orog(
@@ -158,11 +160,10 @@ def run_make_orog(
 
     reused = staged_files(mod_dir)
     if reused:
-        src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
-        log.info(f"Using existing orography files from {src}")
+        log.info(f"Using existing orography files from {mod_dir}")
         Path(out_dir).mkdir(parents=True, exist_ok=True)
         for file in reused:
-            cp(file, out_dir / file.name)
+            copy_path(file, out_dir / file.name)
         return
 
     args = [

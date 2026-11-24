@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Mirror the NOAA fix datasets (am, orog, sfc_climo) and the Cartopy data into fix/.
+
+    python tools/update_fix.py [--dest /path/to/fix] [--skip-carto]
+
+The newest version directory of each dataset is copied to fix/<dataset>; the raw download
+is kept in .fix_raw next to fix/ until the copy is done. Pre-generated
+grid directories are removed, and the CO2 and volcanic aerosol files in fix/am are linked
+without their global_ prefix.
+"""
+
 import argparse
 import os
 import shutil
@@ -35,8 +45,6 @@ SYMLINK_TARGETS = (
     "global_co2monthlycyc",
     "global_volcanic_aerosols",
 )
-
-DRY_RUN = False
 
 
 # =============================
@@ -79,30 +87,27 @@ def copy_latest_versions(fix_raw: Path, fix_dir: Path) -> None:
         src = base / latest
         dest = fix_dir / d
 
-        if dest.exists():
-            shutil.rmtree(dest)
-
-        shutil.copytree(src, dest)
+        new = dest.with_name(f".{d}.new")
+        shutil.rmtree(new, ignore_errors=True)
+        shutil.copytree(src, new)
+        shutil.rmtree(dest, ignore_errors=True)
+        new.rename(dest)
 
 
 def remove_pre_generated(fix_root: Path) -> None:
     for path in fix_root.rglob("*"):
-        if path.is_dir() and path.name in PRE_GENERATED and not DRY_RUN:
+        if path.is_dir() and path.name in PRE_GENERATED:
             shutil.rmtree(path)
 
 
-def safe_recreate_symlink(src: Path, dest: Path) -> None:
+def recreate_symlink(src: Path, dest: Path) -> None:
+    """Make `dest` a relative link to `src` when `src` is a .txt file."""
+    if dest.is_dir() and not dest.is_symlink():
+        return
     if dest.exists() or dest.is_symlink():
-        if dest.is_file() or dest.is_symlink():
-            if not DRY_RUN:
-                dest.unlink()
-        else:
-            return
-
+        dest.unlink()
     if src.suffix == ".txt":
-        rel_target = os.path.relpath(src, start=dest.parent)
-        if not DRY_RUN:
-            dest.symlink_to(rel_target)
+        dest.symlink_to(os.path.relpath(src, start=dest.parent))
 
 
 def recreate_symlinks(fix_root: Path) -> None:
@@ -115,7 +120,7 @@ def recreate_symlinks(fix_root: Path) -> None:
             continue
 
         dest = fixed_am / f.name.replace("global_", "", 1)
-        safe_recreate_symlink(f, dest)
+        recreate_symlink(f, dest)
 
 
 # =============================
@@ -141,17 +146,7 @@ def download_cartopy_data(output_dir: Path) -> None:
 
     print(f"Downloading Cartopy data to: {output_dir}")
     subprocess.run(command, check=True, cwd=output_dir)
-
-    archive_base = output_dir.parent / output_dir.name
-    archive = shutil.make_archive(
-        base_name=str(archive_base),
-        format="gztar",
-        root_dir=output_dir.parent,
-        base_dir=output_dir.name,
-    )
-
     print(f"\nDownload complete: {output_dir}")
-    print(f"Transfer archive:  {archive}")
 
 
 def main() -> None:
@@ -169,13 +164,12 @@ def main() -> None:
 
     print("=== Starting SHiELD FIX directory update ===")
 
-    pwd = Path.cwd()
-    fix_raw = pwd / ".fix_raw"
     fix_dir = (
         args.dest.expanduser().resolve()
         if args.dest
         else link_parent_dir("fix", create=True)
     )
+    fix_raw = fix_dir.with_name(".fix_raw")  # raw download, next to fix/ and not in the repo
 
     fix_raw.mkdir(exist_ok=True)
     fix_dir.mkdir(parents=True, exist_ok=True)
@@ -186,10 +180,6 @@ def main() -> None:
 
     remove_pre_generated(fix_dir)
     recreate_symlinks(fix_dir)
-
-    # delete .fix_raw if it still exists
-    if fix_raw.exists():
-        shutil.rmtree(fix_raw)
 
     print("=== FIX update complete ===")
 

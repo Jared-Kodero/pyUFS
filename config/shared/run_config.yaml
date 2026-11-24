@@ -1,0 +1,155 @@
+# SHiELD run configuration: defaults shared by all releases.
+# config/<release>/run_config.yaml includes this file and sets the keys that depend on
+# the release (shield_release, shield_exe, dt_cpld). Case-local run_config.yaml overrides
+# these defaults; unknown keys are rejected.
+include: null # Additional run configuration files to include; can be a string or a list of strings.
+
+# 0. Job environment
+# Paths expand variables such as $USER and $HOME.
+fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Writable static-data directory; missing files are downloaded here.
+case_root: /jobtmp/$USER/gfdl_shield # Case and run directory (<parent>/<case_name>); set it to scratch or any shared path to keep cases.
+archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive # Archive base directory.
+archive_subdir: null # Directory below archive_root that groups cases, e.g. hindcast; required when archive_data is true. Outputs go to <archive_root>/<archive_subdir>/<parent>/<case_name>.
+ufs_bin_dir: /oscar/data/deeps/shared/gfdl_shield/bin/preprocessing # Directory of the UFS_UTILS executables (chgres_cube, orog, ...); null uses the preprocess image. A set path must exist and selects native preprocessing and regridding (conda_env/pyufs and modules, no container; see setup_all.sh).
+shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model container.
+preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing container.
+containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Container install directory; image paths must point here.
+container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Existing paths mounted in containers; include all workflow directories.
+modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules for the native shield_exe and, when ufs_bin_dir is set, for preprocessing and regridding.
+
+# 1. SLURM submission
+# n_cpus is rounded down to a multiple of n_nodes
+# Multi-node jobs need a native shield_exe.
+constraint_node: null # SLURM --constraint; null omits it.
+exclusive_node: false # Request an exclusive node.
+walltime: 24 # Hours per job segment.
+n_nodes: 4 # SLURM node count.
+n_cpus: 192 # Total MPI tasks; rounded down to a multiple of n_nodes.
+partition: batch # SLURM partition.
+n_cpus_per_task: 1 # CPUs per task.
+job_mem_gb: null # Total job memory [GB]; null uses the scheduler default (also when <= 2 GB per task).
+sbatch_options: "" # Additional sbatch flags, passed unchanged.
+logfile: shield_driver # Driver log basename; ".log" is added (a trailing ".log" is ignored); ensembles add a member number.
+
+# 2. Case metadata
+case_name: null # Case ID; null uses the directory name.
+description: # Optional experiment label.
+fv3_debug: false # Enable verbose FV3 diagnostics.
+archive_data: true # Archive outputs after the final segment.
+merge_freq: -1 # -1: merge at end; 0: no merging; n: merge every n segments.
+
+# Diagnostics
+# Use a case-local diag_table, or diag_table.yaml with use_modern_diag.
+# YAML tables must match the build.
+# Incomplete intervals at segment ends are dropped; align segment lengths.
+# For monthly means: start 00Z on day 1, use month-length segments, and average
+# each field (legacy: .true.; YAML: reduction: average).
+# Set fhzero = fdiag for averaged precipitation. Both use
+# diagnostic_interval_hours (default 1 h; 6 h recommended for monthly means).
+# fdiag/fhzero must be multiples of dt_atmos; input.yaml may override them.
+# Monthly/yearly segments use fhswr = fhlwr >= 3600 s.
+# Monthly C96 guidance: dt_atmos=600 s, k_split=2, n_split=6.
+use_modern_diag: false # Use case-local diag_table.yaml (required); data_table.yaml is optional.
+pack_output: false # Pack final output as int16 with scale_factor/add_offset.
+diagnostic_interval_hours: null # Physics diagnostic interval [h]; sets both fdiag and fhzero.
+fv3_print_freq: 0 # FV3 diagnostics: 0 off, -1 every step, positive value in hours.
+
+# 3. Execution control
+# Model start = init_datetime + forecast_hour.
+init_datetime: null # Required UTC IC cycle: YYYYMMDDHHZ; HH = 00, 06, 12, or 18.
+run_length: null # Required segment duration, in run_length_units.
+run_length_units: hours # hours | days | months | years; calendar units need start day <= 28.
+forecast_hour: 0 # IC lead [h]; regional runs require a multiple of 3.
+resubmit: 0 # Number of restarts; total segments = resubmit + 1.
+continue_run: false # Driver-managed; later segments restart from prior output.
+
+# 4. Ensemble configuration
+# Each member runs as a separate job with its own work directory and log.
+ensemble_run: false # Enable multi-member ensemble.
+n_ensembles: 0 # Number of members; >= 1 when ensemble_run is true.
+skip_ensembles: null # Member indices to skip, e.g. [1, 3, 5].
+
+# 5. Initial conditions and preprocessing
+# Generate grid/ICs from GFS/HRRR via chgres_cube; override source selection
+# with case-local chgres_cube.yaml.
+external_ic_dir: null # Pre-staged IC bundle when generate_ic_data is false.
+generate_ic_data: true # Generate grid and initial conditions.
+preprocess_only: false # Stage grid and ICs, then exit.
+preprocess_grid_only: false # Generate grid only; implies preprocess_only.
+preprocess_orog_only: false # Generate orography only; implies preprocess_only.
+
+# 5a. Surface analyses and coupled grids
+# These tools run during preprocessing of generated cold starts.
+run_global_cycle: false # Blend surface analyses into ICs (global/stretch/nest grids).
+global_cycle_sst_file: null # SST analysis [GRIB1]; null disables.
+global_cycle_ice_file: null # Sea-ice concentration analysis [GRIB1]; null disables.
+global_cycle_snow_file: null # Snow analysis [GRIB1]; null disables.
+global_cycle_vars: { FSNOL: -2.0, FSNOS: 99999.0 } # Additional NAMSFC CYCLVARS values.
+run_emcsfc_snow: false # Build IMS/AFWA snow analysis; requires run_global_cycle.
+ims_snow_file: null # IMS snow cover [GRIB1/2]; required for run_emcsfc_snow.
+afwa_snow_nh_file: null # Optional AFWA Northern Hemisphere snow depth.
+afwa_snow_sh_file: null # Optional AFWA Southern Hemisphere snow depth.
+afwa_snow_global_file: null # Optional AFWA global snow depth.
+run_emcsfc_ice_blend: false # Blend IMS/MMAB ice; requires global_cycle and NCEP grib_util.
+ims_ice_file: null # IMS ice cover [GRIB1/2]; required for ice blending.
+five_min_ice_file: null # MMAB 5-minute ice concentration [GRIB2]; required for blending.
+run_cpld_gridgen: false # Generate auxiliary MOM6/CICE6 grids (global only); SHiELD does not use them.
+cpld_gridgen_res: "100" # MOM6 grid: 500=5°, 100=1°, 050=0.5°, 025=0.25°.
+cpld_gridgen_postwgts: false # Also write rectilinear weights (requires NCO/ncremap).
+
+# 6. Horizontal grid
+# Approximate spacing: C96 100 km, C192 50 km, C384 25 km,
+# C768 13 km, C3072 3 km.
+c_res: C96 # Face resolution: C48, C96, C192, C384, C768, C1152, C3072.
+gtype: uniform # uniform | stretch | nest | regional_gfdl | regional_esg.
+target_lon: -96 # Grid center longitude [°] for stretch/regional_esg.
+target_lat: 35.0 # Grid center latitude [°] for stretch/regional_esg.
+stretch_factor: 1.0 # Schmidt factor; > 1 for stretch grids (larger = finer at target).
+
+# 6a. Nested grids (gtype: nest)
+# Contained boxes form telescoping nests; otherwise nests share a parent.
+# Telescoping ratios multiply (e.g. [4, 4, 2] gives ~3 km from C96).
+# Provide one bound per nest; the first box also defines regional_gfdl.
+refine_ratio: [3] # Per-nest refinement relative to parent; first also serves regional_gfdl.
+parent_tile: 6 # Parent tile (1–6); list allowed for sibling nests.
+halo: 3 # Boundary halo width; regional grids require 3.
+lon_min: null # Western nest bound(s) [°E]; crossing 0/180° is allowed.
+lon_max: null # Eastern nest bound(s) [°E].
+lat_min: null # Southern nest bound(s) [°N].
+lat_max: null # Northern nest bound(s) [°N].
+
+# 6b. Regional ESG grids (gtype: regional_esg)
+idim: 200 # Zonal model grid points.
+jdim: 200 # Meridional model grid points.
+delx: 0.0585 # Zonal supergrid spacing [°]; model spacing = 2 × delx.
+dely: 0.0585 # Meridional supergrid spacing [°]; model spacing = 2 × dely.
+
+# 7. Vertical grid and physics
+levels: 64 # Hybrid sigma-pressure levels.
+do_deep: false # Enable deep convection even where dx <= 4 km.
+
+# 8. Time stepping
+# Null values are chosen from resolution; the finest nest limits dt_atmos.
+# dt_dyn = dt_atmos/k_split; dt_acoustic = dt_atmos/(k_split*n_split).
+# k_split and n_split lists must have one entry per grid (global + nests).
+# Finer grids generally require smaller timesteps for CFL stability.
+dt_atmos: null # Atmospheric timestep [s]; null selects automatically.
+k_split: null # Remap splits per atmosphere step, ordered [global, nests...].
+n_split: null # Acoustic substeps per remap split, ordered [global, nests...].
+
+# 9. Surface and orography
+lake_cutoff: 0.2 # Lake/land fraction threshold.
+add_lake: false # Add lake fraction/depth (uniform/regional_gfdl); no lake model.
+make_gsl_orog: false # Generate GSL drag files; unused by SHiELD physics.
+
+# 10. Plugins
+# Optional modules in plugins/ are set in a separate YAML file: a mapping of plugin name
+# to its settings. A plugin runs only when its section is in the file.
+#   pamip:             PAMIP SST and sea-ice boundary conditions, slab ocean, CO2 year,
+#                      and the external SST, sea-ice and land-mask files
+#   sst_perturbation:  adds an SST anomaly to the climatology in use
+#   sm_perturbations:  perturbs the soil restart files
+#   derived:           user file of derived variables
+# Keys and examples: config/examples/plugins.yaml. The file is read at the cold start
+# and its content is stored in state.yaml, so later edits do not affect a running case.
+plugins_config: null # Path to the plugins file ($VAR and ~ expanded; a relative path is taken from the submit directory); null: no plugins.

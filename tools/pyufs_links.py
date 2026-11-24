@@ -1,10 +1,12 @@
-"""Keep pyUFS/bin and pyUFS/fix as symlinks to directories in the parent of pyUFS."""
+"""Keep pyUFS/bin, pyUFS/fix and pyUFS/conda_env as symlinks to directories in the parent of pyUFS.
+
+Run as a script it links conda_env."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+from utils import REPO
 
 
 def link_parent_dir(name: str, create: bool) -> Path:
@@ -33,3 +35,7 @@ def link_parent_dir(name: str, create: bool) -> Path:
         raise SystemExit(f"ERROR: {link} missing; link it with: ln -s ../{name} {link}")
     link.symlink_to(Path("..") / name)
     return target
+
+
+if __name__ == "__main__":
+    print(link_parent_dir("conda_env", create=False))

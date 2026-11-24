@@ -9,7 +9,7 @@ import pandas as pd
 
 from fv3_ic_data import get_ic_data
 from fv3_state import state
-from fv3_utils import rename
+from fv3_utils import move_path
 
 log = logging.getLogger("PREPROCESS")
 
@@ -294,7 +294,7 @@ def generate_boundary_files(base_config, source_mosaic, run_spec) -> None:
 
             produced = fallback[0]
 
-        rename(
+        move_path(
             produced,
             bc_dir / f"gfs_bndy.tile7.{fh:03d}.nc",
         )

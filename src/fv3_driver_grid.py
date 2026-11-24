@@ -11,7 +11,7 @@ from fv3_nesting import get_nest_indices
 from fv3_runtime import GRID_KEYS, OROGRAPHY_KEYS, get_newres, log, stage_for_reuse
 from fv3_shave import run_shave
 from fv3_state import save_fv3_state, state
-from fv3_utils import cp
+from fv3_utils import copy_path
 from sfc_climo_gen import run_sfc_climo_gen
 
 # Minimum number of regional grid points gained in each direction by widening
@@ -41,7 +41,7 @@ def _stage_and_exit(src: Path, kind: str) -> None:
     in IC/<kind> for the next run (fv3_runtime.staged_files) and exit."""
     dest = state.ic_data / kind
     stage_for_reuse(src, dest, OROGRAPHY_KEYS if kind == "orography" else GRID_KEYS)
-    path = str(dest).replace(str(state.work_dir), str(state.case_dir))
+    path = str(dest)
     state.preprocess_only = False
     state.preprocess_grid_only = False
     state.preprocess_orog_only = False
@@ -194,17 +194,17 @@ def run_driver(
         filter_topo_files = list((tmp / "filter_topo").glob("*.nc"))
 
         for f in grid_files + mosaic_files + filter_topo_files:
-            cp(f, tmp_ic_dir)
+            copy_path(f, tmp_ic_dir)
 
         if gtype == "nest":
             for tile in range(7, 7 + n_nests):
-                cp(tmp / "orog" / f"oro.C{c_res}.tile{tile}.nc", tmp_ic_dir)
+                copy_path(tmp / "orog" / f"oro.C{c_res}.tile{tile}.nc", tmp_ic_dir)
 
         if make_gsl_orog:
             # Only the GSL products; tmp/orog also holds the unfiltered oro.*
             # files, which must not replace the filtered global orography.
             for f in (tmp / "orog").glob(f"C{c_res}_oro_data_*.nc"):
-                cp(f, tmp_ic_dir)
+                copy_path(f, tmp_ic_dir)
 
         # --- Surface climatology ---
 
@@ -240,7 +240,6 @@ def run_driver(
                 tile_idx=0,  # single regional domain
                 grid_dir=None,
                 parent_tile=6,
-                i_refine_ratio=refine,
             )
 
             istart_nest = state.istart_nest[0]
@@ -400,7 +399,7 @@ def run_driver(
 
         # --- Copy mosaics ---
         for f in (tmp / "grid").glob(f"C{c_res}_*mosaic.nc"):
-            cp(f, tmp_ic_dir)
+            copy_path(f, tmp_ic_dir)
 
         # --- Run GSL orography (after halo0 shave) ---
 
@@ -416,7 +415,7 @@ def run_driver(
             tmp=tmp,
         )
         for f in (tmp / "orog").glob(f"C{c_res}_oro_data_*tile{tile}*.nc"):
-            cp(f, tmp_ic_dir)
+            copy_path(f, tmp_ic_dir)
 
         # --- Regional surface climatology ---
         grid_symlink = tmp_ic_dir / f"C{c_res}_grid.tile7.nc"

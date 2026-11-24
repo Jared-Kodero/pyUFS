@@ -43,12 +43,13 @@ BUCKET_PREFIX = "fix"
 S3_NS = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
 
 # chgres_cube variable maps are not in the NOAA bucket. They are taken from
-# the UFS_UTILS fork that the preprocessing image is built from, pinned to
-# the commit of that build (gaea branch, 2024-10-18).
+# parm/varmap_tables of ufs-community/UFS_UTILS, pinned to a commit (2026-08-07).
+# The tables used here match those of the UFS_UTILS build in the preprocessing
+# image apart from trailing whitespace.
 VARMAP_URL = os.environ.get(
     "UFS_PY_FIX_VARMAP_URL",
-    "https://raw.githubusercontent.com/kaiyuan-cheng/UFS_UTILS/"
-    + "0f7c355f2cf2c8f3b27d0c059e6d9f4a1612b578/parm/varmap_tables",
+    "https://raw.githubusercontent.com/ufs-community/UFS_UTILS/"
+    + "27a53fefc7a81e255c8406363c53eb188073fe48/parm/varmap_tables",
 )
 
 TIMEOUT_S = 120
@@ -90,34 +91,8 @@ PHYSICS_FILES = (
     "global_o3prdlos.f77",
 )
 
-# Inputs of the orog program in the preprocessing image (fv3_make_orog).
-OROG_FILES = (
-    "thirty.second.antarctic.new.bin",
-    "landcover30.fixed",
-    "gmted2010.30sec.int",
-)
-
-GSL_OROG_FILES = (
-    "HGT.Beljaars_filtered.lat-lon.30s_res.nc",
-    "geo_em.d01.lat-lon.2.5m.HGT_M.nc",
-)
-
 # lakefrac of the preprocessing image reads GLDB v2 data under these names.
 LAKE_FILES = ("GlobalLakeStatus.dat", "GlobalLakeDepth.dat")
-
-SFC_CLIMO_FILES = (
-    "facsf.1.0.nc",
-    "substrate_temperature.gfs.0.5.nc",
-    "maximum_snow_albedo.0.05.nc",
-    "snowfree_albedo.4comp.0.05.nc",
-    "slope_type.1.0.nc",
-    "soil_color.clm.0.05.nc",
-    "vegetation_greenness.0.144.nc",
-)
-
-VARMAP_FILES = ("GFSphys_var_map.txt", "GSDphys_var_map.txt")
-
-HRRR_GEOGRID = "geo_em.d01.nc_HRRRX"
 
 # Files without a remote source; they must be staged in fix_src by hand.
 LOCAL_ONLY_HINTS = {
@@ -125,38 +100,6 @@ LOCAL_ONLY_HINTS = {
     "external/ERA5/": "fix_src/external/ERA5 (built locally from ERA5)",
     "external/CARTOPY/": "tools/update_fix.py (Cartopy Natural Earth download)",
 }
-
-
-def run_manifest(
-    years: list[int] | range,
-    levels: int | list[int] = 64,
-    veg_type_src: str = "modis.igbp.0.05",
-    soil_type_src: str = "statsgo.0.05",
-    gsl: bool = False,
-    lake: bool = False,
-    hrrr: bool = True,
-) -> list[str]:
-    """Fix-relative paths read by a run spanning `years`."""
-    rel = [f"am/{name}" for name in NAMSFC_FILES.values()]
-    rel += [f"am/{name}" for name in PHYSICS_FILES]
-    rel += [f"am/co2historicaldata_{y}.txt" for y in years]
-    rel += [f"am/{v}" for v in volcanic_files(years)]
-    for nlev in [levels] if isinstance(levels, int) else levels:
-        rel.append(f"am/global_hyblev.l{nlev}.txt")
-    rel += [f"orog/{name}" for name in OROG_FILES]
-    if gsl:
-        rel += [f"orog/{name}" for name in GSL_OROG_FILES]
-    if lake:
-        rel += [f"orog/{name}" for name in LAKE_FILES]
-    rel += [f"sfc_climo/{name}" for name in SFC_CLIMO_FILES]
-    rel += [
-        f"sfc_climo/soil_type.{soil_type_src}.nc",
-        f"sfc_climo/vegetation_type.{veg_type_src}.nc",
-    ]
-    rel += [f"varmap_tables/{name}" for name in VARMAP_FILES]
-    if hrrr:
-        rel.append(f"am/{HRRR_GEOGRID}")
-    return list(dict.fromkeys(rel))
 
 
 def volcanic_files(years: list[int] | range) -> list[str]:
@@ -351,21 +294,6 @@ def ensure_fix_file(
     if required:
         raise FileNotFoundError(missing_message(fix_src, [rel]))
     return None
-
-
-def ensure_fix_files(fix_src: Path | str, rels: list[str]) -> list[Path]:
-    """Resolve every file in `rels`; raise once, naming all that are missing."""
-    fix_src = Path(fix_src)
-    resolved, missing = [], []
-    for rel in rels:
-        path = find_local(fix_src, rel) or fetch_remote(fix_src, rel)
-        if path is None:
-            missing.append(rel)
-        else:
-            resolved.append(path)
-    if missing:
-        raise FileNotFoundError(missing_message(fix_src, missing))
-    return resolved
 
 
 def missing_message(fix_src: Path, rels: list[str]) -> str:

@@ -21,7 +21,7 @@ Steps
 4. Sea ice. Water takes the CCI fraction (0..1), land the flag 1.57 of the SHiELD file, which ``sfcsub.F`` needs to find
    the land of the ice file. The mask is 1 over land.
 5. GRIB. The files use the grid of the SHiELD SST file, below the 5000 x 2500 limit of the readers of ``sfcsub.F``.
-   Each is written through the messages of a SHiELD file (``grib_io.save_grib``), so headers, packing and month
+   Each is written through the messages of a SHiELD file (``grib_io.save_grib``) with NCEP grid ID 255 (grid from the GDS), so packing and month
    stamps stay. Sea ice and mask are first cloned onto the 1/12 degree grid.
 
 Output, in ../fix/external/ESA (the SHiELD files are read from ../fix/am), with the difference figures
@@ -55,7 +55,7 @@ from get_era5 import get_era5
 from scipy import ndimage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from grib_io import open_grib, save_grib
+import grib_io
 from latlon_to_fv3 import fill_nearest, ll_regrid
 
 log = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ SHIELD = {
 }
 SST_RANGE, LAND_RANGE = (271.2, 313.0), (173.0, 353.0)  # sfcsub.F limits
 BUFFER, LAND_FLAG, LAKE_SHARE, FREEZING = 3, 1.57, 0.9, 273.15
+GRID_FROM_GDS = 255  # GRIB1 grid ID: grid defined by the message GDS, not a predefined NCEP grid
 GRID_KEYS = (
     "Ni",
     "Nj",
@@ -91,7 +92,7 @@ MONTH_OF_DAY = np.repeat(
 def read(path: Path) -> xr.DataArray:
     """A SHiELD GRIB file as ``(month, lat, lon)``."""
     log.info("Reading SHiELD GRIB: %s", path)
-    node = open_grib(path).leaves[0]
+    node = grib_io.open_grib(path).leaves[0]
     da = next(iter(node.data_vars.values()))
     da = da.isel({da.dims[1]: 0}, drop=True)
     result = (
@@ -175,6 +176,7 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
     )  # the messages of the template on the grid of the SST file
     with template.open("rb") as src, skeleton.open("wb") as dst:
         while gid := eccodes.codes_grib_new_from_file(src):
+            eccodes.codes_set(gid, "gridDefinition", GRID_FROM_GDS)
             for key, value in grid.items():
                 eccodes.codes_set(gid, key, value)
             eccodes.codes_set_values(
@@ -186,7 +188,7 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
             eccodes.codes_write(gid, dst)
             eccodes.codes_release(gid)
     log.info("Writing GRIB %s: populating monthly fields", out.name)
-    tree = open_grib(skeleton)
+    tree = grib_io.open_grib(skeleton)
     node = tree.leaves[0]
     name = next(iter(node.data_vars))
     native = node[name]
@@ -197,7 +199,7 @@ def write(values: xr.DataArray, template: Path, out: Path) -> None:
     )
     node[name] = native.copy(data=data.reshape(native.shape).astype("float32"))
     out.unlink(missing_ok=True)
-    save_grib(tree, out, skeleton)
+    grib_io.save_grib(tree, out, skeleton)
     skeleton.unlink()
     log.info("Saved GRIB: %s", out)
 

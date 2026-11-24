@@ -1,14 +1,18 @@
 #!/bin/bash
-# Build the fregrid, preprocess and shield Apptainer images used by the workflow.
+# Build the preprocess and shield Apptainer images used by the workflow (container mode only;
+# native mode uses setup_all.sh instead).
 #
 #   CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash install_images.sh
 #
-# Images are written to $CONTAINERS_DIR/{fregrid,preprocess,shield}.sif, which
-# must match fregrid_image, preprocess_image and shield_image in run_config.yaml.
-# Image tags default to "latest"; pin them with FREGRID_TAG, PREPROCESS_TAG and
-# SHIELD_TAG. A manifest of sources, checksums and conda packages is written to
+# Images are written to $CONTAINERS_DIR/{preprocess,shield}.sif; which
+# must match preprocess_image and shield_image in run_config.yaml.
+# Image tags default to "latest"; pin them with PREPROCESS_TAG and SHIELD_TAG.
+# gfdlfv3/fre-nctools (tag FREGRID_TAG) is pulled only to take its Open MPI help
+# files for the other two images; it is deleted before the conda step and is not
+# installed.
+# A manifest of sources, checksums and conda packages is written to
 # $CONTAINERS_DIR/manifest/. The preprocess image provides the UFS_UTILS
-# executables at /UFS_UTILS/exec.
+# executables at /UFS_UTILS/exec and also runs src/fv3_regrid.py.
 set -euo pipefail
 
 : "${CONTAINERS_DIR:?CONTAINERS_DIR must be set}"
@@ -18,12 +22,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/env.yaml"
 MANIFEST_DIR="$CONTAINERS_DIR/manifest"
 
+HELP_SOURCE="docker://gfdlfv3/fre-nctools:${FREGRID_TAG:-latest}"
+
 declare -A SOURCES=(
-    [fregrid]="docker://gfdlfv3/fre-nctools:${FREGRID_TAG:-latest}"
     [preprocess]="docker://gfdlfv3/preprocessing:${PREPROCESS_TAG:-latest}"
     [shield]="docker://gfdlfv3/shield:${SHIELD_TAG:-latest}"
 )
-CONDA_IMAGES=(fregrid preprocess)
+CONDA_IMAGES=(preprocess)
 
 log() { echo "$(date '+%Y-%m-%d %H:%M') - INSTALL_IMAGES - $*"; }
 fail() {
@@ -53,17 +58,23 @@ log "INFO - downloading the Miniconda installer"
 wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O "$MINICONDA_SH"
 chmod +x "$MINICONDA_SH"
 
-# --- 2. Pull and unpack (fregrid first: its OpenMPI share files are reused) ---
-for NAME in fregrid preprocess shield; do
+# --- 2. Pull and unpack (fre-nctools only supplies the Open MPI help files) ---
+HELP_SANDBOX="$WORK/sandboxes/help"
+log "INFO - pulling $HELP_SOURCE (Open MPI help files only)"
+apptainer pull "$WORK/help.sif" "$HELP_SOURCE"
+apptainer build --sandbox "$HELP_SANDBOX" "$WORK/help.sif"
+
+for NAME in preprocess shield; do
     log "INFO - pulling ${SOURCES[$NAME]}"
     apptainer pull "$WORK/$NAME.sif" "${SOURCES[$NAME]}"
     apptainer build --sandbox "$WORK/sandboxes/$NAME" "$WORK/$NAME.sif"
 
-    if [ "$NAME" != "fregrid" ]; then
-        mkdir -p "$WORK/sandboxes/$NAME/opt/openmpi"
-        cp -rf "$WORK/sandboxes/fregrid/opt/openmpi/share" "$WORK/sandboxes/$NAME/opt/openmpi/"
-    fi
+    mkdir -p "$WORK/sandboxes/$NAME/opt/openmpi"
+    cp -rf "$HELP_SANDBOX/opt/openmpi/share" "$WORK/sandboxes/$NAME/opt/openmpi/"
 done
+
+# The fre-nctools image is not used again; free its space before the conda step.
+rm -rf "$HELP_SANDBOX" "$WORK/help.sif"
 
 # --- 3. Conda environments for the Python stages ---
 for NAME in "${CONDA_IMAGES[@]}"; do
@@ -96,12 +107,13 @@ done
 # --- 4. Final images, replaced only after a successful build ---
 {
     echo "built: $(date -u '+%Y-%m-%dT%H:%MZ')"
-    for NAME in fregrid preprocess shield; do
+    echo "help_files.source: $HELP_SOURCE"
+    for NAME in preprocess shield; do
         echo "$NAME.source: ${SOURCES[$NAME]}"
     done
 } >"$WORK/images.txt"
 
-for NAME in fregrid preprocess shield; do
+for NAME in preprocess shield; do
     apptainer build "$WORK/$NAME.final.sif" "$WORK/sandboxes/$NAME"
     mv -f "$WORK/$NAME.final.sif" "$CONTAINERS_DIR/$NAME.sif"
     echo "$NAME.sha256: $(sha256sum "$CONTAINERS_DIR/$NAME.sif" | cut -d' ' -f1)" >>"$WORK/images.txt"

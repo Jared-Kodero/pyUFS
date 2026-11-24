@@ -15,12 +15,13 @@ Usage
 -----
 Run ``case_submit.sh`` from the case directory, the directory that holds the
 case-local ``run_config.yaml``. Nothing is read from the repository copy of
-``config/run_config.yaml`` except the defaults and the list of valid keys.
+``config/<release>/run_config.yaml`` and ``config/shared/run_config.yaml`` except the
+defaults and the list of valid keys.
 
 What this script does
 ---------------------
 1. Reads ``<cwd>/run_config.yaml`` and rejects any key that is not in
-   ``config/run_config.yaml`` (a close match is suggested). YAML syntax errors
+   ``config/shared/run_config.yaml`` or ``config/<release>/run_config.yaml`` (a close match is suggested). YAML syntax errors
    are reported with line and column.
 2. Fills every unset or null key from the default file, so a case file lists
    only what differs from the defaults.
@@ -38,7 +39,7 @@ SLURM request
     CASE_NTASKS_PER_NODE     ``n_cpus // n_nodes``
     CASE_CPUS_PER_TASK       CPUs per task
     CASE_PARTITION           partition
-    CASE_MEM                 requested memory in GB (0 = scheduler default)
+    CASE_JOB_MEM_GB          requested memory in GB (None = scheduler default)
     CASE_MEMORY_FLAG         ``--mem=<n>g``, ``--mem-per-cpu=<n>g`` or empty
     CASE_NODE_EXCLUSIVE_FLAG ``--exclusive`` or empty
     CASE_NODE_CONSTRAINT_FLAG ``--constraint=<value>`` or empty
@@ -48,16 +49,25 @@ SLURM request
                              ``append`` for resubmitted segments
 Case identity and control
     CASE_NAME                case name; ``<name>/memNN`` for ensemble members
-    CASE_PWD, CASE_DIR, CASE_PARENT_DIR   submission directory and its names
+    SUBMIT_DIR, CASE_PARENT_DIR   submission directory (cwd of every job step) and its parent name
     CASE_ENSEMBLES, CASE_ENSEMBLE_ID      member count; member number (0 = single case)
     CASE_RESUBMIT_INDEX, CASE_RESUBMIT_MAX   segment counter and ``resubmit``
     CASE_ARCHIVE, CASE_PREPROCESS_ONLY    0/1 switches
+    CASE_ARCHIVE_SUBDIR      ``archive_subdir``: directory below ``archive_root``
     CASE_OUTPUT, CASE_LOG_FILE            ``logfile`` base name; per-job log path
     CASE_DATA_SYMLINK        ``run`` (single case) or ``memNN`` (ensemble) link
                              created in the case directory
+Native or container
+    NATIVE_PPREPRO_EXE       1 when ``ufs_bin_dir`` is set (preprocess and regrid run
+                             natively with the conda env in pyUFS/conda_env), else 0
+    CASE_MODULES             ``modules`` joined by spaces, loaded by case_run.sh when
+                             NATIVE_PPREPRO_EXE is 1
+    CASE_SHIELD_EXE          ``shield_exe`` (empty = container image)
+    PYUFS_PYTHON             python of pyUFS/conda_env/pyufs when NATIVE_PPREPRO_EXE is 1,
+                             else empty; launchers/preprocess and regrid run it
 Paths
-    UFS_UTILS_DIR, FIX_SRC, JOBTMP_DIR, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
-    SHIELD_SIF, FREGRID_SIF, PREPROCESS_SIF, CONTAINERS_DIR,
+    PYUFS_DIR, FIX_SRC, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
+    SHIELD_SIF, PREPROCESS_SIF, CONTAINERS_DIR,
     CONTAINER_BINDPATH (base64 encoded, see ``get_paths``)
 
 The sbatch call itself is made with ``--output=/dev/null``: the job writes its
@@ -75,18 +85,20 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("Case.Submit")
 
-try:
-    import yaml
-except ImportError:
-    logger.error("PyYAML is not installed in the current Python environment")
-    sys.exit(1)
-
-
 # SCRIPT_DIR is the resolved path of this file (not its directory); the
 # repository root is therefore SCRIPT_DIR.parent.parent.
 SCRIPT_DIR = Path(__file__).resolve()
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
-from release import case_release, expand_shield_exe
+
+try:
+    from fv3_yaml import load_config
+except ModuleNotFoundError as error:
+    if error.name != "yaml":
+        raise
+    logger.error("PyYAML is not installed in the current Python environment")
+    sys.exit(1)
+
+from release import case_release
 
 # The case file is always taken from the directory the command is run in.
 RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
@@ -95,78 +107,56 @@ if not RUN_CFG_PATH.exists():
     logger.error(f"File not found: {RUN_CFG_PATH}")
     sys.exit(1)
 
-DEFAULT_CFG_PATH = (
-    SCRIPT_DIR.parent.parent / "config" / case_release(RUN_CFG_PATH) / "run_config.yaml"
-)
+try:
+    RELEASE = case_release(RUN_CFG_PATH)
+except ValueError as error:
+    logger.error(f"{RUN_CFG_PATH}: {error}")
+    sys.exit(1)
+
+DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "config" / RELEASE / "run_config.yaml"
 
 
-with open(DEFAULT_CFG_PATH, "r") as f:
-    DEFAULT_CFG = yaml.safe_load(f)
-# The default file is the complete list of valid keys.
+def load_or_exit(path: Path) -> dict:
+    """Read a configuration file with its includes; a bad file ends the submission."""
+    try:
+        return load_config(path)
+    except ValueError as error:  # YamlError, circular or conflicting includes
+        print(f"ERROR: {error}")
+        sys.exit(1)
+
+
+DEFAULT_CFG = load_or_exit(DEFAULT_CFG_PATH)
 DEFAULT_KEYS = DEFAULT_CFG.keys()
 
 
-def read_yaml(path: Path):
-    """Load a YAML file and check its top-level keys against the default file.
+def validate_yaml(data, path: Path):
+    valid_keys = list(DEFAULT_KEYS)
 
-    An unknown key stops the submission with the closest valid key suggested
-    (difflib, cutoff 0.6), which catches typos before any job is queued. A YAML
-    syntax error is reported with the offending line and a caret marker. Only
-    key names are checked here; values are validated where they are used.
-
-    Returns the parsed mapping (empty for an empty file).
-    """
-
-    def _read_yaml_txt(path: Path, line_no: int):
-        """Return the stripped text of a 1-based line and its length."""
-        with open(path, "r") as f:
-            v = f.readlines()[line_no - 1].strip()
-            return v, len(v)
-
-    try:
-        with open(path, "r") as f:
-            data = yaml.safe_load(f) or {}
-
-        valid_keys = list(DEFAULT_KEYS)
-
-        for key in data:
-            if key not in DEFAULT_KEYS:
-                suggestions = get_close_matches(
-                    key,
-                    valid_keys,
-                    n=1,
-                    cutoff=0.6,
-                )
-
-                message = (
-                    f"ERROR: Unknown configuration key in run_config.yaml: `{key}`."
-                )
-
-                if suggestions:
-                    message += f" Did you mean {suggestions[0]!r}?"
-
-                print(message)
-                print(f"\nPlease check the configuration file: {path}")
-                print(
-                    f"For a full list of keys and description of each key, refer to the default configuration file:\n\t{DEFAULT_CFG_PATH}"
-                )
-                sys.exit(1)
-
-    except yaml.YAMLError as e:
-        if hasattr(e, "problem_mark"):
-            mark = e.problem_mark
-            v, n = _read_yaml_txt(path, mark.line)
-            print(
-                "ERROR: Bad Yaml file ! \n",
-                f"File path: {path}\n",
-                f"Line: {mark.line},  Column: {mark.column}, {e.problem}\n",
-                f"\t-> {v}\n",
-                f"\t   {'^' * n}",
+    for key in data:
+        if key not in DEFAULT_KEYS:
+            suggestions = get_close_matches(
+                key,
+                valid_keys,
+                n=1,
+                cutoff=0.6,
             )
-        else:
-            logger.error(f"Invalid YAML file: {path}")
-        sys.exit(1)
-    return data
+
+            message = f"ERROR: Unknown configuration key in run_config.yaml: `{key}`."
+
+            if suggestions:
+                message += f" Did you mean {suggestions[0]!r}?"
+
+            print(message)
+            print(f"\nPlease check the configuration file: {path}")
+            print(
+                f"For a full list of keys and description of each key, refer to the default configuration files:\n\t{DEFAULT_CFG_PATH.parent.parent / 'shared' / 'run_config.yaml'}\n\t{DEFAULT_CFG_PATH}"
+            )
+            sys.exit(1)
+
+        if key == "plugins_config":
+            if data[key]:
+                # try loading the plugins file, with its includes
+                _ = load_or_exit(Path(data[key]))
 
 
 def get_paths(cfg: dict):
@@ -180,8 +170,6 @@ def get_paths(cfg: dict):
     expanded entry by entry and base64 encoded, because the value is passed to
     sbatch through ``--export`` where a comma would split it; case_run.sh
     decodes it. ``case_root`` and ``archive_root`` are created when absent.
-    ``jobtmp`` is only checked on the compute node (case_run.sh), since it can
-    exist there and not on the login node.
     """
 
     paths = {}
@@ -189,22 +177,19 @@ def get_paths(cfg: dict):
     # environment variable name -> run_config.yaml key
 
     path_mapping = {
-        "JOBTMP_DIR": "jobtmp",
         "CASE_ROOT_DIR": "case_root",
         "FIX_SRC": "fix_src",
-        "UFS_UTILS_DIR": "ufs_utils",
-        "ARCHIVE_ROOT_DIR": "archive_root",
         "SHIELD_SIF": "shield_image",
-        "FREGRID_SIF": "fregrid_image",
         "PREPROCESS_SIF": "preprocess_image",
         "CONTAINERS_DIR": "containers_root",
+        "ARCHIVE_ROOT_DIR": "archive_root",
         "CONTAINER_BINDPATH": "container_bindpath",
     }
 
     for k, v in path_mapping.items():
         value = cfg.get(v)
         if value is None:  # unset or null in the case file
-            value = DEFAULT_CFG[v]
+            value = DEFAULT_CFG[v] or ""
 
         if v == "container_bindpath":
             # A list or a comma-separated string; variables are expanded in
@@ -214,11 +199,10 @@ def get_paths(cfg: dict):
             value = ",".join(os.path.expandvars(str(e).strip()) for e in entries)
             value = base64.b64encode(value.encode("utf-8")).decode("utf-8")
         else:
-            value = str(Path(os.path.expandvars(value)))
+            value = str(Path(os.path.expandvars(value)).expanduser().absolute())
 
         if v in ("case_root", "archive_root") and not Path(value).exists():
             Path(value).mkdir(parents=True, exist_ok=True)
-        # jobtmp availability is checked on the compute node by case_run.sh.
 
         paths[k] = value
 
@@ -254,9 +238,10 @@ def get_runtime_flags(cfg: dict) -> dict:
     exclusive = cfg["CASE_EXCLUSIVE_NODE"]
     constraint = cfg["CASE_NODE_CONSTRAINT"]
     n_tasks = cfg["CASE_NTASKS"]
-    memory = cfg["CASE_MEM"]
+    memory = cfg["CASE_JOB_MEM_GB"]
 
-    if memory > n_tasks * 2:  # more than 2 GB per task, else leave to the scheduler
+    # More than 2 GB per task, else leave it to the scheduler.
+    if memory is not None and memory > n_tasks * 2:
         mem_per_cpu = memory // n_tasks
     else:
         mem_per_cpu = None
@@ -292,8 +277,9 @@ def get_config():
     default file. The checks below stop the submission before anything is
     queued, so a bad request fails at the prompt rather than in the queue:
 
-    * ``shield_exe`` must exist when set, and is required for multi-node runs
-      (the container image is single-node only);
+    * ``shield_exe`` is required for multi-node runs (the container image is
+      single-node only). ``shield_exe`` and ``ufs_bin_dir`` must exist when
+      set;
     * ``ensemble_run`` and ``n_ensembles`` must agree.
 
     Derived values:
@@ -312,14 +298,12 @@ def get_config():
     ``get_runtime_flags``. ``CASE_RESUBMIT_INDEX`` starts at 0; case_run.sh
     increments it for each later segment up to ``resubmit``.
     """
-    user_cfg = read_yaml(RUN_CFG_PATH)
-    default_cfg = read_yaml(DEFAULT_CFG_PATH)
+    user_cfg = load_or_exit(RUN_CFG_PATH)
+    validate_yaml(user_cfg, RUN_CFG_PATH)
 
     # Unset or null case keys take the repository default, as in the init
     # driver (fv3_init_driver._load_initial_state).
-    cfg = expand_shield_exe(
-        {**default_cfg, **{k: v for k, v in user_cfg.items() if v is not None}}
-    )
+    cfg = {**DEFAULT_CFG, **{k: v for k, v in user_cfg.items() if v is not None}}
 
     preprocess_grid_only = int(bool(cfg["preprocess_grid_only"]))
     preprocess_orog_only = int(bool(cfg["preprocess_orog_only"]))
@@ -339,29 +323,41 @@ def get_config():
     logfile = cfg["logfile"]
 
     cpu_per_task = int(cfg["n_cpus_per_task"])
-    mem = int(cfg["mem"])
+    job_mem_gb = cfg["job_mem_gb"]
 
     # Round n_cpus down to a whole number of tasks per node.
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
 
-    shield_exe = os.path.expandvars(cfg["shield_exe"] or "")
+    # A set executable path must exist; unset runs the container.
+    shield_exe = os.path.expandvars(str(cfg["shield_exe"] or ""))
+    ufs_bin_dir = os.path.expandvars(str(cfg["ufs_bin_dir"] or ""))
     if shield_exe and not Path(shield_exe).is_file():
-        logger.error(
-            f"shield_exe not found: {shield_exe}. Build it from SHiELD_build "
-            + '(README section 19), or set shield_exe: "" to use the container '
-            + "image on a single node."
-        )
+        logger.error(f"shield_exe not found: {shield_exe}")
         sys.exit(1)
+    if ufs_bin_dir and not Path(ufs_bin_dir).is_dir():
+        logger.error(f"ufs_bin_dir not found: {ufs_bin_dir}")
+        sys.exit(1)
+    # Native preprocessing runs with the Python of conda_env/pyufs (README, setup).
+    pyufs_python = ""
+    if ufs_bin_dir:
+        pyufs_python = str(
+            SCRIPT_DIR.parent.parent / "conda_env" / "pyufs" / "bin" / "python"
+        )
+        if not Path(pyufs_python).is_file():
+            logger.error(
+                f"Python of the pyufs conda environment not found: {pyufs_python}"
+            )
+            sys.exit(1)
     if not shield_exe and n_nodes > 1:
-        logger.error("Multi-node runs need a native shield_exe (README section 19).")
+        logger.error("Multi-node runs need a native shield_exe (see the README).")
         sys.exit(1)
 
     if not Path(os.path.expandvars(cfg["fix_src"])).is_dir():
         logger.error(
             f"fix_src not found: {cfg['fix_src']}. Link the fix directory next to "
             + "pyUFS with: ln -s /path/to/fix ../fix && ln -s ../fix fix, or create it "
-            + "with tools/update_fix.py (README section 7)."
+            + "with tools/update_fix.py (README section 5.1)."
         )
         sys.exit(1)
 
@@ -383,9 +379,27 @@ def get_config():
         )
         sys.exit(1)
 
+    run_length = cfg["run_length"]
+    if (
+        not isinstance(run_length, int)
+        or isinstance(run_length, bool)
+        or run_length < 1
+    ):
+        logger.error(
+            f"run_length must be a positive integer in run_config.yaml, got {run_length!r}"
+        )
+        sys.exit(1)
+    if cfg["run_length_units"] not in ("hours", "days", "months", "years"):
+        logger.error("run_length_units must be hours, days, months or years")
+        sys.exit(1)
+
     walltime = f"{walltime}:00:00"  # sbatch --time accepts H:MM:SS
     resubmit_max = int(cfg["resubmit"])
     archive_data = int(bool(cfg["archive_data"]))
+    archive_subdir = cfg["archive_subdir"] or ""
+    if archive_data and not archive_subdir:
+        logger.error("archive_subdir must be set when archive_data is true")
+        sys.exit(1)
 
     env_case_name = os.environ.get("CASE_NAME", Path.cwd().name)
     case_name = cfg["case_name"] or env_case_name
@@ -398,8 +412,18 @@ def get_config():
     # Paths are resolved from the case file so that unset keys take the default.
     paths = get_paths(user_cfg)
 
+    archive_root = Path(paths["ARCHIVE_ROOT_DIR"]).resolve()
+    if archive_data and (
+        archive_subdir.startswith(("/", "~"))
+        or archive_root not in (archive_root / archive_subdir).resolve().parents
+    ):
+        logger.error(
+            f"archive_subdir {archive_subdir} must be a path below {archive_root}"
+        )
+        sys.exit(1)
+
     env = {
-        "CASE_MEM": mem,
+        "CASE_JOB_MEM_GB": job_mem_gb,
         "CASE_TIME_LIMIT": walltime,
         "CASE_NNODES": n_nodes,
         "CASE_OUTPUT": logfile,
@@ -415,8 +439,13 @@ def get_config():
         "CASE_RESUBMIT_INDEX": 0,
         "CASE_RESUBMIT_MAX": resubmit_max,
         "CASE_ARCHIVE": archive_data,
+        "CASE_ARCHIVE_SUBDIR": archive_subdir,
         "CASE_PREPROCESS_ONLY": preprocess_only,
         "CASE_NAME": case_name,
+        "NATIVE_PPREPRO_EXE": int(bool(ufs_bin_dir)),
+        "PYUFS_PYTHON": pyufs_python,
+        "CASE_MODULES": " ".join(str(m) for m in (cfg["modules"] or [])),
+        "CASE_SHIELD_EXE": shield_exe,
         **paths,
     }
 
@@ -456,9 +485,9 @@ def run(script: Path, proc_env: dict, cwd: Path) -> None:
 def check_case_dirs(case_pwd: Path, case_root: Path, parent: str, name: str) -> None:
     """Refuse a run directory that contains the submission directory.
 
-    case_run.sh mirrors the run directory (case_root/<parent>/<case_name>) with
-    rsync --delete and removes it after archiving, which would delete the case
-    files and the driver log if the submission directory were inside it.
+    case_run.sh removes the run directory (case_root/<parent>/<case_name>) after
+    archiving, which would delete the case files and the driver log if the
+    submission directory were inside it.
     """
     run_dir = (case_root / parent / name).resolve()
     pwd = case_pwd.resolve()
@@ -468,6 +497,20 @@ def check_case_dirs(case_pwd: Path, case_root: Path, parent: str, name: str) -> 
             + "Submit from a directory outside case_root, or change case_root or case_name."
         )
         sys.exit(1)
+
+
+def log_file_path(logfile: str, member: str = None) -> Path:
+    """Return the driver log path for ``logfile``.
+
+    A trailing ``.log`` is removed and ``.log`` is added back, so ``run``,
+    ``run.log`` and a name with dots such as ``run.v2`` all give a file that
+    ends in ``.log`` without losing part of the name. Ensemble members insert
+    their zero-padded number: ``<stem>.<member>.log``.
+    """
+    stem = str(logfile).removesuffix(".log")
+    if member is None:
+        return Path(f"{stem}.log")
+    return Path(f"{stem}.{member}.log")
 
 
 def main():
@@ -488,12 +531,11 @@ def main():
     case_pwd = Path.cwd()
     case_dir = case_pwd.name
     case_parent_dir = case_pwd.parent.name
-    ufs_utils_dir = SCRIPT_DIR.parent.parent  # case_submit.py lives in launchers/
+    pyufs_dir = SCRIPT_DIR.parent.parent  # case_submit.py lives in launchers/
 
-    env["CASE_PWD"] = str(case_pwd)
-    env["CASE_DIR"] = case_dir
+    env["SUBMIT_DIR"] = str(case_pwd)
     env["CASE_PARENT_DIR"] = case_parent_dir
-    env["UFS_UTILS_DIR"] = str(ufs_utils_dir)
+    env["PYUFS_DIR"] = str(pyufs_dir)
     env["CASE_NAME"] = env["CASE_NAME"] or case_dir
     # Fail before submitting if the run directory would contain this one.
     check_case_dirs(
@@ -501,8 +543,8 @@ def main():
     )
 
     n_ensembles = int(env["CASE_ENSEMBLES"])
-    logfile = Path(env["CASE_OUTPUT"])
-    script = ufs_utils_dir / "launchers" / "sbatch.sh"
+    logfile = env["CASE_OUTPUT"]
+    script = pyufs_dir / "launchers" / "sbatch.sh"
     skipped_ensembles = env.pop("CASE_SKIP_ENSEMBLES")
 
     jobs = [i for i in range(n_ensembles)]
@@ -512,7 +554,7 @@ def main():
         slurm_job_name = f"{case_parent_dir}.{case_dir}"
         case_name = env["CASE_NAME"]
         case_data_symlink = case_pwd / "run"
-        case_log_file = logfile.with_suffix(".log")
+        case_log_file = log_file_path(logfile)
 
         # Per-job values on top of the shared ones. TOTAL_WALLTIME_TIME is the
         # wall time already used by earlier segments; it starts at 0. The
@@ -548,7 +590,7 @@ def main():
             slurm_job_name = f"{case_parent_dir}.{case_dir}.MEM{mem_id}"
             case_name = f"{env['CASE_NAME']}/mem{mem_id}"
             case_data_symlink = case_pwd / f"mem{mem_id}"
-            case_log_file = logfile.with_suffix(f".{mem_id}.log")
+            case_log_file = log_file_path(logfile, mem_id)
 
             iter_env = {
                 **env,

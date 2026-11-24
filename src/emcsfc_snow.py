@@ -118,7 +118,7 @@ def run_emcsfc_snow(work_dir: Path) -> Path:
     (work_dir / "fort.41").write_text(text)
 
     log_file = state.logs / "emcsfc_snow2mdl.log"
-    exe = str(state.ufs_exe / "emcsfc_snow2mdl")
+    exe = str(state.ufs_bin_dir / "emcsfc_snow2mdl")
     result, msgs = run_cmd([exe], cwd=work_dir, stdout=log_file, stderr=log_file)
     out = work_dir / OUTPUT
     if result != 0 or not out.exists():

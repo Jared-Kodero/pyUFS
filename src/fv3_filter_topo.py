@@ -4,7 +4,7 @@ import f90nml
 
 from fv3_runtime import log, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def run_filter_topo(
@@ -79,17 +79,17 @@ def run_filter_topo(
         # Copy mosaic file
         mosaic_src = grid_dir / mosaic_grid
         if mosaic_src.exists():
-            cp(mosaic_src, ".")
+            copy_path(mosaic_src, ".")
         else:
-            cp(grid_dir / f"C{c_res}_mosaic.nc", ".")
+            copy_path(grid_dir / f"C{c_res}_mosaic.nc", ".")
 
         # Copy grid and orography files
         for f in grid_files:
-            cp(grid_dir / f, ".")
+            copy_path(grid_dir / f, ".")
         for f in topo_files:
-            cp(orog_dir / f, ".")
+            copy_path(orog_dir / f, ".")
 
-        cp(filter_topo, ".")
+        copy_path(filter_topo, ".")
 
         # Stretch factor of the filtered tiles: the global tiles of a nested
         # run are filtered as a stretched grid, as in UFS_UTILS

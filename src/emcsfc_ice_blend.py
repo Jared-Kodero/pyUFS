@@ -26,8 +26,10 @@ BLENDED = "seaice.5min.blend.grb"
 
 def run_ice_blend(work_dir: Path) -> Path:
     """Run emcsfc_ice_blend; returns the blended GRIB1 ice analysis."""
-    ims = Path(os.path.expandvars(str(state.ims_ice_file)))
-    five_min = Path(os.path.expandvars(str(state.five_min_ice_file)))
+    ims = Path(os.path.expandvars(str(state.ims_ice_file))).expanduser().resolve()
+    five_min = (
+        Path(os.path.expandvars(str(state.five_min_ice_file))).expanduser().resolve()
+    )
     for path, what in ((ims, "IMS ice"), (five_min, "MMAB 5-minute ice")):
         if not path.exists():
             raise FileNotFoundError(f"{what} file not found: {path}")
@@ -84,7 +86,7 @@ def run_ice_blend(work_dir: Path) -> Path:
         "FORT15": "five_min.grib2",
         "FORT51": BLENDED,
     }
-    step([str(state.ufs_exe / "emcsfc_ice_blend")], env=env)
+    step([str(state.ufs_bin_dir / "emcsfc_ice_blend")], env=env)
 
     step(
         [

@@ -2,9 +2,9 @@ from pathlib import Path
 
 import dask
 
-from fv3_runtime import get_newres, log, staged_files, tmp_cwd
+from fv3_runtime import get_launcher, get_newres, log, staged_files, tmp_cwd
 from fv3_state import state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def _mosaic_for_uniform_and_stretch(
@@ -40,6 +40,7 @@ def _mosaic_for_i_nest(
     log_file: Path,
 ):
     cmd = [
+        *get_launcher(1, serial=True),
         f"{make_solo_mosaic}",
         "--num_tiles",
         "1",
@@ -130,7 +131,9 @@ def _mosaic_for_regionalgfdl(
     grid_file = out_dir / f"C{c_res}_grid.tile7.nc"
     new_res = get_newres(grid_file)
 
-    cp(out_dir / f"C{c_res}_grid.tile7.nc", out_dir / f"C{new_res}_grid.tile7.nc")
+    copy_path(
+        out_dir / f"C{c_res}_grid.tile7.nc", out_dir / f"C{new_res}_grid.tile7.nc"
+    )
 
     cmd = [
         f"{make_solo_mosaic}",
@@ -156,7 +159,7 @@ def _mosaic_for_regionalesg(
     grid_file = out_dir / "regional_grid.nc"
     new_res = get_newres(grid_file)
 
-    cp(out_dir / "regional_grid.nc", out_dir / f"C{new_res}_grid.tile7.nc")
+    copy_path(out_dir / "regional_grid.nc", out_dir / f"C{new_res}_grid.tile7.nc")
 
     cmd = [
         f"{make_solo_mosaic}",

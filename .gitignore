@@ -1,7 +1,3 @@
-# Root-level directories: ignore all contents
-/containers/**
-!/containers/.gitkeep
-
 # Ignore recursively at any depth
 **/.ruff_cache/
 **/__pycache__/
@@ -11,4 +7,6 @@
 **/*.log
 **/*.png
 *.patch
+*.sif
+.fix_raw/
 .vscode

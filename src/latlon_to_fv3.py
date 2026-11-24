@@ -1,7 +1,7 @@
 """Regridding of regular lat/lon fields onto the tiles of the FV3 surface files.
 
 Shared by ``sm_perturbations`` (soil moisture climatologies) and
-``pamip_experiment`` (SST and sea ice): ``to_fv3_grid`` regrids lat/lon fields onto
+the ``pamip`` plugin (SST and sea ice): ``to_fv3_grid`` regrids lat/lon fields onto
 the tiles and ``ll_regrid`` (xESMF) lat/lon fields onto other lat/lon grids. The tile grid is the ``geolat`` and
 ``geolon`` of a tile of the cold-start surface files in ``state.input``
 (global ``sfc_data.tileN.nc``, nests ``sfc_data.nestNN.tileN.nc``, regional

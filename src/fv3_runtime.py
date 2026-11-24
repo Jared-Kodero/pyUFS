@@ -11,12 +11,13 @@ from pathlib import Path
 
 import f90nml
 import xarray as xr
-import yaml
 
 from fv3_paths import paths
+from fv3_state import state
 from fv3_update_fix import ensure_fix_file, missing_message
 from fv3_utils import parse_resolution
-from release import DEFAULT_RELEASE, expand_shield_exe
+from fv3_yaml import dump_yaml, load_config, open_yaml, resolve_includes
+from release import resolve_release
 
 log = logging.getLogger("PREPROCESS")
 
@@ -27,12 +28,12 @@ def log_release() -> None:
     Called before any other driver output of the initial run (not on restarts,
     which would repeat it in every segment). The branch is read from .git/HEAD of
     the pyUFS checkout (no git binary is needed inside the containers) and the
-    SHiELD build from shield_exe and its .manifest, or the container image when
-    shield_exe is not set.
+    shield_exe with the shield_release from the run configuration, or the container
+    image when shield_exe is not set.
     """
     branch = "unknown"
     try:
-        head = (Path(paths["ufs_utils"]) / ".git" / "HEAD").read_text().strip()
+        head = (Path(paths["pyufs"]) / ".git" / "HEAD").read_text().strip()
         if head.startswith("ref:"):
             branch = head.removeprefix("ref: refs/heads/")
         else:
@@ -40,19 +41,10 @@ def log_release() -> None:
     except OSError:
         pass
 
-    config = merged_run_config()
-    shield_exe = config.get("shield_exe")
+    config = load_run_config()
+    shield_exe = os.path.expandvars(str(config.get("shield_exe") or "")).strip()
     if shield_exe:
-        exe = Path(os.path.expandvars(str(shield_exe)))
-        version = exe.name
-        try:
-            manifest = exe.with_name(exe.name + ".manifest").read_text()
-            for line in manifest.splitlines():
-                if line.startswith("release:"):
-                    version = f"{exe.name} ({line.strip()})"
-                    break
-        except OSError:
-            pass
+        version = f"{Path(shield_exe).name} (release: {config['shield_release']})"
     else:
         image = config.get("shield_image")
         name = Path(str(image)).name if image else "(SHiELD)"
@@ -81,19 +73,19 @@ def get_newres(gridfile: Path) -> int:
     return int(res_equiv)
 
 
-def merged_run_config() -> dict:
-    """The case run_config.yaml, with unset or null keys from config/<release>/run_config.yaml.
+def load_run_config() -> dict:
+    conf_path = Path(paths["submit_dir"]) / "run_config.yaml"
+    conf = read_namelist(conf_path) or {}
+    release = resolve_release(conf.get("shield_release"))
+    release_defaults = load_config(Path(paths["configs"]) / release / "run_config.yaml")
 
-    The same merge is applied by launchers/case_submit.py at submission.
-    """
-    case = read_namelist(Path(paths["run_dir"]) / "run_config.yaml") or {}
-    release = case.get("shield_release") or DEFAULT_RELEASE
-    default = read_namelist(Path(paths["configs"]) / release / "run_config.yaml")
-    merged = dict(case)
-    for key, value in default.items():
-        if merged.get(key) is None and value is not None:
-            merged[key] = value
-    return expand_shield_exe(merged)
+    conf = resolve_includes(conf, conf_path)
+
+    for key, value in release_defaults.items():
+        if conf.get(key) is None and value is not None:
+            conf[key] = value
+    conf["shield_release"] = release
+    return conf
 
 
 # run_config.yaml keys that determine the grid and its orography. Files staged
@@ -122,7 +114,7 @@ STAGED_RECORD = ".grid_settings.yaml"
 
 
 def _grid_settings(keys: tuple = OROGRAPHY_KEYS) -> dict:
-    cfg = merged_run_config()
+    cfg = load_run_config()
     settings = {k: to_builtin(cfg.get(k)) for k in keys}
     if "c_res" in settings:
         # "C96" and 96 name the same grid; staged records store the integer.
@@ -149,7 +141,7 @@ def staged_files(mod_dir: Path | None) -> list[Path]:
 
     record = Path(mod_dir) / STAGED_RECORD
     if record.exists():
-        saved = yaml.safe_load(record.read_text()) or {}
+        saved = open_yaml(record)
         current = _grid_settings(tuple(saved))
         changed = sorted(k for k in saved if saved[k] != current[k])
         if changed:
@@ -176,17 +168,37 @@ def stage_for_reuse(src_dir: Path, mod_dir: Path, keys: tuple = GRID_KEYS) -> No
             shutil.copytree(f, dest, dirs_exist_ok=True)
         else:
             shutil.copy2(f, dest)
-    with open(mod_dir / STAGED_RECORD, "w") as fh:
-        yaml.safe_dump(_grid_settings(keys), fh, sort_keys=False)
+    dump_yaml(_grid_settings(keys), mod_dir / STAGED_RECORD)
 
 
-def get_launcher(n_procs: int | None = None) -> list:
-    """mpirun for the preprocessing executables on this node.
+# Flags of every srun launch of an MPI program; the rank count follows as `-n N`.
+SRUN = [
+    "srun",
+    "--mpi=pmix",
+    "--distribution=block:block",
+    "--cpu-bind=cores",
+    "--ntasks-per-core=1",
+    "--kill-on-bad-exit=1",
+]
 
-    The rank count follows the CPUs visible to the process, which can exceed
-    the Slurm task slots (n_cpus_per_task > 1), so oversubscription is
-    allowed; Open MPI then does not bind ranks to cores.
+
+def get_launcher(n_procs: int, serial: bool = False) -> list:
+    """Command prefix for the preprocessing executables.
+
+    Native preprocessing (state.native_prepro_exe) runs MPI steps as srun steps of
+    the Slurm allocation, so Slurm places them on any node of the job. In the container
+    the MPI steps use mpirun on this node: the rank count follows the CPUs visible to
+    the process, which can exceed the Slurm task slots (n_cpus_per_task > 1), so
+    oversubscription is allowed; Open MPI then does not bind ranks to cores.
+
+    ``serial`` marks a program that is not MPI (orog, lakefrac, make_solo_mosaic).
+    It runs bare, with no prefix, in both modes, so it can use the memory of the
+    whole job (a one-task srun step is limited to its own share and can be OOM killed).
     """
+    if serial:
+        return []
+    if state.native_prepro_exe:
+        return [*SRUN, "-n", str(n_procs)]
     return [
         "mpirun",
         "--oversubscribe",
@@ -197,12 +209,6 @@ def get_launcher(n_procs: int | None = None) -> list:
     ]
 
 
-def open_yaml(path: Path) -> dict:
-    with open(path, "r") as f:
-        data = dict(yaml.safe_load(f) or {})
-    return data
-
-
 def to_builtin(obj: object) -> object:
     if isinstance(obj, Mapping):
         return {str(k): to_builtin(v) for k, v in obj.items()}
@@ -211,19 +217,20 @@ def to_builtin(obj: object) -> object:
     return obj
 
 
-def nml_to_dict(nml: dict) -> dict:
-    return to_builtin(nml)
-
-
 def open_nml(path: Path) -> dict:
-    return nml_to_dict(f90nml.read(path))
+    return to_builtin(f90nml.read(path))
+
+
+def write_nml(nml: dict, path: Path) -> None:
+    with open(path, "w") as f:
+        f90nml.write(nml, f)
 
 
 def read_namelist(path: Path) -> dict:
     if re.search(r"\.(?:nml|\d+)$", str(path)):
         data = open_nml(path)
     elif str(path).endswith((".yaml", ".yml")):
-        data = open_yaml(path)
+        data = dict(open_yaml(path))
     else:
         raise ValueError(
             "Unsupported Namelist file format. Use .nml, fotran file fds i.e .41 or .yaml/.yml"
@@ -249,12 +256,12 @@ def fix_file(rel: str, required: bool = True) -> Path | None:
     return ensure_fix_file(paths["fix_src"], rel, required=required)
 
 
-def require_fix_files(files: list[Path], sub_dir: str = "") -> None:
+def require_fix_files(files: list[Path]) -> None:
     """Ensure `files` exist, fetching any missing from fix_src's remote source.
 
     Raises FileNotFoundError naming every file that cannot be found. Paths
     outside fix_src (for example executables) cannot be fetched and are
-    reported directly. `sub_dir` is accepted for older call sites.
+    reported directly.
     """
     fix_src = Path(paths["fix_src"])
     unresolved = []
@@ -275,7 +282,7 @@ def require_fix_files(files: list[Path], sub_dir: str = "") -> None:
 
 @contextmanager
 def tmp_cwd(path: Path | str):
-    cwd = paths["work_dir"]
+    cwd = Path.cwd()
     try:
         os.chdir(path)
         yield
@@ -295,7 +302,7 @@ def handle_errors(exc_type, value, tb):
     user_frames = [
         f
         for f in traceback.extract_tb(tb)
-        if Path(_norm_path(f.filename)).is_relative_to(paths["ufs_utils"] / "src")
+        if Path(_norm_path(f.filename)).is_relative_to(paths["pyufs"] / "src")
         and f.filename.endswith(".py")
     ]
     sys_frames = [f for f in traceback.extract_tb(tb)]

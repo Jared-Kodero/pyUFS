@@ -37,8 +37,8 @@ def find_tool(name: str) -> str:
 
 
 def exit_code(code: int = 0) -> None:
-    """Write the exit code to a file in the work directory"""
-    (paths["work_dir"] / "exit_code").write_text(str(code))
+    """Write the exit code to a file in the case directory"""
+    (paths["case_dir"] / "exit_code").write_text(str(code))
 
 
 @contextmanager
@@ -76,7 +76,7 @@ def run_cmd(
     stdout: Path | None = None,
     stderr: Path | None = None,
     msgs: str | None = None,
-    **kwargs,
+    warn_on_error: bool = True,
 ) -> tuple[int, str]:
 
     log_path = stdout or stderr
@@ -100,8 +100,8 @@ def run_cmd(
         return result.returncode, ""
 
     except subprocess.CalledProcessError as exc:
-        if kwargs.get("warn_on_error", True):
-            log.warning("Command failed: %s", " ".join(cmd))
+        if warn_on_error:
+            log.warning("Command failed: %s", " ".join(map(str, cmd)))
 
         return exc.returncode, f"{type(exc).__name__}: {exc}\n{msgs}"
 
@@ -110,63 +110,69 @@ def run_cmd(
         return 1, f"{type(exc).__name__}: {exc}\n{msgs}"
 
 
-def rename(src: str | Path, dest: str | Path):
-    log_file = paths["logs"] / "rename_files.log"
+def remove_path(*targets: str | Path) -> None:
+    """Remove files, symlinks and directory trees; a missing path is ignored (rm -rf)."""
+    for target in map(Path, targets):
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+        else:
+            target.unlink(missing_ok=True)
 
+
+def move_path(src: str | Path, dest: str | Path):
+    """Move src to dest, replacing an existing dest (mv -f); works across filesystems."""
     src = Path(src).resolve()
     dest = Path(dest).resolve()
 
     if src == dest:
         return
 
-    if dest.exists():
-        dest.unlink()
+    try:
+        remove_path(dest)
+        shutil.move(src, dest)
+    except OSError as exc:
+        log.error("%s: %s", type(exc).__name__, exc)
+        raise RuntimeError(f"Failed to move file: {src} to {dest}") from exc
+    log.debug("renamed %s -> %s", src, dest)
 
-    cmd = ["mv", "-v", str(src), str(dest)]
-    result, msgs = run_cmd(cmd, stdout=log_file)
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError(f"Failed to rename file: {src} to {dest}")
+
+def _copy_force(src: str | Path, dest: str | Path) -> None:
+    """Copy a file, replacing a read-only destination (cp -f)."""
+    try:
+        shutil.copy(src, dest, follow_symlinks=False)
+    except PermissionError:
+        if not os.access(src, os.R_OK) or not Path(dest).exists():
+            raise
+        Path(dest).unlink()
+        shutil.copy(src, dest, follow_symlinks=False)
 
 
-def cp(src: str | Path, dest: str | Path):
+def copy_path(src: str | Path, dest: str | Path):
+    """Copy a file or directory tree (cp -rf).
+
+    Into an existing directory the copy is made inside it, under the name of
+    src. Symlinks inside a tree stay symlinks; modes are kept, modification
+    times are not.
+    """
     if isinstance(src, list):
         raise TypeError("src must be a single path, not a list.")
 
-    log_file = paths["logs"] / "copy_files.log"
-
     src = Path(src).resolve()
     dest = Path(dest).resolve()
+    if dest.is_dir():
+        dest = dest / src.name
 
-    cmd = ["cp", "-v", "-rf", str(src), str(dest)]
-    result, msgs = run_cmd(cmd, stdout=log_file)
-    if result != 0:
-        log.error(msgs)
-        raise RuntimeError(f"Failed to copy file: {src} to {dest}")
-
-
-def clear_dir(directory: str | Path) -> None:
-    """
-    Remove all files and directories in the specified directory.
-    """
-    path = Path(directory)
-
-    for item in path.iterdir():
-        if item.is_dir() and not item.is_symlink():
-            shutil.rmtree(item)
+    try:
+        if src.is_dir():
+            shutil.copytree(
+                src, dest, symlinks=True, dirs_exist_ok=True, copy_function=_copy_force
+            )
         else:
-            item.unlink()
-
-
-def env_setup():
-    """
-    Set up environment variables for UFS_UTILS_DIR execution.
-    """
-    python_path = str(Path(sys.executable).resolve().parent)
-    openmpi_bin = "/opt/openmpi/bin"
-    bin_paths = "/usr/local/bin:/usr/bin:/bin"
-    sys_path = os.environ.get("PATH")
-    os.environ["PATH"] = f"{openmpi_bin}:{python_path}:{bin_paths}:{sys_path}"
+            _copy_force(src, dest)
+    except OSError as exc:
+        log.error("%s: %s", type(exc).__name__, exc)
+        raise RuntimeError(f"Failed to copy file: {src} to {dest}") from exc
+    log.debug("copied %s -> %s", src, dest)
 
 
 def parse_datetime(dt, cycle: bool = True):
@@ -211,16 +217,6 @@ def km_to_cres(dx_km):
     face_length_km = earth_circumference / 4.0
     C_exact = int(face_length_km / dx_km)
     C = int(96 * round(C_exact / 96))
-    return C
-
-
-def deg_to_cres(ddeg):
-    """Convert grid spacing in degrees to nearest UFS-recommended C-resolution."""
-
-    km_per_deg = 111.2
-    dx_km = ddeg * km_per_deg
-    C = km_to_cres(dx_km)
-
     return C
 
 
@@ -293,18 +289,13 @@ def segment_hours(init: pd.Timestamp, length: int, units: str, count: int) -> li
     return [(b - a) // pd.Timedelta(hours=1) for a, b in pairwise(edges)]
 
 
-def _read_required_env_int(name: str) -> int:
-    value = os.getenv(name)
+def get_allocated_nodes() -> list[str]:
+    """Hostnames of the nodes allocated to the job.
 
-    if value is None:
-        raise RuntimeError(f"Required environment variable {name} is not set.")
-
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise RuntimeError(
-            f"Environment variable {name} must be an integer, got {value!r}."
-        ) from exc
+    case_run.sh exports them as the comma-separated CASE_NODE_LIST; the list is
+    empty where that variable is unset (tools, tests).
+    """
+    return [node for node in os.getenv("CASE_NODE_LIST", "").split(",") if node]
 
 
 def runtime_env_vars() -> dict[str, object]:
@@ -313,29 +304,30 @@ def runtime_env_vars() -> dict[str, object]:
 
     values: dict[str, object] = {
         "case_name": case_name,
-        "n_cpus": _read_required_env_int("CASE_NTASKS"),
+        "n_cpus": int(os.getenv("CASE_NTASKS", "0")),
         "n_nodes": int(os.getenv("CASE_NNODES", "1")),
         "ensemble_id": int(os.getenv("CASE_ENSEMBLE_ID", "0")),
         "n_ensembles": int(os.getenv("CASE_ENSEMBLES", "0")),
-        "n_cpus_per_node": _read_required_env_int("CASE_NTASKS_PER_NODE"),
+        "n_cpus_per_node": int(os.getenv("CASE_NTASKS_PER_NODE", "0")),
         "multi_node": bool(int(os.getenv("CASE_MULTI_NODE_FLAG", "0"))),
         "resubmit": int(os.getenv("CASE_RESUBMIT_MAX", "0")),
         "resubmit_idx": int(os.getenv("CASE_RESUBMIT_INDEX", "0")),
+        "resume_run": bool(int(os.getenv("CASE_CONTINUE_RUN", "0"))),
+        "python": os.getenv("PYUFS_PYTHON") or None,
     }
 
     return {key: value for key, value in values.items() if value is not None}
 
 
-def require_minimum_cpus(minimum: int = 32) -> int:
+def require_minimum_cpus() -> int:
     """Validate the number of CPUs visible to the current process."""
-    try:
-        available = len(os.sched_getaffinity(0))
-    except AttributeError:
-        available = os.cpu_count() or 1
 
-    if available < minimum:
+    minimum_node_cpus = 6
+    available = len(os.sched_getaffinity(0))
+
+    if available < minimum_node_cpus:
         raise RuntimeError(
-            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum} per node is required."
+            f"Insufficient CPUs for this run. Detected {available} available, but at least {minimum_node_cpus} per node is required."
         )
 
     return available

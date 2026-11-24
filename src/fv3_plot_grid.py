@@ -109,11 +109,6 @@ def earth_colors(n, seed=42):
     return colors
 
 
-def random_colors(n, seed=42):
-    """Backwards-compatible alias for earth_colors."""
-    return earth_colors(n, seed=seed)
-
-
 def tile_palette(n_nests, seed=42):
     """Return colours for the six global faces followed by n_nests nests.
 
@@ -243,18 +238,6 @@ def ortho_project(lon_deg, lat_deg, lon0_deg=0.0, lat0_deg=0.0, roll_deg=0.0):
         x, y = c * x + s * y, -s * x + c * y
 
     return x, y, visible
-
-
-def computational_roll_deg(lon, lat, lon0, lat0):
-    """Clockwise roll that makes the tile's increasing-i axis horizontal."""
-    j = lon.shape[0] // 2
-    i = lon.shape[1] // 2
-    i0 = max(i - 1, 0)
-    i1 = min(i + 1, lon.shape[1] - 1)
-    x, y, _ = ortho_project(
-        lon[j, [i0, i1]], lat[j, [i0, i1]], lon0, lat0, roll_deg=0.0
-    )
-    return float(np.rad2deg(np.arctan2(y[1] - y[0], x[1] - x[0])))
 
 
 def projected_tile_path(lon, lat, lon0, lat0, roll_deg):
@@ -583,7 +566,6 @@ def plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, out_pat
         lon, lat = load_lonlat(datasets[f - 1])
         lon0, lat0 = tile_center(lon, lat)
         roll_deg = 0.0
-        # roll_deg = computational_roll_deg(lon, lat, lon0, lat0)
 
         # Limits are fixed first: each panel is zoomed to its own face, so its
         # map scale, and therefore its stride, follows from the zoom.
@@ -861,7 +843,7 @@ def plot_nests(
 
     plt.title("Resolved Nest Bounds")
 
-    outfile = state.run_dir / "nest_grids.png"
+    outfile = state.submit_dir / "nest_grids.png"
     outfile.unlink(missing_ok=True)
     plt.savefig(outfile, dpi=FIG_DPI, bbox_inches="tight")
     plt.close(fig)
@@ -892,7 +874,7 @@ def plot_tiles(grid_dir: Path):
         tile_colors = tile_palette(n_nests)
         face_titles, nest_labels = tile_labels(len(datasets), parents)
 
-        outfile = state.run_dir / "grid_faces.png"
+        outfile = state.submit_dir / "grid_faces.png"
         outfile.unlink(missing_ok=True)
 
         plot_faces(datasets, tile_colors, face_titles, nest_labels, parents, outfile)
@@ -906,10 +888,10 @@ def plot_tiles(grid_dir: Path):
 def plot_grid():
     """Entry point. Configures the cartopy cache and produces both figures."""
 
-    # Ensemble members share run_dir: the first to take the lock plots. Their
+    # Ensemble members share submit_dir: the first to take the lock plots. Their
     # start is staggered so the lock is rarely contended; a lock left by a
     # killed job is ignored after an hour.
-    plot_lock = state.run_dir / "plot.lock"
+    plot_lock = state.submit_dir / "plot.lock"
     if state.n_ensembles:
         time.sleep(random.uniform(0, 60))
     try:

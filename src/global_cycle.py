@@ -151,7 +151,7 @@ def run_global_cycle(
     (work_dir / "fort.37").write_text(_group("NAMSFCD", namsfcd))
 
     log_file = state.logs / f"global_cycle_{label}.log"
-    cmd = [*get_launcher(len(files)), str(state.ufs_exe / "global_cycle")]
+    cmd = [*get_launcher(len(files)), str(state.ufs_bin_dir / "global_cycle")]
     result, msgs = run_cmd(cmd, cwd=work_dir, stdout=log_file, stderr=log_file)
     if result != 0:
         log.error(msgs)

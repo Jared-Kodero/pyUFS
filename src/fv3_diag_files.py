@@ -6,7 +6,7 @@ AsciiDiagTable and YamlDiagTable. Every field of a table is a native
 output_name is the user's own name for it in the history files. The native field
 is the stable key: tables/diag_field.csv lists every pair the model registers,
 check_diag_fields() validates a table against it, and variables maps each native
-field name to its output name so that code downstream (derived_vars.py, the
+field name to its output name so that code downstream (plugins/derived, the
 regridder) finds a variable whatever the user called it.
 """
 
@@ -17,11 +17,11 @@ from itertools import groupby
 from pathlib import Path
 
 import pandas as pd
-import yaml
 
 from fv3_paths import paths
 from fv3_state import state
-from fv3_utils import cp
+from fv3_utils import copy_path
+from fv3_yaml import dump_yaml, open_yaml
 
 DIAG_FIELD_CSV = Path(__file__).resolve().parent.parent / "tables" / "diag_field.csv"
 
@@ -181,12 +181,10 @@ class YamlDiagTable:
 
     @staticmethod
     def read(path: str | Path) -> dict:
-        with Path(path).open(encoding="utf-8") as file:
-            return yaml.safe_load(file)
+        return open_yaml(path)
 
     def write(self, path: str | Path | None = None) -> None:
-        with Path(path or self.path).open("w", encoding="utf-8") as file:
-            yaml.safe_dump(self.data, file, sort_keys=False, allow_unicode=True)
+        dump_yaml(self.data, path or self.path, atomic=False, allow_unicode=True)
 
     def stream_names(self) -> list[str]:
         """File names of the diag_files, in table order."""
@@ -283,32 +281,13 @@ def check_diag_fields(table: AsciiDiagTable | YamlDiagTable) -> None:
         )
 
 
-def output_names(
-    table: AsciiDiagTable | YamlDiagTable,
-) -> dict[tuple[str, str], list[str]]:
-    """Output names written for each native (module, field), in table order."""
-    names: dict[tuple[str, str], list[str]] = {}
-    for module, field, out in table.entries():
-        if out not in names.setdefault((module, field), []):
-            names[(module, field)].append(out)
-    return names
-
-
 def staged_diag_table() -> AsciiDiagTable | YamlDiagTable | None:
-    """The diag_table staged in the work directory for the model, if any."""
-    work_dir = Path(paths["work_dir"])
+    """The diag_table staged in the case directory for the model, if any."""
+    case_dir = Path(paths["case_dir"])
     for name in ("diag_table.yaml", "diag_table"):
-        if (work_dir / name).exists():
-            return read_diag_table(work_dir / name)
+        if (case_dir / name).exists():
+            return read_diag_table(case_dir / name)
     return None
-
-
-def stream_handles() -> list[str]:
-    """File names of the streams of the staged diag_table (HIST/<handle>.<nn>)."""
-    table = staged_diag_table()
-    if table is None:
-        raise FileNotFoundError(f"No diag_table staged in {paths['work_dir']}")
-    return table.stream_names()
 
 
 class _Variables(dict):
@@ -352,10 +331,10 @@ def field_table_source() -> tuple[Path, bool]:
     format sets field_manager_nml use_field_table_yaml.
     """
     for name, is_yaml in (("field_table.yaml", True), ("field_table", False)):
-        path = state.run_dir / name
+        path = state.submit_dir / name
         if path.exists():
             return path, is_yaml
-    return state.ufs_utils / "templates" / "field_table.yaml", True
+    return state.pyufs / "templates" / "field_table.yaml", True
 
 
 def update_data_table():
@@ -366,28 +345,29 @@ def update_data_table():
     table no data override is applied.
     """
     for name in ("data_table", "data_table.yaml"):
-        (state.work_dir / name).unlink(missing_ok=True)
+        (state.case_dir / name).unlink(missing_ok=True)
     name = "data_table.yaml" if state.use_modern_diag else "data_table"
-    if (state.run_dir / name).exists():
-        cp(state.run_dir / name, state.work_dir / name)
+    if (state.submit_dir / name).exists():
+        copy_path(state.submit_dir / name, state.case_dir / name)
 
 
 def update_yaml_diag(restart_no: int):
     """Stage and update the modern YAML-based diagnostic table configuration."""
-    (state.work_dir / "diag_table.yaml").unlink(missing_ok=True)
+    (state.case_dir / "diag_table.yaml").unlink(missing_ok=True)
     dt = state.init_datetime
-    src = state.run_dir / "diag_table.yaml"
+    src = state.submit_dir / "diag_table.yaml"
     if not src.exists():
         raise FileNotFoundError(f"use_modern_diag: true requires {src}")
 
     table = YamlDiagTable(src)
     check_diag_fields(table)
     load_variables(table)
+    state.diag_handles = table.stream_names()
     table.data["title"] = str(state.description)
     table.data["base_date"] = f"{dt.year} {dt.month} {dt.day} {dt.hour} 0 0"
     for diag_file in table.data["diag_files"]:
         diag_file["file_name"] = f"HIST/{diag_file['file_name']}.{restart_no:02d}"
-    table.write(state.work_dir / "diag_table.yaml")
+    table.write(state.case_dir / "diag_table.yaml")
 
 
 def update_legacy_diag(restart_no: int):
@@ -398,20 +378,19 @@ def update_legacy_diag(restart_no: int):
     time, every stream is renamed HIST/<handle>.<restart_no>, and variable
     lines that name a stream the table does not define are dropped.
     """
-    (state.work_dir / "diag_table").unlink(missing_ok=True)
+    (state.case_dir / "diag_table").unlink(missing_ok=True)
     dt = state.init_datetime
 
-    user_diag = state.run_dir / "diag_table"
+    user_diag = state.submit_dir / "diag_table"
     # Month and year segments default to monthly means instead of hourly output.
     monthly = state.run_length_units in ("months", "years")
     template_diag = (
-        state.ufs_utils
-        / "templates"
-        / ("diag_table.monthly" if monthly else "diag_table")
+        state.pyufs / "templates" / ("diag_table.monthly" if monthly else "diag_table")
     )
     table = AsciiDiagTable(user_diag if user_diag.exists() else template_diag)
     check_diag_fields(table)
     load_variables(table)
+    state.diag_handles = table.stream_names()
 
     def tag(handle: str) -> str:
         return f"HIST/{handle}.{restart_no:02d}"
@@ -433,7 +412,7 @@ def update_legacy_diag(restart_no: int):
         )
     }
     table.data["streams"] = {tag(name): item for name, item in table.streams.items()}
-    table.write(state.work_dir / "diag_table")
+    table.write(state.case_dir / "diag_table")
 
 
 def update_diag_table():
@@ -442,7 +421,7 @@ def update_diag_table():
 
     # Clean up both possible old outputs
     for name in ("diag_table", "diag_table.yaml"):
-        (state.work_dir / name).unlink(missing_ok=True)
+        (state.case_dir / name).unlink(missing_ok=True)
 
     if state.use_modern_diag:
         update_yaml_diag(restart_no)
@@ -455,8 +434,10 @@ def update_table_files():
 
     field_file, is_yaml = field_table_source()
     for name in ("field_table", "field_table.yaml"):
-        (state.work_dir / name).unlink(missing_ok=True)
-    cp(field_file, state.work_dir / ("field_table.yaml" if is_yaml else "field_table"))
+        (state.case_dir / name).unlink(missing_ok=True)
+    copy_path(
+        field_file, state.case_dir / ("field_table.yaml" if is_yaml else "field_table")
+    )
 
     # Delegate to diagnostic and data table updaters
     update_diag_table()

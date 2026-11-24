@@ -6,7 +6,7 @@ import f90nml
 from fv3_nesting import gen_global_nest_parent, get_nest_indices
 from fv3_runtime import log, staged_files, tmp_cwd, to_list
 from fv3_state import save_fv3_state, state
-from fv3_utils import cp, run_cmd
+from fv3_utils import copy_path, run_cmd
 
 
 def nest_parents(parent_tile: int | list, n_nests: int, nest_type: str) -> list[int]:
@@ -424,11 +424,10 @@ def run_make_grid(
 
     reused = staged_files(mod_dir)
     if reused:
-        src = str(mod_dir).replace(str(state.work_dir), str(state.case_dir))
-        log.info(f"Using existing grid files from {src}")
+        log.info(f"Using existing grid files from {mod_dir}")
         out_dir.mkdir(parents=True, exist_ok=True)
         for file in reused:
-            cp(file, out_dir / file.name)
+            copy_path(file, out_dir / file.name)
         if gtype == "nest":
             record_nest_indices(c_res, out_dir)
         save_fv3_state()

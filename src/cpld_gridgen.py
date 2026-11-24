@@ -124,7 +124,7 @@ def _gridgen(
     }
     f90nml.write(nml, out_dir / "grid.nml", force=True)
 
-    cmd = [*get_launcher(1), str(state.ufs_exe / "cpld_gridgen")]
+    cmd = [*get_launcher(1), str(state.ufs_bin_dir / "cpld_gridgen")]
     result, msgs = run_cmd(cmd, cwd=out_dir, stdout=log_file, stderr=log_file)
     # The program ends with a plain stop (exit 0) on some errors, so its
     # outputs are checked as well.

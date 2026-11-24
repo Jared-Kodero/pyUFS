@@ -1,15 +1,21 @@
 # Regression: global C96, hourly output, two 6 h segments (cold start + restart).
 # Check: both segments finish, OUTPUT/fv3_hist.global.nc holds hours 1-12 with
 # no gap or duplicate at hour 6.
+# Container mode is the default. For native mode (conda_env/pyufs and modules, srun
+# steps for UFS_UTILS; run ./setup_all.sh first) uncomment ufs_bin_dir below. The default
+# shield_exe is native already (this case uses 2 nodes).
+#
+#
 
 # SBATCH OPTIONS
 constraint_node: null
 exclusive_node: false
 walltime: 2
-n_nodes: 1
+n_nodes: 2
 n_cpus: 48
 partition: batch
 n_cpus_per_task: 1
+ufs_bin_dir: /oscar/data/deeps/shared/gfdl_shield/bin/preprocessing
 
 description: test hourly restart
 archive_data: false # Tests do not archive outputs

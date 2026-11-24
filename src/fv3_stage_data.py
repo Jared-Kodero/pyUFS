@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fv3_runtime import log, sort_paths
 from fv3_state import state
-from fv3_utils import cp, rename
+from fv3_utils import copy_path, move_path
 from regional_bc import link_bc_to_input
 
 
@@ -47,7 +47,7 @@ def stage_files() -> None:
 
             else:
                 dest = state.input / f.name
-            cp(f, dest)
+            copy_path(f, dest)
 
     # Now process nests
     for nest_dir, nest_idx in nest_dict.items():
@@ -63,7 +63,7 @@ def stage_files() -> None:
             else:
                 continue
 
-            cp(f, dest)
+            copy_path(f, dest)
 
     fix_sfc_files = list((state.tmp / "input" / "fix_sfc").glob("*"))
     for f in fix_sfc_files:
@@ -81,7 +81,7 @@ def stage_files() -> None:
         elif dest_file.is_dir():
             shutil.rmtree(dest_file)
 
-        cp(f, state.input)
+        copy_path(f, state.input)
 
     # rename INPUT/fix_sfc to state.fix/fix_sfc
     fix_sfc_dest = state.fix / "fix_sfc"
@@ -100,7 +100,7 @@ def stage_files() -> None:
         # Global domain owns tiles 1 through 6.
         if tile_str in {f"tile{i}" for i in range(1, 7)}:
             new_file = state.input / f"oro_data.{tile_str}.nc"
-            rename(f, new_file)
+            move_path(f, new_file)
 
     # Rename nested orography files
     for nest_dir, nest_idx in nest_dict.items():
@@ -108,7 +108,7 @@ def stage_files() -> None:
 
         for f in list(state.input.glob(f"oro.C*.tile{tile}.nc")):
             new_file = state.input / f"oro_data.nest{nest_idx}.tile{tile}.nc"
-            rename(f, new_file)
+            move_path(f, new_file)
 
     for f in list(state.input.glob("*")):
         if "grid" in f.name or "mosaic" in f.name:
@@ -119,14 +119,6 @@ def stage_files() -> None:
 
     if state.gtype in ("regional_gfdl", "regional_esg"):
         stage_regional_inputs()
-
-    # Empty TMP, including hidden entries such as the parent grid that
-    # regional_gfdl bracketing writes to TMP/.tmp_make_grid.
-    for entry in Path(state.tmp).iterdir():
-        if entry.is_dir() and not entry.is_symlink():
-            shutil.rmtree(entry)
-        else:
-            entry.unlink()
 
 
 def _link(link: Path, target: Path) -> None:
@@ -147,13 +139,13 @@ def stage_regional_inputs() -> None:
     res, halo = state.c_res, state.halo
     inp, grid = Path(state.input), Path(state.grid)
 
-    rename(inp / f"C{res}_oro_data.tile7.halo0.nc", inp / "oro_data.nc")
-    rename(
+    move_path(inp / f"C{res}_oro_data.tile7.halo0.nc", inp / "oro_data.nc")
+    move_path(
         inp / f"C{res}_oro_data.tile7.halo{halo + 1}.nc",
         inp / f"oro_data.tile7.halo{halo + 1}.nc",
     )
-    rename(inp / "gfs_data.tile7.nc", inp / "gfs_data.nc")
-    rename(inp / "sfc_data.tile7.nc", inp / "sfc_data.nc")
+    move_path(inp / "gfs_data.tile7.nc", inp / "gfs_data.nc")
+    move_path(inp / "sfc_data.tile7.nc", inp / "sfc_data.nc")
 
     _link(inp / "grid_spec.nc", grid / f"C{res}_mosaic.nc")
     _link(inp / f"C{res}_grid.tile7.nc", grid / f"C{res}_grid.tile7.halo{halo}.nc")

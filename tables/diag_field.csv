@@ -13,7 +13,7 @@ dynamics,dy,dy,m
 dynamics,zsurf,surface height,m
 dynamics,zs,Original Mean Terrain,m
 dynamics,ze,Hybrid_Z_surface,m
-dynamics,oro,Land/Water Mask,none
+dynamics,oro,Land/Water Mask,nonef
 dynamics,sgh,Terrain Standard deviation,m
 dynamics,ps_ic,initial surface pressure,Pa
 dynamics,ua_ic,initial zonal wind,m/s
