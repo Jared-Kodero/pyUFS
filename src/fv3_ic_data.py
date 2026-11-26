@@ -20,6 +20,43 @@ from fv3_utils import find_tool, remove_path, run_cmd
 IC_MODELS = ("GFS", "HRRR")
 
 
+def validate_ic_grib_files() -> None:
+    """Check ic_grib_files before any work: known models, path lists, files present."""
+    if state.ic_grib_files is None:
+        return
+    if not isinstance(state.ic_grib_files, dict):
+        raise TypeError(
+            "ic_grib_files must map models to paths, e.g. {GFS: /data/gfs/*.grib2}"
+        )
+
+    unknown = set(state.ic_grib_files) - set(IC_MODELS)
+    if unknown:
+        raise ValueError(
+            f"ic_grib_files: unsupported models {sorted(unknown)}; "
+            + f"use {', '.join(IC_MODELS)}"
+        )
+
+    for model, patterns in state.ic_grib_files.items():
+        if isinstance(patterns, str):
+            patterns = [patterns]
+        if not isinstance(patterns, (list, tuple)) or not patterns:
+            raise ValueError(
+                f"ic_grib_files {model}: give a path, glob or list of them"
+            )
+        if not all(isinstance(p, (str, Path)) and str(p) for p in patterns):
+            raise ValueError(f"ic_grib_files {model}: every entry must be a path")
+
+        missing = [
+            p
+            for p in patterns
+            if not glob.glob(os.path.expandvars(os.path.expanduser(str(p))))
+        ]
+        if missing:
+            raise FileNotFoundError(
+                f"ic_grib_files {model}: no files match {', '.join(map(str, missing))}"
+            )
+
+
 def staged_ic_file(
     external_model: str, datetime: pd.Timestamp, forecast_hour: int
 ) -> tuple[str, str]:
