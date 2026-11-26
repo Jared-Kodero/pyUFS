@@ -20,6 +20,7 @@ from fv3_nesting import get_centers, nest_info, validate_nests
 from fv3_paths import CONTAINER_UFS_BIN_DIR, configure_directories, paths
 from fv3_pes_config import calc_cpu_alloc, get_grid_info
 from fv3_plot_grid import plot_grid
+from fv3_regional_bc import BC_INTERVAL_HOURS
 from fv3_restart_driver import restart_driver, stage_restart, verify_restart_config
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import load_run_config, log, to_list
@@ -35,7 +36,6 @@ from fv3_utils import (
     segment_hours,
 )
 from global_cycle_driver import GLOBAL_GTYPES, run_surface_cycle
-from regional_bc import BC_INTERVAL_HOURS
 
 # Files the user may supply; logged with their full path when set.
 USER_FILES = {
@@ -53,16 +53,22 @@ def _log_initial_state() -> None:
     log.info("Configuration file: %s", state.run_config)
     log.info("Case directory: %s", state.case_dir)
     log.info("Submit directory: %s", state.submit_dir)
-    log.info("Archive directory: %s", state.archive_dir)
+    if state.archive_data:
+        log.info("Archive directory: %s", state.archive_dir)
+    else:
+        log.info("Archive directory: none (archive_data is false)")
     log.info("Fixed/static directory: %s", state.fix_src)
 
     log.info("Logs directory: %s", state.logs)
 
-    if state.shield_exe:
-        log.info("Model executable: %s", state.shield_exe)
-    else:
+    if state.shield_use_container:
         log.info("Model executable: container image (SHiELD)")
-    log.info("Preprocessing executables: %s", state.ufs_bin_dir)
+    else:
+        log.info("Model executable: %s", state.shield_exe)
+    if state.preprocess_use_container:
+        log.info("Preprocessing executables: container image (%s)", state.ufs_bin_dir)
+    else:
+        log.info("Preprocessing executables: %s", state.ufs_bin_dir)
     log.info("Python executable: %s", state.python)
 
     log.info("Description: %s", state.description)
@@ -174,14 +180,16 @@ def _load_initial_state() -> None:
     # keys of run_config.yaml after the cold start are caught.
     state.config_checksum = compute_checksum(merged_config)
     state.update(runtime_env)
-    # case_submit.py checked that the set paths exist. Unset shield_exe runs the
-    # container; unset ufs_bin_dir uses the UFS_UTILS in the preprocess image.
+    # case_submit.py (runtime_mode) checked the native paths. The use_container
+    # switches alone choose the mode; the path of a containerized side is ignored.
     state.shield_exe = (
-        os.path.expandvars(state.shield_exe) if state.shield_exe else None
+        None
+        if state.shield_use_container
+        else os.path.expandvars(state.shield_exe)
     )
-    # A set ufs_bin_dir means native UFS_UTILS (newer interfaces), else the container.
-    state.native_prepro_exe = bool(state.ufs_bin_dir)
-    _ufs_bin_dir = state.ufs_bin_dir or CONTAINER_UFS_BIN_DIR
+    _ufs_bin_dir = (
+        CONTAINER_UFS_BIN_DIR if state.preprocess_use_container else state.ufs_bin_dir
+    )
     state.ufs_bin_dir = Path(os.path.expandvars(str(_ufs_bin_dir)))
 
     for key in ("init_datetime", "run_length"):

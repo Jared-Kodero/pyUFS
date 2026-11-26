@@ -2,16 +2,18 @@
 # Build the preprocess and shield Apptainer images used by the workflow (container mode only;
 # native mode uses setup_all.sh instead).
 #
-#   CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash install_images.sh
+#   CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash install_images.sh [preprocess] [shield]
 #
-# Images are written to $CONTAINERS_DIR/{preprocess,shield}.sif; which
-# must match preprocess_image and shield_image in run_config.yaml.
+# Names select the images to build (default: both). An image that already exists is
+# skipped, so the script is cheap to call before every job; FORCE=1 rebuilds it.
+# Images are written to $PREPROCESS_SIF and $SHIELD_SIF (case_submit.py sets them from
+# preprocess_image and shield_image); when unset, to $CONTAINERS_DIR/{preprocess,shield}.sif.
 # Image tags default to "latest"; pin them with PREPROCESS_TAG and SHIELD_TAG.
 # gfdlfv3/fre-nctools (tag FREGRID_TAG) is pulled only to take its Open MPI help
 # files for the other two images; it is deleted before the conda step and is not
 # installed.
-# A manifest of sources, checksums and conda packages is written to
-# $CONTAINERS_DIR/manifest/. The preprocess image provides the UFS_UTILS
+# A manifest of source, checksum and conda packages of each built image is written to
+# $CONTAINERS_DIR/manifest/ (<name>.txt and <name>.conda.txt). The preprocess image provides the UFS_UTILS
 # executables at /UFS_UTILS/exec and also runs src/fv3_regrid.py.
 set -euo pipefail
 
@@ -30,11 +32,30 @@ declare -A SOURCES=(
 )
 CONDA_IMAGES=(preprocess)
 
+declare -A TARGET=(
+    [preprocess]="${PREPROCESS_SIF:-$CONTAINERS_DIR/preprocess.sif}"
+    [shield]="${SHIELD_SIF:-$CONTAINERS_DIR/shield.sif}"
+)
+
 log() { echo "$(date '+%Y-%m-%d %H:%M') - INSTALL_IMAGES - $*"; }
 fail() {
     log "ERROR - $*" >&2
     exit 1
 }
+
+# --- 0. Which images to build ---
+NAMES=("$@")
+(( ${#NAMES[@]} )) || NAMES=(preprocess shield)
+TODO=()
+for NAME in "${NAMES[@]}"; do
+    [[ -v SOURCES[$NAME] ]] || fail "unknown image '$NAME' (preprocess or shield)"
+    if [[ -f "${TARGET[$NAME]}" && "${FORCE:-0}" != 1 ]]; then
+        log "INFO - ${TARGET[$NAME]} exists; skipped"
+    else
+        TODO+=("$NAME")
+    fi
+done
+(( ${#TODO[@]} )) || exit 0
 
 # --- 1. Checks and scratch space ---
 command -v apptainer >/dev/null || fail "apptainer not found"
@@ -64,7 +85,7 @@ log "INFO - pulling $HELP_SOURCE (Open MPI help files only)"
 apptainer pull "$WORK/help.sif" "$HELP_SOURCE"
 apptainer build --sandbox "$HELP_SANDBOX" "$WORK/help.sif"
 
-for NAME in preprocess shield; do
+for NAME in "${TODO[@]}"; do
     log "INFO - pulling ${SOURCES[$NAME]}"
     apptainer pull "$WORK/$NAME.sif" "${SOURCES[$NAME]}"
     apptainer build --sandbox "$WORK/sandboxes/$NAME" "$WORK/$NAME.sif"
@@ -77,7 +98,8 @@ done
 rm -rf "$HELP_SANDBOX" "$WORK/help.sif"
 
 # --- 3. Conda environments for the Python stages ---
-for NAME in "${CONDA_IMAGES[@]}"; do
+for NAME in "${TODO[@]}"; do
+    [[ " ${CONDA_IMAGES[*]} " == *" $NAME "* ]] || continue
     SANDBOX="$WORK/sandboxes/$NAME"
     cp "$MINICONDA_SH" "$SANDBOX/miniconda.sh"
     cp "$ENV_FILE" "$SANDBOX/env.yaml"
@@ -101,25 +123,23 @@ for NAME in "${CONDA_IMAGES[@]}"; do
     [ -x "$SANDBOX/opt/conda/envs/$NAME/bin/python" ] || fail "$NAME python environment missing"
 done
 
-[ -x "$WORK/sandboxes/preprocess/UFS_UTILS/exec/chgres_cube" ] ||
-    fail "preprocess image has no /UFS_UTILS/exec/chgres_cube"
+if [[ -d "$WORK/sandboxes/preprocess" ]]; then
+    [ -x "$WORK/sandboxes/preprocess/UFS_UTILS/exec/chgres_cube" ] ||
+        fail "preprocess image has no /UFS_UTILS/exec/chgres_cube"
+fi
 
 # --- 4. Final images, replaced only after a successful build ---
-{
-    echo "built: $(date -u '+%Y-%m-%dT%H:%MZ')"
-    echo "help_files.source: $HELP_SOURCE"
-    for NAME in preprocess shield; do
-        echo "$NAME.source: ${SOURCES[$NAME]}"
-    done
-} >"$WORK/images.txt"
-
-for NAME in preprocess shield; do
+for NAME in "${TODO[@]}"; do
+    mkdir -p "$(dirname "${TARGET[$NAME]}")"
     apptainer build "$WORK/$NAME.final.sif" "$WORK/sandboxes/$NAME"
-    mv -f "$WORK/$NAME.final.sif" "$CONTAINERS_DIR/$NAME.sif"
-    echo "$NAME.sha256: $(sha256sum "$CONTAINERS_DIR/$NAME.sif" | cut -d' ' -f1)" >>"$WORK/images.txt"
-    log "INFO - wrote $CONTAINERS_DIR/$NAME.sif"
+    mv -f "$WORK/$NAME.final.sif" "${TARGET[$NAME]}"
+    {
+        echo "built: $(date -u '+%Y-%m-%dT%H:%MZ')"
+        echo "source: ${SOURCES[$NAME]}"
+        echo "help_files.source: $HELP_SOURCE"
+        echo "sha256: $(sha256sum "${TARGET[$NAME]}" | cut -d' ' -f1)"
+    } >"$MANIFEST_DIR/$NAME.txt"
+    [ ! -f "$WORK/$NAME.conda.txt" ] || cp "$WORK/$NAME.conda.txt" "$MANIFEST_DIR/"
+    log "INFO - wrote ${TARGET[$NAME]}"
 done
-
-cp "$WORK/images.txt" "$MANIFEST_DIR/images.txt"
-cp "$WORK"/*.conda.txt "$MANIFEST_DIR/"
 log "INFO - manifest written to $MANIFEST_DIR"

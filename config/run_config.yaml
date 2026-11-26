@@ -1,7 +1,4 @@
-# SHiELD run configuration: defaults shared by all releases.
-# config/<release>/run_config.yaml includes this file and sets the keys that depend on
-# the release (shield_release, shield_exe, dt_cpld). Case-local run_config.yaml overrides
-# these defaults; unknown keys are rejected.
+# Defaults and valid keys; a case run_config.yaml overrides them and unknown keys are rejected.
 include: null # Additional run configuration files to include; can be a string or a list of strings.
 
 # 0. Job environment
@@ -10,12 +7,16 @@ fix_src: /oscar/data/deeps/shared/gfdl_shield/pyUFS/fix # Writable static-data d
 case_root: /jobtmp/$USER/gfdl_shield # Case and run directory (<parent>/<case_name>); set it to scratch or any shared path to keep cases.
 archive_root: $HOME/data/$USER/data/models/gfdl_shield/archive # Archive base directory.
 archive_subdir: null # Directory below archive_root that groups cases, e.g. hindcast; required when archive_data is true. Outputs go to <archive_root>/<archive_subdir>/<parent>/<case_name>.
-ufs_bin_dir: /oscar/data/deeps/shared/gfdl_shield/bin/preprocessing # Directory of the UFS_UTILS executables (chgres_cube, orog, ...); null uses the preprocess image. A set path must exist and selects native preprocessing and regridding (conda_env/pyufs and modules, no container; see setup_all.sh).
-shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model container.
-preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing container.
+shield_use_container: false # false runs the native shield_exe (required for multi-node); true runs SHiELD from shield_image on a single node and ignores shield_exe.
+preprocess_use_container: false # false runs the native UFS_UTILS in ufs_bin_dir (conda_env/pyufs and modules, see setup_all.sh); true runs UFS_UTILS and regridding from preprocess_image and ignores ufs_bin_dir.
+ufs_bin_dir: /oscar/data/deeps/shared/gfdl_shield/bin/preprocessing # Directory of the UFS_UTILS executables (chgres_cube, orog, ...); used and required (must exist) when preprocess_use_container is false.
+shield_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/shield.sif # Model container; used only when shield_use_container is true.
+preprocess_image: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers/preprocess.sif # Preprocessing container; used only when preprocess_use_container is true.
 containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Container install directory; image paths must point here.
 container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Existing paths mounted in containers; include all workflow directories.
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules for the native shield_exe and, when ufs_bin_dir is set, for preprocessing and regridding.
+shield_release: "202411" # or "202604"; null selects 202411. Must match the release of shield_exe.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bin/202411.fv3.public_SHiELD_nh.repro.64bit.gnu.x # Native executable of shield_release; used and required (must exist) when shield_use_container is false.
 
 # 1. SLURM submission
 # n_cpus is rounded down to a multiple of n_nodes
@@ -134,6 +135,7 @@ do_deep: false # Enable deep convection even where dx <= 4 km.
 # k_split and n_split lists must have one entry per grid (global + nests).
 # Finer grids generally require smaller timesteps for CFL stability.
 dt_atmos: null # Atmospheric timestep [s]; null selects automatically.
+dt_cpld: null # Coupling step [s]; null = dt_atmos; otherwise a multiple of dt_atmos.
 k_split: null # Remap splits per atmosphere step, ordered [global, nests...].
 n_split: null # Acoustic substeps per remap split, ordered [global, nests...].
 
@@ -144,12 +146,4 @@ make_gsl_orog: false # Generate GSL drag files; unused by SHiELD physics.
 
 # 10. Plugins
 # Optional modules in plugins/ are set in a separate YAML file: a mapping of plugin name
-# to its settings. A plugin runs only when its section is in the file.
-#   pamip:             PAMIP SST and sea-ice boundary conditions, slab ocean, CO2 year,
-#                      and the external SST, sea-ice and land-mask files
-#   sst_perturbation:  adds an SST anomaly to the climatology in use
-#   sm_perturbations:  perturbs the soil restart files
-#   derived:           user file of derived variables
-# Keys and examples: config/examples/plugins.yaml. The file is read at the cold start
-# and its content is stored in state.yaml, so later edits do not affect a running case.
 plugins_config: null # Path to the plugins file ($VAR and ~ expanded; a relative path is taken from the submit directory); null: no plugins.

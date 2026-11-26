@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -208,19 +207,19 @@ def validate_forecast_horizon(
     raise ValueError(message)
 
 
-def generate_boundary_files(base_config, source_mosaic, run_spec) -> None:
+def generate_boundary_files(base_config, source_mosaic, run_conversion) -> None:
     """Generate every lateral boundary file from one driving-model forecast.
 
     Parameters
     ----------
     base_config
-        The regional-domain ``ChgresCubeConfig`` used for the initial-condition
+        The regional-domain chgres_cube config dict used for the initial-condition
         pass. Its target-grid, vertical-coordinate, halo and mapping settings
         are inherited; only the input data, valid time and conversion flags
         change.
     source_mosaic
         Per-domain mosaic staged onto the canonical target-grid path.
-    run_spec
+    run_conversion
         Callable ``(domain_label, source_mosaic, config) -> Path`` that writes
         fort.41, launches chgres_cube and returns the working directory holding
         the boundary output. Passed in by chgres_cube so this module never
@@ -259,23 +258,23 @@ def generate_boundary_files(base_config, source_mosaic, run_spec) -> None:
             forecast_hour=lead,
         )
 
-        config = replace(
-            base_config,
-            external_model=model,
-            regional=REGIONAL_BC,
-            convert_atm=True,
-            convert_sfc=False,
-            convert_nst=False,
-            data_dir_input_grid=data_dir,
-            grib2_file_input_grid=data_file,
-            cycle_year=valid.year,
-            cycle_mon=valid.month,
-            cycle_day=valid.day,
-            cycle_hour=valid.hour,
-        )
+        config = {
+            **base_config,
+            "external_model": model,
+            "regional": REGIONAL_BC,
+            "convert_atm": True,
+            "convert_sfc": False,
+            "convert_nst": False,
+            "data_dir_input_grid": data_dir,
+            "grib2_file_input_grid": data_file,
+            "cycle_year": valid.year,
+            "cycle_mon": valid.month,
+            "cycle_day": valid.day,
+            "cycle_hour": valid.hour,
+        }
 
         work_dir = Path(
-            run_spec(
+            run_conversion(
                 f"regional_bc_{fh:03d}",
                 source_mosaic,
                 config,

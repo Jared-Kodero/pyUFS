@@ -4,12 +4,12 @@ from pathlib import Path
 import numpy as np
 
 from fv3_diag_files import field_table_source
+from fv3_regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
 from fv3_runtime import log, open_nml, read_namelist, require_fix_files, write_nml
 from fv3_state import state
 from fv3_timings import get_timings
 from fv3_update_fix import NAMSFC_FILES
 from fv3_utils import copy_path, cres_to_deg
-from regional_bc import BC_INTERVAL_HOURS, HALO_BLEND
 from release import coupling_step_key, restart_overrides, template
 
 # Restoring time scale (days) of the slab ocean SST toward the SST climatology. The restoring

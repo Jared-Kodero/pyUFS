@@ -9,6 +9,7 @@ from fv3_diag_files import update_table_files
 from fv3_fixed_files import update_fixed_files
 from fv3_namelists import restart_config
 from fv3_paths import configure_directories
+from fv3_regional_bc import link_bc_to_input
 from fv3_runscripts import gen_shield_run_sh
 from fv3_runtime import load_run_config
 from fv3_state import (
@@ -24,7 +25,6 @@ from fv3_utils import (
     runtime_env_vars,
 )
 from fv3_yaml import dump_yaml, open_yaml
-from regional_bc import link_bc_to_input
 
 
 def _load_restart_state() -> None:

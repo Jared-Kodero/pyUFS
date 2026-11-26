@@ -22,14 +22,26 @@ from release import resolve_release
 log = logging.getLogger("PREPROCESS")
 
 
+def ufs_utils_version(ufs_bin_dir: object) -> str:
+    """UFS_UTILS release recorded by tools/build_ufs.py in <ufs_bin_dir>/manifest.yaml."""
+    manifest = Path(os.path.expandvars(str(ufs_bin_dir or ""))) / "manifest.yaml"
+    try:
+        release = read_namelist(manifest).get("ufs_utils")
+    except (OSError, ValueError):
+        return f"unknown (no readable {manifest})"
+    if not release:
+        return f"unknown (no release recorded in {manifest})"
+    return f"{release} ({manifest.parent})"
+
+
 def log_release() -> None:
-    """Log the pyUFS branch and the SHiELD build this case will execute.
+    """Log the pyUFS branch, the UFS_UTILS release and the SHiELD build of this case.
 
     Called before any other driver output of the initial run (not on restarts,
     which would repeat it in every segment). The branch is read from .git/HEAD of
     the pyUFS checkout (no git binary is needed inside the containers) and the
     shield_exe with the shield_release from the run configuration, or the container
-    image when shield_exe is not set.
+    image when shield_use_container is true.
     """
     branch = "unknown"
     try:
@@ -42,15 +54,23 @@ def log_release() -> None:
         pass
 
     config = load_run_config()
-    shield_exe = os.path.expandvars(str(config.get("shield_exe") or "")).strip()
-    if shield_exe:
-        version = f"{Path(shield_exe).name} (release: {config['shield_release']})"
+    if config.get("preprocess_use_container"):
+        image = config.get("preprocess_image")
+        name = Path(str(image)).name if image else "(preprocessing)"
+        ufs_utils = f"container image {name}"
     else:
+        ufs_utils = ufs_utils_version(config.get("ufs_bin_dir"))
+
+    if config.get("shield_use_container"):
         image = config.get("shield_image")
         name = Path(str(image)).name if image else "(SHiELD)"
         version = f"container image {name}"
+    else:
+        shield_exe = os.path.expandvars(str(config.get("shield_exe") or "")).strip()
+        version = f"{Path(shield_exe).name} (release: {config['shield_release']})"
 
     log.info("pyUFS branch: %s", branch)
+    log.info("UFS_UTILS version: %s", ufs_utils)
     log.info("SHiELD version: %s", version)
 
 
@@ -77,7 +97,7 @@ def load_run_config() -> dict:
     conf_path = Path(paths["submit_dir"]) / "run_config.yaml"
     conf = read_namelist(conf_path) or {}
     release = resolve_release(conf.get("shield_release"))
-    release_defaults = load_config(Path(paths["configs"]) / release / "run_config.yaml")
+    release_defaults = load_config(Path(paths["configs"]) / "run_config.yaml")
 
     conf = resolve_includes(conf, conf_path)
 
@@ -185,7 +205,7 @@ SRUN = [
 def get_launcher(n_procs: int, serial: bool = False) -> list:
     """Command prefix for the preprocessing executables.
 
-    Native preprocessing (state.native_prepro_exe) runs MPI steps as srun steps of
+    Native preprocessing (preprocess_use_container false) runs MPI steps as srun steps of
     the Slurm allocation, so Slurm places them on any node of the job. In the container
     the MPI steps use mpirun on this node: the rank count follows the CPUs visible to
     the process, which can exceed the Slurm task slots (n_cpus_per_task > 1), so
@@ -197,16 +217,16 @@ def get_launcher(n_procs: int, serial: bool = False) -> list:
     """
     if serial:
         return []
-    if state.native_prepro_exe:
-        return [*SRUN, "-n", str(n_procs)]
-    return [
-        "mpirun",
-        "--oversubscribe",
-        "-np",
-        str(n_procs),
-        "--host",
-        f"localhost:{n_procs}",
-    ]
+    if state.preprocess_use_container:
+        return [
+            "mpirun",
+            "--oversubscribe",
+            "-np",
+            str(n_procs),
+            "--host",
+            f"localhost:{n_procs}",
+        ]
+    return [*SRUN, "-n", str(n_procs)]
 
 
 def to_builtin(obj: object) -> object:

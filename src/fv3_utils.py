@@ -290,12 +290,8 @@ def segment_hours(init: pd.Timestamp, length: int, units: str, count: int) -> li
 
 
 def get_allocated_nodes() -> list[str]:
-    """Hostnames of the nodes allocated to the job.
-
-    case_run.sh exports them as the comma-separated CASE_NODE_LIST; the list is
-    empty where that variable is unset (tools, tests).
-    """
-    return [node for node in os.getenv("CASE_NODE_LIST", "").split(",") if node]
+    """Return the hostnames allocated to the job."""
+    return os.getenv("CASE_NODE_LIST", "").split()
 
 
 def runtime_env_vars() -> dict[str, object]:

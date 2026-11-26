@@ -230,11 +230,12 @@ def validate_hrrr_bounds(tile: int) -> str:
 
 def preprocess_only():
     files_to_rm = []
-    for pattern in ["*.out", "shield.native", "*table*"]:
+    for pattern in ["*.out", "*table*"]:
         files_to_rm.extend(state.case_dir.glob(pattern))
     remove_path(*files_to_rm)
     state.resubmit_idx = 0
     state.restart_no = 0
     state.preprocess_only = False
+    log.info("Preprocess-only completed.")
 
     save_fv3_state()

@@ -9,13 +9,15 @@ from fv3_runtime import handle_errors, log_release
 from fv3_state import setup_logging
 from fv3_utils import exit_code
 
+CASE_RESUBMIT_INDEX = int(os.environ.get("CASE_RESUBMIT_INDEX", "0"))
+CASE_RESTART_DIR = os.environ.get("CASE_RESTART_DIR")
+
 
 def main() -> None:
     setup_logging()
     # CASE_RESTART_DIR: preprocess a new case, then continue it from a restart.
-    if int(os.environ.get("CASE_RESUBMIT_INDEX", "0")) > 0 and not os.environ.get(
-        "CASE_RESTART_DIR"
-    ):
+
+    if CASE_RESUBMIT_INDEX > 0 and not CASE_RESTART_DIR:
         restart_driver()
     else:
         log_release()

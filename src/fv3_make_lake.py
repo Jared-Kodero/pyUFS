@@ -35,7 +35,7 @@ def _run_lakefrac(
         f"{c_res}",
         f"{topo}",
     ]
-    if state.native_prepro_exe:
+    if not state.preprocess_use_container:
         # lake status source, lake depth source, cutoff, binary_lake
         cmd += ["GLDBV2", "GLDBV2", f"{lake_cutoff}", "0"]
     else:

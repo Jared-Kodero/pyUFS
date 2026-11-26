@@ -5,25 +5,26 @@
 # SBATCH OPTIONS
 constraint_node: null
 exclusive_node: false
-walltime: 4
-n_nodes: 2
+walltime: 2
 n_cpus: 96
 partition: batch
 n_cpus_per_task: 1
 
 description: test nest gfs
-archive_data: false # Tests do not archive outputs
+archive_data: true
+archive_subdir: "nest_gfs"
 init_datetime: "2023070100Z"
-run_length: 6
+run_length: 2
 run_length_units: hours
+resubmit: 1
 c_res: C96
 gtype: nest
 levels: 64
-refine_ratio: [4, 2]
-lon_min: [-125, -95]
-lon_max: [-47, -57]
-lat_min: [25, 32]
-lat_max: [60, 55]
+refine_ratio: [4]
+lon_min: [-125]
+lon_max: [-47]
+lat_min: [25]
+lat_max: [60]
 parent_tile: 6
 halo: 3
 generate_ic_data: true
@@ -32,5 +33,5 @@ generate_ic_data: true
 # acoustic dt of each domain is dt_atmos / (k_split * n_split) = 60, 15 and 15 s.
 dt_atmos: 180
 dt_cpld: 180
-k_split: [1, 2, 2]
-n_split: [3, 6, 6]
+k_split: [1, 2]
+n_split: [3, 6]

@@ -5,17 +5,26 @@
     python tools/build_ufs.py -j 16
 
 Build UFS_UTILS release UFS_UTILS_TAG. Load the host modules of
-config/<default release>/run_config.yaml plus the build-only modules below, build the
+config/run_config.yaml plus the build-only modules below, build the
 NCEPLIBS libraries and every UFS_UTILS tool in /tmp/$USER/ufs_utils-<tag>, and replace
 bin/preprocessing with the result. The executables carry the library paths (RPATH) of the
 build modules, so a run needs only the host modules of run_config.yaml. Set ufs_bin_dir in
 run_config.yaml to the path that the script prints.
+
+What the script does, in order:
+ 1. Load the host modules plus the build-only modules and check the toolchain.
+ 2. Build the NCEPLIBS libraries that UFS_UTILS needs (bacio, sp, ip, ...), each at a
+    pinned tag, into a private prefix.
+ 3. Build UFS_UTILS against those libraries and the loaded modules.
+ 4. Check that every executable that pyUFS calls exists, and that each one finds all of
+    its shared libraries with only the host modules loaded (the run-time situation).
+ 5. Write bin/preprocessing/manifest.yaml (UFS_UTILS release, module and library versions,
+    source tags and commits) and replace bin/preprocessing with the new build.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import os
 import shlex
 import shutil
@@ -24,9 +33,16 @@ import sys
 import time
 from pathlib import Path
 
+# utils must be imported first: it puts src/ on sys.path for fv3_yaml.
 from pyufs_links import link_parent_dir
-from utils import BUILD_ROOT, BuildError, module_script, release_config
-from release import DEFAULT_RELEASE
+from utils import (
+    BUILD_ROOT,
+    BuildError,
+    default_config,
+    module_script,
+    version_record,
+)
+from fv3_yaml import dump_yaml
 
 UFS_UTILS_URL = "https://github.com/ufs-community/UFS_UTILS.git"
 # Newest release whose chgres_cube writes the sfc_data variables SHiELD reads (sheleg,
@@ -194,32 +210,20 @@ def check_libraries(run_modules: str, exec_dir: Path) -> None:
 
 
 def write_manifest(
-    exec_dir: Path,
-    modules: list[str],
-    rpath: str,
-    toolchain: list[str],
-    commits: dict[str, str],
-    tree: Path,
+    exec_dir: Path, versions: dict, sources: dict[str, dict[str, str]]
 ) -> None:
-    """Write exec_dir/manifest: modules, sources, checksums and where it was built."""
-    lines = [
-        f"modules: {', '.join(modules)}",
-        f"build modules: {', '.join(BUILD_MODULES)}",
-        f"install rpath: {rpath}",
-    ]
-    for line in toolchain:
-        lines.append(f"toolchain {line}")
-    for name, value in commits.items():
-        lines.append(f"{name}: {value}")
-    for path in sorted(exec_dir.iterdir()):
-        if path.is_file():
-            lines.append(
-                f"sha256 {path.name}: {hashlib.sha256(path.read_bytes()).hexdigest()}"
-            )
-    built = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    lines.append(f"built: {built} on {os.uname().nodename}")
-    lines.append(f"build tree: {tree}")
-    (exec_dir / "manifest").write_text("\n".join(lines) + "\n")
+    """Write exec_dir/manifest.yaml: release, versions of the modules and tools, sources.
+
+    ``versions`` is utils.version_record. pyUFS reads ``ufs_utils`` to log the
+    release of every run.
+    """
+    manifest = {
+        "ufs_utils": UFS_UTILS_TAG,
+        "built": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        **versions,
+        "sources": sources,
+    }
+    dump_yaml(manifest, exec_dir / "manifest.yaml")
 
 
 def main() -> int:
@@ -234,7 +238,8 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        modules = release_config(DEFAULT_RELEASE)["modules"]
+        # Step 1: host modules plus the build-only modules.
+        modules = default_config()["modules"]
         run_modules = module_script(modules)
         build_env = (
             module_script(modules + list(BUILD_MODULES))
@@ -254,23 +259,27 @@ def main() -> int:
         shutil.rmtree(tree, ignore_errors=True)
         deps.mkdir(parents=True)
 
-        commits = {}
+        # Step 2: build each NCEPLIBS library at its pinned tag, installed in deps.
+        sources = {}
         for name, lib in LIBS.items():
             tag, options = lib["tag"], lib.get("options", [])
             print(f"building {name} {tag}", flush=True)
             src = tree / "src" / name
             url = f"https://github.com/NOAA-EMC/NCEPLIBS-{name}.git"
-            commits[name] = f"{tag} {clone(url, tag, src)}"
+            sources[name] = {"tag": tag, "commit": clone(url, tag, src)}
             cmake_install(
                 build_env, src, tree / "build" / name, deps, deps, options, args.jobs
             )
 
+        # Step 3: build UFS_UTILS (some tools need its ccpp-physics submodule).
         print(f"building UFS_UTILS {UFS_UTILS_TAG}", flush=True)
         src = tree / "src" / "UFS_UTILS"
-        commits["UFS_UTILS"] = (
-            f"{UFS_UTILS_TAG} {clone(UFS_UTILS_URL, UFS_UTILS_TAG, src)}"
-        )
+        sources["UFS_UTILS"] = {
+            "tag": UFS_UTILS_TAG,
+            "commit": clone(UFS_UTILS_URL, UFS_UTILS_TAG, src),
+        }
         bash("git submodule update -q --init --depth 1 ccpp-physics", cwd=src)
+        # The RPATH lets the executables find their libraries without the build modules.
         rpath = link_dirs(build_env)
         print(f"    install RPATH: {rpath}")
         options = [
@@ -288,6 +297,7 @@ def main() -> int:
             args.jobs,
         )
 
+        # Step 4: check the result.
         exec_dir = prefix / "exec"
         missing = [name for name in EXECUTABLES if not (exec_dir / name).is_file()]
         if missing:
@@ -297,7 +307,10 @@ def main() -> int:
         print("checking shared libraries with the run-time modules", flush=True)
         check_libraries(run_modules, exec_dir)
 
-        write_manifest(exec_dir, modules, rpath, toolchain, commits, tree)
+        # Step 5: record the build, then replace bin/preprocessing with it.
+        write_manifest(
+            exec_dir, version_record(toolchain, modules, BUILD_MODULES), sources
+        )
 
         dest = link_parent_dir("bin", create=True) / "preprocessing"
         install_dir(exec_dir, dest)

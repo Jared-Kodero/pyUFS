@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import asdict, dataclass, fields, replace
+from functools import partial
 from pathlib import Path
-from typing import Literal
+from typing import Any, NamedTuple
 
 import f90nml
 
-import regional_bc
 from fv3_ic_data import get_ic_data, validate_hrrr_bounds
+from fv3_regional_bc import HALO_BLEND, REGIONAL_IC, generate_boundary_files
 from fv3_runtime import get_launcher, read_namelist
 from fv3_stage_data import stage_files
 from fv3_state import state
@@ -17,100 +17,30 @@ from fv3_utils import copy_path, run_cmd
 
 log = logging.getLogger("PREPROCESS")
 
+SRC_DIR = Path(__file__).resolve().parent  # <repo>/src
+DEFAULT_CFG_PATH = SRC_DIR.parent / "config" / "chgres_cube.yaml"
 
-@dataclass
-class ChgresCubeConfig:
-    # === Target grid ===
-    mosaic_file_target_grid: Path | None = None
-    fix_dir_target_grid: Path | None = None
-    orog_dir_target_grid: Path | None = None
-    orog_files_target_grid: list[str] = None
-    vcoord_file_target_grid: Path | None = None
-
-    # === Input grid ===
-    data_dir_input_grid: Path | None = None
-    atm_files_input_grid: list[str] = None
-    sfc_files_input_grid: list[str] = None
-    nst_files_input_grid: list[str] = None
-    atm_core_files_input_grid: list[str] = None
-    atm_tracer_files_input_grid: list[str] = None
-    orog_dir_input_grid: Path | None = None
-    orog_files_input_grid: list[str] = None
-    grib2_file_input_grid: Path | None = None
-    geogrid_file_input_grid: Path | None = None
-    mosaic_file_input_grid: Path | None = None
-
-    # === Physics / mapping ===
-    varmap_file: Path | None = None
-    thomp_mp_climo_file: Path | None = None
-    wam_parm_file: Path | None = None
-
-    # === Cycle ===
-    cycle_year: int | None = None
-    cycle_mon: int | None = None
-    cycle_day: int | None = None
-    cycle_hour: int | None = None
-
-    # === Conversion flags ===
-    convert_atm: bool = True
-    convert_sfc: bool = True
-    convert_nst: bool = False
-
-    # === Input type ===
-    input_type: Literal[
-        "restart",
-        "history",
-        "gaussian_nemsio",
-        "gaussian_netcdf",
-        "grib2",
-        "gfs_gaussian_nemsio",
-        "gfs_sigio",
-    ] = "grib2"
-
-    tracers: list[str] = (
-        "sphum",
-        "liq_wat",
-        "rainwat",
-        "ice_wat",
-        "snowwat",
-        "graupel",
-        "o3mr",
-        "cld_amt",
-    )
-    tracers_input: list[str] = (
-        "spfh",
-        "clwmr",
-        "rwmr",
-        "icmr",
-        "snmr",
-        "grle",
-        "o3mr",
-    )
-
-    # === Grid / nesting ===
-    regional: int = 0
-    halo_bndy: int = 0
-    halo_blend: int = 0
-
-    external_model: Literal["GFS", "NAM", "RAP", "HRRR", "RRFS", "FV3", "FV3LAM"] = (
-        "GFS"
-    )
-
-    # === Land / soil options ===
-    nsoill_out: Literal[4, 9] = 4
-    sotyp_from_climo: bool = True
-    vgtyp_from_climo: bool = True
-    vgfrc_from_climo: bool = True
-    lai_from_climo: bool = True
-    minmax_vgfrc_from_climo: bool = True
-    # Substrate temperature from the lowest soil layer of the source data
-    # (UFS_UTILS default: false, the static climatology).
-    tg3_from_soil: bool = True
-    wam_cold_start: bool = False
+# A chgres_cube config is a flat dict of namelist keys. Defaults come from
+# DEFAULT_CFG_PATH; the driver and the user's per-domain files override them.
+Config = dict[str, Any]
 
 
-# Valid override keys accepted from a user config block.
-CONFIG_FIELDS = {f.name for f in fields(ChgresCubeConfig)}
+def _read_raw(path: Path) -> Config:
+    """Read a config file and unwrap an optional single `config` group.
+
+    Keys may be flat or nested in one `config` group, the layout of fort.41
+    and of config/chgres_cube.yaml. Null values are kept.
+    """
+    block = read_namelist(path)
+    if set(block) == {"config"} and isinstance(block["config"], dict):
+        block = block["config"]
+    return block
+
+
+# Full default config. Its keys, including null-default ones, are the only keys
+# a user config block may override.
+DEFAULTS: Config = _read_raw(DEFAULT_CFG_PATH)
+CONFIG_FIELDS = set(DEFAULTS)
 
 # Nest atmosphere source when a nest config sets no external_model. A nest
 # inside HRRR coverage takes the HRRR atmosphere (GFS surface); a nest outside
@@ -120,17 +50,16 @@ CONFIG_FIELDS = {f.name for f in fields(ChgresCubeConfig)}
 NEST_DEFAULT_MODEL = "HRRR"
 
 
-@dataclass(frozen=True)
-class RunSpec:
+class RunSpec(NamedTuple):
     """One fully populated chgres_cube invocation plus its domain label.
 
     source_mosaic is the per-domain mosaic on disk; it is copied onto the
-    shared canonical path in config.mosaic_file_target_grid at run time.
+    shared canonical path in config["mosaic_file_target_grid"] at run time.
     """
 
     domain: str
     source_mosaic: Path
-    config: ChgresCubeConfig
+    config: Config
 
 
 def config_candidates(domain: str) -> list[str]:
@@ -141,21 +70,17 @@ def config_candidates(domain: str) -> list[str]:
     return [f"chgres_cube_nest{nn}.yaml", f"fort_nest{nn}.41"]
 
 
-def load_block(domain: str) -> dict:
-    """Load a domain's flat config block, or an empty block if no file is present.
+def load_block(domain: str) -> Config:
+    """Load a domain's user overrides, or an empty block if no file is present.
 
-    Accepted files (YAML preferred over namelist) are read verbatim. Keys may
-    be flat or nested in one `config` group, the layout of fort.41 and of
-    templates/chgres_cube.yaml. When none exist, an empty block is returned so
-    the built-in default applies.
+    Accepted files (YAML preferred over namelist) are read verbatim. Null
+    values are dropped, and keys must exist in the defaults file. When no file
+    exists, an empty block is returned so the defaults apply.
     """
     for name in config_candidates(domain):
         path = state.submit_dir / name
         if path.exists():
-            block = read_namelist(path)
-            if set(block) == {"config"} and isinstance(block["config"], dict):
-                block = block["config"]
-            block = {k: v for k, v in block.items() if v is not None}
+            block = {k: v for k, v in _read_raw(path).items() if v is not None}
             unknown = set(block) - CONFIG_FIELDS
             if unknown:
                 raise KeyError(f"{path}: unknown chgres_cube keys {sorted(unknown)}")
@@ -203,7 +128,7 @@ def resolve_atm_model(requested: str, domain: str, tile: int, explicit: bool) ->
     )
 
 
-def plan_runs(domain: str, tile: int | None, block: dict) -> list[tuple[str, dict]]:
+def plan_runs(domain: str, tile: int | None, block: Config) -> list[tuple[str, Config]]:
     """Return (external_model, override_dict) for each run of a domain.
 
     Global takes its model and convert flags from the file, or GFS with default
@@ -309,21 +234,21 @@ def build_run_specs() -> list[RunSpec]:
     else:
         raise ValueError(f"Unrecognized grid type: {state.gtype}")
 
-    base = ChgresCubeConfig(
-        cycle_year=state.init_datetime.year,
-        cycle_mon=state.init_datetime.month,
-        cycle_day=state.init_datetime.day,
-        cycle_hour=state.init_datetime.hour,
-        orog_dir_target_grid=ic_dir,
-        fix_dir_target_grid=ic_dir / "fix_sfc",
-        vcoord_file_target_grid=state.fix_src
+    base: Config = {
+        "cycle_year": state.init_datetime.year,
+        "cycle_mon": state.init_datetime.month,
+        "cycle_day": state.init_datetime.day,
+        "cycle_hour": state.init_datetime.hour,
+        "orog_dir_target_grid": ic_dir,
+        "fix_dir_target_grid": ic_dir / "fix_sfc",
+        "vcoord_file_target_grid": state.fix_src
         / "am"
         / f"global_hyblev.l{state.levels}.txt",
-    )
+    }
 
     specs: list[RunSpec] = []
     for domain, tile, mosaic, orog in grids:
-        block = load_block(domain)  # empty dict falls back to the built-in default
+        block = load_block(domain)  # empty dict falls back to the defaults file
         for model, overrides in plan_runs(domain, tile, block):
             data_dir, data_file = get_ic_data(
                 model, state.ic_cycle, state.forecast_hour
@@ -337,7 +262,7 @@ def build_run_specs() -> list[RunSpec]:
             else:
                 varmap_file = varmap_dir / "GFSphys_var_map.txt"
 
-            settings = {
+            settings: Config = {
                 "mosaic_file_target_grid": canonical_mosaic,
                 "orog_files_target_grid": orog,
                 "external_model": model,
@@ -352,33 +277,31 @@ def build_run_specs() -> list[RunSpec]:
                 # reads, halo_blend the tendency-blend width. regional_bc reuses
                 # this config for the boundary-only passes.
                 settings.update(
-                    regional=regional_bc.REGIONAL_IC,
+                    regional=REGIONAL_IC,
                     halo_bndy=state.halo + 1,
-                    halo_blend=regional_bc.HALO_BLEND,
+                    halo_blend=HALO_BLEND,
                 )
-            settings.update(overrides)  # file values win over derived defaults
-            cfg = replace(base, **settings)
-            specs.append(RunSpec(domain=domain, source_mosaic=mosaic, config=cfg))
+            # Precedence: defaults < derived base < per-run settings < file values.
+            cfg = {**DEFAULTS, **base, **settings, **overrides}
+            specs.append(RunSpec(domain, mosaic, cfg))
     return specs
 
 
-def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
+def run_chgres(domain: str, source_mosaic: Path, cfg: Config, n_cpus: int) -> Path:
     """Stage the mosaic, record IC provenance, write fort.41, and run chgres_cube.
 
     Returns the working directory holding the run output, so the caller can
     collect per-domain products such as the regional boundary file.
     """
-    cfg = spec.config
-    domain = spec.domain
-    model = cfg.external_model
+    model = cfg["external_model"]
 
     tmp_dir = state.tmp / "chgres_cube" / domain
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     fields_on = [
-        ("atm", cfg.convert_atm),
-        ("sfc", cfg.convert_sfc),
-        ("nst", cfg.convert_nst),
+        ("atm", cfg["convert_atm"]),
+        ("sfc", cfg["convert_sfc"]),
+        ("nst", cfg["convert_nst"]),
     ]
     active = [name for name, on in fields_on if on]
     converts = " and ".join(active)
@@ -391,22 +314,26 @@ def run_chgres(spec: RunSpec, n_cpus: int) -> Path:
     log_file = state.logs / f"chgres_cube_{domain}_{'_'.join(active) or 'none'}.log"
 
     # Stage this domain's mosaic onto the shared canonical path.
-    canonical = Path(cfg.mosaic_file_target_grid)
+    canonical = Path(cfg["mosaic_file_target_grid"])
     canonical.unlink(missing_ok=True)
-    copy_path(spec.source_mosaic, canonical)
+    copy_path(source_mosaic, canonical)
 
-    # Record which model supplied each field group.
-    source = state.ic_source.setdefault(domain, {"atm": None, "sfc": None, "nst": None})
-    for name, on in fields_on:
-        if on:
-            source[name] = model
+    # Record which model supplied each field group. Boundary passes reuse the
+    # regional domain's source, so they are not recorded under their own label.
+    if not domain.startswith("regional_bc_"):
+        source = state.ic_source.setdefault(
+            domain, {"atm": None, "sfc": None, "nst": None}
+        )
+        for name, on in fields_on:
+            if on:
+                source[name] = model
 
-    # Serialise the dataclass, coercing Path to str and tuple to list for f90nml.
-    # fort.41 stays in tmp_dir as in the original: consumed by the launch below
-    # before any later run for the same domain rewrites it, so no unsafe clobber.
+    # Unset (null) keys are omitted so chgres_cube applies its own defaults;
+    # Path values are coerced to str for f90nml. fort.41 stays in tmp_dir: it is
+    # consumed by the launch below before any later run for the same domain
+    # rewrites it, so no unsafe clobber.
     config = {
-        k: str(v) if isinstance(v, Path) else list(v) if isinstance(v, tuple) else v
-        for k, v in asdict(cfg).items()
+        k: str(v) if isinstance(v, Path) else v for k, v in cfg.items() if v is not None
     }
     with open(tmp_dir / "fort.41", "w") as fh:
         f90nml.write({"config": config}, fh)
@@ -442,11 +369,11 @@ def run_chgres_cube() -> None:
 
     specs = build_run_specs()
 
-    if state.native_prepro_exe:
-        n_cpus = (state.n_cpus // 6) * 6
+    if state.preprocess_use_container:
+        n_cpus = min(60, (len(os.sched_getaffinity(0)) // 6) * 6)
 
     else:
-        n_cpus = min(60, (len(os.sched_getaffinity(0)) // 6) * 6)
+        n_cpus = (state.n_cpus // 6) * 6
 
     log.info("Running chgres_cube to generate initial conditions")
 
@@ -470,19 +397,14 @@ def run_chgres_cube() -> None:
 
     try:
         for spec in specs:
-            run_chgres(spec, domain_ranks(spec.domain, n_cpus))
+            run_chgres(*spec, n_cpus=domain_ranks(spec.domain, n_cpus))
 
         if is_regional:
-            regional = next(spec for spec in specs if spec.domain == "regional")
-
-            def run_bc(domain_label: str, source_mosaic, config) -> Path:
-                spec = RunSpec(
-                    domain=domain_label, source_mosaic=source_mosaic, config=config
-                )
-                return run_chgres(spec, n_cpus)
-
-            regional_bc.generate_boundary_files(
-                regional.config, regional.source_mosaic, run_bc
+            regional = next(s for s in specs if s.domain == "regional")
+            generate_boundary_files(
+                regional.config,
+                regional.source_mosaic,
+                partial(run_chgres, n_cpus=n_cpus),
             )
     finally:
         for link in links:

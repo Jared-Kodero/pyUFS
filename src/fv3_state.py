@@ -73,13 +73,13 @@ class FV3State:
     misspelled key fails at the point of use instead of reading as None.
 
     Fields in the configuration group default to None; their default values
-    are defined once, in config/shared/run_config.yaml and config/<release>/run_config.yaml, and merged by the init
+    are defined once, in config/run_config.yaml, and merged by the init
     driver. The remaining fields are derived during the run and carry typed
     defaults. Mapping-style access (state["key"], get, update, items) is kept
     for the existing call sites.
     """
 
-    # --- Configuration (config/shared/run_config.yaml, config/<release>/run_config.yaml) --------------------------
+    # --- Configuration (config/run_config.yaml) ---
     # 0. Job environment
     case_root: str | None = None
     shield_image: str | None = None
@@ -91,6 +91,8 @@ class FV3State:
     archive_subdir: str | None = None
     shield_release: str | None = None
     shield_exe: str | None = None
+    shield_use_container: bool = False  # run SHiELD from shield_image (single node)
+    preprocess_use_container: bool = False  # run UFS_UTILS from preprocess_image
     ufs_bin_dir: Path | None = None  # UFS_UTILS executables
     container_bindpath: list[str] | None = None
     modules: list[str] | None = None
@@ -127,9 +129,6 @@ class FV3State:
     resubmit: int | None = None
     continue_run: bool | None = None
     preprocess_dask_scheduler: str | None = None
-    native_prepro_exe: bool = (
-        False  # ufs_bin_dir is set: native UFS_UTILS, conda env and srun launcher
-    )
     # 4. Ensembles
     ensemble_run: bool | None = None
     n_ensembles: int | None = None
@@ -274,6 +273,8 @@ class FV3State:
     def __setattr__(self, name: str, value: Any) -> None:
         if name not in _FIELD_NAMES:
             raise AttributeError(f"FV3State has no field {name!r}")
+        if name in PATH_FIELDS and isinstance(value, str) and not value.strip():
+            value = None
         if name in PATH_FIELDS and value is not None and not isinstance(value, Path):
             value = Path(value)
         object.__setattr__(self, name, value)

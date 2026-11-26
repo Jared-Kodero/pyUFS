@@ -4,10 +4,10 @@ import os
 import shutil
 from pathlib import Path
 
+from fv3_regional_bc import link_bc_to_input
 from fv3_runtime import log, sort_paths
 from fv3_state import state
 from fv3_utils import copy_path, move_path
-from regional_bc import link_bc_to_input
 
 
 def stage_files() -> None:
@@ -121,7 +121,8 @@ def stage_files() -> None:
         stage_regional_inputs()
 
 
-def _link(link: Path, target: Path) -> None:
+def symlink(link: Path, target: Path) -> None:
+    """Create a symbolic link from link to target."""
     link.unlink(missing_ok=True)
     link.symlink_to(os.path.relpath(target, start=link.parent))
 
@@ -147,9 +148,9 @@ def stage_regional_inputs() -> None:
     move_path(inp / "gfs_data.tile7.nc", inp / "gfs_data.nc")
     move_path(inp / "sfc_data.tile7.nc", inp / "sfc_data.nc")
 
-    _link(inp / "grid_spec.nc", grid / f"C{res}_mosaic.nc")
-    _link(inp / f"C{res}_grid.tile7.nc", grid / f"C{res}_grid.tile7.halo{halo}.nc")
-    _link(
+    symlink(inp / "grid_spec.nc", grid / f"C{res}_mosaic.nc")
+    symlink(inp / f"C{res}_grid.tile7.nc", grid / f"C{res}_grid.tile7.halo{halo}.nc")
+    symlink(
         inp / f"grid.tile7.halo{halo + 1}.nc",
         grid / f"C{res}_grid.tile7.halo{halo + 1}.nc",
     )

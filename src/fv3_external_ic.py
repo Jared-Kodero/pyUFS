@@ -3,9 +3,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from fv3_regional_bc import bc_forecast_hours
 from fv3_runtime import log
 from fv3_state import load_fv3_state, state
-from regional_bc import bc_forecast_hours
 
 # Settings that describe the staged grid and initial conditions. The bundle's
 # state.yaml is authoritative for these; every other setting (description,

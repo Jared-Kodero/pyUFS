@@ -20,9 +20,10 @@ def gen_shield_run_sh() -> None:
 def gen_shield_container_scripts(
     native_modules: list, native_launcher: str, container_launcher: str
 ) -> None:
-    if state.multi_node and not state.shield_exe:
+    if state.multi_node and state.shield_use_container:
         raise RuntimeError(
-            "Set `shield_exe` in run_config.yaml when running in multi-node mode."
+            "The SHiELD container is single node only. Set `shield_use_container: false` "
+            + "and `shield_exe` in run_config.yaml for multi-node runs."
         )
     preprocess_logs = state.logs / "preprocess"
     preprocess_logs.mkdir(parents=True, exist_ok=True)
@@ -34,7 +35,15 @@ def gen_shield_container_scripts(
     log_file.parent.mkdir(parents=True, exist_ok=True)
     modules = ""
 
-    if state.shield_exe:
+    if state.shield_use_container:
+        cfg = {
+            "log_file": log_file,
+            "exe": "SHiELD_nh.prod.64bit.x",
+            "modules": modules,
+            "launcher": container_launcher,
+        }
+
+    else:
         modules = "\n".join(f"module load {m}" for m in native_modules)
 
         cfg = {
@@ -42,16 +51,6 @@ def gen_shield_container_scripts(
             "exe": state.shield_exe,
             "modules": modules,
             "launcher": native_launcher,
-        }
-
-        (state.case_dir / "shield.native").touch()
-
-    else:
-        cfg = {
-            "log_file": log_file,
-            "exe": "SHiELD_nh.prod.64bit.x",
-            "modules": modules,
-            "launcher": container_launcher,
         }
 
     write_shield_sh(

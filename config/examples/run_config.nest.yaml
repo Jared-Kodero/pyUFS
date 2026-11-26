@@ -17,7 +17,7 @@ lat_max: [60, 55]
 parent_tile: 6
 halo: 3
 generate_ic_data: true
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+shield_exe: /path/to/202411.fv3.public_SHiELD_nh.repro.64bit.gnu.x
 walltime: 12
 n_nodes: 2
 n_cpus: 96

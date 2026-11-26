@@ -15,13 +15,12 @@ Usage
 -----
 Run ``case_submit.sh`` from the case directory, the directory that holds the
 case-local ``run_config.yaml``. Nothing is read from the repository copy of
-``config/<release>/run_config.yaml`` and ``config/shared/run_config.yaml`` except the
-defaults and the list of valid keys.
+``config/run_config.yaml`` except the defaults and the list of valid keys.
 
 What this script does
 ---------------------
 1. Reads ``<cwd>/run_config.yaml`` and rejects any key that is not in
-   ``config/shared/run_config.yaml`` or ``config/<release>/run_config.yaml`` (a close match is suggested). YAML syntax errors
+   ``config/run_config.yaml`` (a close match is suggested). YAML syntax errors
    are reported with line and column.
 2. Fills every unset or null key from the default file, so a case file lists
    only what differs from the defaults.
@@ -52,19 +51,21 @@ Case identity and control
     SUBMIT_DIR, CASE_PARENT_DIR   submission directory (cwd of every job step) and its parent name
     CASE_ENSEMBLES, CASE_ENSEMBLE_ID      member count; member number (0 = single case)
     CASE_RESUBMIT_INDEX, CASE_RESUBMIT_MAX   segment counter and ``resubmit``
-    CASE_ARCHIVE, CASE_PREPROCESS_ONLY    0/1 switches
+    CASE_PREPROCESS_ONLY     0/1 switch
     CASE_ARCHIVE_SUBDIR      ``archive_subdir``: directory below ``archive_root``
     CASE_OUTPUT, CASE_LOG_FILE            ``logfile`` base name; per-job log path
     CASE_DATA_SYMLINK        ``run`` (single case) or ``memNN`` (ensemble) link
                              created in the case directory
 Native or container
-    NATIVE_PPREPRO_EXE       1 when ``ufs_bin_dir`` is set (preprocess and regrid run
-                             natively with the conda env in pyUFS/conda_env), else 0
-    CASE_MODULES             ``modules`` joined by spaces, loaded by case_run.sh when
-                             NATIVE_PPREPRO_EXE is 1
-    CASE_SHIELD_EXE          ``shield_exe`` (empty = container image)
-    PYUFS_PYTHON             python of pyUFS/conda_env/pyufs when NATIVE_PPREPRO_EXE is 1,
-                             else empty; launchers/preprocess and regrid run it
+    CASE_SHIELD_USE_CONTAINER       1 when ``shield_use_container`` is true (SHiELD runs
+                                    from ``shield_image``), else 0
+    CASE_PREPROCESS_USE_CONTAINER   1 when ``preprocess_use_container`` is true
+                                    (UFS_UTILS and regridding run from ``preprocess_image``)
+    CASE_MODULES             ``modules`` joined by spaces, loaded by launchers/env.sh when
+                             CASE_PREPROCESS_USE_CONTAINER is 0
+    PYUFS_PYTHON             python of pyUFS/conda_env/pyufs when
+                             CASE_PREPROCESS_USE_CONTAINER is 0, else empty;
+                             launchers/preprocess and regrid run it
 Paths
     PYUFS_DIR, FIX_SRC, CASE_ROOT_DIR, ARCHIVE_ROOT_DIR,
     SHIELD_SIF, PREPROCESS_SIF, CONTAINERS_DIR,
@@ -92,13 +93,14 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
 
 try:
     from fv3_yaml import load_config
+    from release import resolve_release
+    from runtime_mode import resolve_runtime
 except ModuleNotFoundError as error:
     if error.name != "yaml":
         raise
     logger.error("PyYAML is not installed in the current Python environment")
     sys.exit(1)
 
-from release import case_release
 
 # The case file is always taken from the directory the command is run in.
 RUN_CFG_PATH = Path.cwd() / "run_config.yaml"
@@ -107,13 +109,8 @@ if not RUN_CFG_PATH.exists():
     logger.error(f"File not found: {RUN_CFG_PATH}")
     sys.exit(1)
 
-try:
-    RELEASE = case_release(RUN_CFG_PATH)
-except ValueError as error:
-    logger.error(f"{RUN_CFG_PATH}: {error}")
-    sys.exit(1)
 
-DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "config" / RELEASE / "run_config.yaml"
+DEFAULT_CFG_PATH = SCRIPT_DIR.parent.parent / "config" / "run_config.yaml"
 
 
 def load_or_exit(path: Path) -> dict:
@@ -149,7 +146,8 @@ def validate_yaml(data, path: Path):
             print(message)
             print(f"\nPlease check the configuration file: {path}")
             print(
-                f"For a full list of keys and description of each key, refer to the default configuration files:\n\t{DEFAULT_CFG_PATH.parent.parent / 'shared' / 'run_config.yaml'}\n\t{DEFAULT_CFG_PATH}"
+                "For a full list of keys and a description of each key, refer to "
+                + f"the default configuration file:\n\t{DEFAULT_CFG_PATH}"
             )
             sys.exit(1)
 
@@ -277,9 +275,10 @@ def get_config():
     default file. The checks below stop the submission before anything is
     queued, so a bad request fails at the prompt rather than in the queue:
 
-    * ``shield_exe`` is required for multi-node runs (the container image is
-      single-node only). ``shield_exe`` and ``ufs_bin_dir`` must exist when
-      set;
+    * ``shield_use_container`` and ``preprocess_use_container`` select the
+      execution mode explicitly. ``shield_exe`` and ``ufs_bin_dir`` are
+      required and must exist only when the matching switch is false, and the
+      SHiELD container is single-node only (see ``runtime_mode``);
     * ``ensemble_run`` and ``n_ensembles`` must agree.
 
     Derived values:
@@ -329,18 +328,24 @@ def get_config():
     ntasks_per_node = n_tasks // n_nodes
     ntasks_total = ntasks_per_node * n_nodes
 
-    # A set executable path must exist; unset runs the container.
-    shield_exe = os.path.expandvars(str(cfg["shield_exe"] or ""))
-    ufs_bin_dir = os.path.expandvars(str(cfg["ufs_bin_dir"] or ""))
-    if shield_exe and not Path(shield_exe).is_file():
-        logger.error(f"shield_exe not found: {shield_exe}")
+    # The use_container switches choose the mode; native paths are checked only
+    # for a side that is not containerized.
+    try:
+        mode = resolve_runtime(cfg, n_nodes)
+    except ValueError as error:
+        logger.error(error)
         sys.exit(1)
-    if ufs_bin_dir and not Path(ufs_bin_dir).is_dir():
-        logger.error(f"ufs_bin_dir not found: {ufs_bin_dir}")
+    shield_use_container = mode["shield_use_container"]
+    preprocess_use_container = mode["preprocess_use_container"]
+    # Reject an unknown release before queueing.
+    try:
+        resolve_release(cfg["shield_release"])
+    except ValueError as error:
+        logger.error(error)
         sys.exit(1)
     # Native preprocessing runs with the Python of conda_env/pyufs (README, setup).
     pyufs_python = ""
-    if ufs_bin_dir:
+    if not preprocess_use_container:
         pyufs_python = str(
             SCRIPT_DIR.parent.parent / "conda_env" / "pyufs" / "bin" / "python"
         )
@@ -349,9 +354,6 @@ def get_config():
                 f"Python of the pyufs conda environment not found: {pyufs_python}"
             )
             sys.exit(1)
-    if not shield_exe and n_nodes > 1:
-        logger.error("Multi-node runs need a native shield_exe (see the README).")
-        sys.exit(1)
 
     if not Path(os.path.expandvars(cfg["fix_src"])).is_dir():
         logger.error(
@@ -418,7 +420,7 @@ def get_config():
         or archive_root not in (archive_root / archive_subdir).resolve().parents
     ):
         logger.error(
-            f"archive_subdir {archive_subdir} must be a path below {archive_root}"
+            f"archive_subdir {archive_subdir} must be a child of {archive_root}"
         )
         sys.exit(1)
 
@@ -438,14 +440,13 @@ def get_config():
         "CASE_SKIP_ENSEMBLES": skip_ensembles,
         "CASE_RESUBMIT_INDEX": 0,
         "CASE_RESUBMIT_MAX": resubmit_max,
-        "CASE_ARCHIVE": archive_data,
         "CASE_ARCHIVE_SUBDIR": archive_subdir,
         "CASE_PREPROCESS_ONLY": preprocess_only,
         "CASE_NAME": case_name,
-        "NATIVE_PPREPRO_EXE": int(bool(ufs_bin_dir)),
+        "CASE_SHIELD_USE_CONTAINER": int(shield_use_container),
+        "CASE_PREPROCESS_USE_CONTAINER": int(preprocess_use_container),
         "PYUFS_PYTHON": pyufs_python,
         "CASE_MODULES": " ".join(str(m) for m in (cfg["modules"] or [])),
-        "CASE_SHIELD_EXE": shield_exe,
         **paths,
     }
 
@@ -556,13 +557,11 @@ def main():
         case_data_symlink = case_pwd / "run"
         case_log_file = log_file_path(logfile)
 
-        # Per-job values on top of the shared ones. TOTAL_WALLTIME_TIME is the
-        # wall time already used by earlier segments; it starts at 0. The
-        # process environment is inherited so sbatch finds its modules, user
-        # settings and PATH; every value is converted to str as os requires.
+        # Per-job values on top of the shared ones. The process environment is
+        # inherited so sbatch finds its modules, user settings and PATH; every
+        # value is converted to str as os requires.
         iter_env = {
             **env,
-            "TOTAL_WALLTIME_TIME": 0,
             "CASE_ENSEMBLE_ID": ensemble_id,
             "SLURM_JOB_NAME": slurm_job_name,
             "SLURM_OPEN_MODE": "truncate",
@@ -594,7 +593,6 @@ def main():
 
             iter_env = {
                 **env,
-                "TOTAL_WALLTIME_TIME": 0,
                 "CASE_ENSEMBLE_ID": ensemble_id,
                 "SLURM_JOB_NAME": slurm_job_name,
                 "SLURM_OPEN_MODE": "truncate",

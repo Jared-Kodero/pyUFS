@@ -1,0 +1,11 @@
+#!/bin/sh
+
+cd "$CASE_DIR" || exit 1
+
+set +e
+${PYUFS_PYTHON:-/preprocess} "$PYUFS_DIR/src/fv3_finalize_run.py"
+exit_code=$?
+set -e
+
+echo "$exit_code" > "$CASE_DIR/exit_code"
+exit "$exit_code"

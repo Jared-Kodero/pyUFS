@@ -226,7 +226,6 @@ def resume(
     iter_env = {
         **env,
         "CASE_NAME": names["case_name"],
-        "TOTAL_WALLTIME_TIME": 0,
         "CASE_ENSEMBLE_ID": names["ensemble_id"],
         "CASE_RESUBMIT_INDEX": segment,
         "CASE_CONTINUE_RUN": int(restart_dir is None),

@@ -30,7 +30,7 @@ string to `None`).
 ## Plugins file
 
 `plugins_config` in `run_config.yaml` names a YAML file that maps plugin names to
-their settings (`config/examples/plugins.yaml` documents every key). The cold start
+their settings (each plugin's `config.py` lists its keys). The cold start
 reads it with `fv3_plugins.load_plugins` into `state.plugins`, a plain dict of dicts that
 `state.yaml` stores, so restarts and the regridding stage never read the file again. A
 plugin is active when its name is a key of `state.plugins`; null and empty sections are
@@ -129,4 +129,4 @@ affect the model or the restart checksum.
 1. Create a package `plugins/<name>/` whose `__init__.py` re-exports the hooks from its modules (code stays out of `__init__.py`).
 2. Put `DEFAULTS` (omit it for a free-form mapping) and `HASHED` in a light `config.py`, re-export them from `__init__.py`, import the package in `plugins/__init__.py` and add its name to `__all__` in the order it must run.
    Add a wrapper `apply_<name>(*, restart)` to `src/fv3_plugins.py` that passes `config=state.plugins["<name>"]` and the core functions, and register it in `APPLY`.
-3. Document its section in `config/examples/plugins.yaml`. No change to `src/fv3_state.py` or the `run_config.yaml` defaults is needed.
+3. Document its section in this file. No change to `src/fv3_state.py` or the `run_config.yaml` defaults is needed.

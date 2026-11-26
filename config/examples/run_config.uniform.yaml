@@ -1,6 +1,6 @@
 # Global uniform C96, hourly output, one 6 h segment.
 # Copy to the case directory as run_config.yaml; unset keys come from
-# config/shared/run_config.yaml and config/<release>/run_config.yaml.
+# config/run_config.yaml.
 description: C96 control run
 shield_release: "202411" # "202411" (default) or "202604"; must match shield_exe
 init_datetime: "2026031200Z"
@@ -10,7 +10,7 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
-shield_exe: /path/to/SHiELD_nh.prod.64bit.gnu.x
+shield_exe: /path/to/202411.fv3.public_SHiELD_nh.repro.64bit.gnu.x
 walltime: 12
 n_nodes: 2
 n_cpus: 96

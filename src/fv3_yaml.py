@@ -6,7 +6,7 @@ before any workflow environment exists, so it must not import xarray, pandas or
 the path and state modules.
 
 Errors are raised, never reported with ``sys.exit``: the caller decides whether
-a bad file ends the program (the launchers) or is handled (``release``).
+a bad file ends the program (the launchers).
 """
 
 from __future__ import annotations

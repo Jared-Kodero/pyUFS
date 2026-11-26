@@ -11,7 +11,7 @@
 ./setup_all.sh --all --release 202604  # SHiELD 202604
 ```
 
-This creates the `pyufs` conda environment, builds SHiELD and UFS_UTILS, and updates the `fix/` datasets. `--release` affects only the SHiELD build and `-j` only the UFS_UTILS build. Only `shield_exe` must be native; `ufs_bin_dir` is optional (see Section 2). Set `shield_exe` (and `ufs_bin_dir`, if used) in your case configuration to the installed paths reported by the scripts.
+This creates the `pyufs` conda environment, builds SHiELD and UFS_UTILS, and updates the `fix/` datasets. `--release` affects only the SHiELD build and `-j` only the UFS_UTILS build. The native executables are used unless `shield_use_container` or `preprocess_use_container` is set to `true` (see Section 2). Set `shield_exe` (and `ufs_bin_dir`, if used) in your case configuration to the installed paths reported by the scripts. The default `shield_exe` is the `202411` build, so after building `202604` set both `shield_release: "202604"` and `shield_exe`.
 
 The defaults point to lab paths under `/oscar/data/deeps/...`. Outside the lab, override `fix_src`, `shield_exe`, `containers_root`, `shield_image`, `preprocess_image`, `case_root` and `archive_root` in your case configuration.
 
@@ -25,12 +25,12 @@ cd ~/cases/test
 /path/to/pyUFS/case_submit.sh
 ```
 
-Submit **from the case directory**. `case_submit.sh` validates the YAML, applies defaults from `config/shared/run_config.yaml` and `config/<release>/run_config.yaml`, and submits through `sbatch`. The driver log defaults to `shield_driver.log`.
+Submit **from the case directory**. `case_submit.sh` validates the YAML, applies defaults from `config/run_config.yaml`, and submits through `sbatch`. The driver log defaults to `shield_driver.log`.
 
-Missing images are built automatically (requires internet access and several GB of scratch). `SHIELD_TAG` and `PREPROCESS_TAG` select non-default image tags; the image manifest records sources and checksums. To build them separately:
+Missing images are built automatically (requires internet access and several GB of scratch). `SHIELD_TAG` and `PREPROCESS_TAG` select non-default image tags; the image manifest records sources and checksums. To build them separately (existing images are skipped; `FORCE=1` rebuilds, and names select one image):
 
 ```bash
-CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash tools/install_images.sh
+CONTAINERS_DIR=/path/to/containers TMP_DIR=/scratch bash tools/install_images.sh [preprocess] [shield]
 ```
 
 A host `python3` with PyYAML is required for submission. The `run` symlink points to the working case while a job is active and to its archive after archiving.
@@ -45,26 +45,26 @@ One checkout supports both releases; **`202411` is the default**.
 | FMS / FMSCoupler | `2024.03` / `2024.03.01` | `2026.01` / `2026.01` |
 | Coupler driver | `FMSCoupler/SHiELD` | `FMSCoupler/full` |
 | Coupler namelist key | `dt_ocean` | `dt_cpld` |
-| Release settings | `config/202411/run_config.yaml` | `config/202604/run_config.yaml` |
 | Namelist templates | `templates/202411/` | `templates/202604/` |
 
-Select the newer release with `shield_release: "202604"`. **Use `dt_cpld` in `run_config.yaml` for either release**: pyUFS writes `dt_ocean` for `202411`. Rename `dt_ocean` to `dt_cpld` in older case configurations. The release must match the executable. Case-local `input.nml`/`input.yaml` overrides are passed through unchanged, including any coupler keys; use the key expected by that release in these files. The `202604` full-coupler templates disable coupled land, ocean, and flux components while SHiELD surface physics remains active.
+Select the newer release with `shield_release: "202604"`; the defaults in `config/run_config.yaml` are the same for both releases. Set `shield_exe` to an executable built for the selected release (the default path is the `202411` build). **Use `dt_cpld` in `run_config.yaml` for either release**: pyUFS writes `dt_ocean` for `202411`. Rename `dt_ocean` to `dt_cpld` in older case configurations. The release must match the executable. Case-local `input.nml`/`input.yaml` overrides are passed through unchanged, including any coupler keys; use the key expected by that release in these files. The `202604` full-coupler templates disable coupled land, ocean, and flux components while SHiELD surface physics remains active.
 
-Execution mode is selected independently for the model and preprocessing:
+Execution mode is selected explicitly and independently for the model and preprocessing. Both switches default to `false` (native); a path key is required, and checked, only when its switch is `false`, and is ignored when the switch is `true`.
 
 | Setting | Behavior |
 | --- | --- |
-| `shield_exe: /path/to/executable` | Run native SHiELD; required for multiple nodes. |
-| `shield_exe: ""` | Use the SHiELD container; single node only. |
-| `shield_exe: null` | Use the executable configured in the repository defaults. |
-| `ufs_bin_dir: /path/to/bin/preprocessing` | Native UFS_UTILS using the `conda_env/pyufs` environment; MPI programs run as SLURM steps. |
-| `ufs_bin_dir: null` or `""` | Run UFS_UTILS and regridding in `preprocess.sif`. |
+| `shield_use_container: false` | Run the native SHiELD in `shield_exe`; required for multiple nodes. |
+| `shield_use_container: true` | Run SHiELD from `shield_image`; single node only. |
+| `preprocess_use_container: false` | Native UFS_UTILS in `ufs_bin_dir` using the `conda_env/pyufs` environment; MPI programs run as SLURM steps. |
+| `preprocess_use_container: true` | Run UFS_UTILS and regridding in `preprocess.sif`. |
+
+A null value in a case file takes the repository default (`false`), so state the switches explicitly. Values other than `true` or `false`, such as the string `"false"`, are rejected at submission.
 
 Host `modules` (default: `hpcx-mpi`, `netcdf-mpi`, `libyaml`) are loaded for native execution. In container mode, every `container_bindpath` must exist on the compute nodes. `shield.sif` uses the `202411` build, so use a matching native executable for `202604`.
 
 ## 3. Configuration
 
-Copy an example from [`config/examples/`](config/examples/) and override only the required settings. The full list of accepted keys and defaults is in [`config/shared/run_config.yaml`](config/shared/run_config.yaml), which each release file (`config/<release>/run_config.yaml`) includes and overrides for `shield_release`, `shield_exe` and `dt_cpld`. Unknown keys cause submission to fail. Relative paths resolve from the submission directory; `~` and environment variables are expanded in paths.
+Copy an example from [`config/examples/`](config/examples/) and override only the required settings. The full list of accepted keys and defaults is in [`config/run_config.yaml`](config/run_config.yaml). Unknown keys cause submission to fail. Relative paths resolve from the submission directory; `~` and environment variables are expanded in paths.
 
 ### Paths and SLURM resources
 
@@ -168,7 +168,7 @@ Add optional domain-specific files **in the submission directory**:
 | First nest | `chgres_cube_nest02.yaml` | `fort_nest02.41` |
 | Second nest | `chgres_cube_nest03.yaml` | `fort_nest03.41` |
 
-Copy [`templates/chgres_cube.yaml`](templates/chgres_cube.yaml) and set only the required keys. An unset or `null` value leaves the workflow-generated value unchanged. YAML keys can be flat or nested inside a single `config:` mapping; unknown keys fail preprocessing and identify the offending file. For example:
+Defaults for every key live in [`config/chgres_cube.yaml`](config/chgres_cube.yaml); it also defines the complete set of accepted keys. Write only the keys you want to change, since the workflow merges them over the defaults (precedence: defaults, then workflow-derived values, then your file). An unset or `null` value leaves the workflow-generated value unchanged. YAML keys can be flat or nested inside a single `config:` mapping; unknown keys fail preprocessing and identify the offending file. [`config/examples/chgres_cube_nest02.yaml`](config/examples/chgres_cube_nest02.yaml) is a minimal per-nest example. For example:
 
 ```yaml
 external_model: HRRR
@@ -236,7 +236,7 @@ When unset, `dt_atmos`, `k_split`, and `n_split` follow these resolution default
 
 `dt_cpld` defaults to `dt_atmos`; it must be a multiple of `dt_atmos`, and the segment length must be a multiple of `dt_cpld`. The FV3 remapping and acoustic substeps are `dt_atmos / k_split` and `dt_atmos / (k_split * n_split)`, respectively. Reduce the time step when resolution or refinement makes the CFL constraint more restrictive.
 
-In nested cases, the finest grid sets `dt_atmos`. Provide `k_split`/`n_split` lists of length `n_nests + 1` when overriding them. For a uniform cubed sphere, the allocated MPI task count is a multiple of 6, divided equally across faces; choose counts that divide the face dimensions (this is not checked). Regional grids use all tasks. Nested cases allocate tasks to balance estimated domain time `w_g / P_g`, where `w_g = N_g * k_split,g * n_split,g` and `N_g` is the horizontal cell count. To override allocation, set `fv_nest_nml.grid_pes` in a case-local namelist, one count per domain, with a global count divisible by 6 and total no greater than `n_cpus`.
+In nested cases, the finest grid sets `dt_atmos`. Provide `k_split`/`n_split` lists of length `n_nests + 1` when overriding them. MPI tasks are placed by the size of the largest rank, since every step waits for it: FMS gives a rank `floor` or `ceil` of the tile size over the layout, so a layout need not divide the tile, but the cost is `ceil(nx/lx) * ceil(ny/ly)` cells. For a uniform cubed sphere, a regional grid or a nested case, `n_cpus` is the upper limit; a count that forces thin strips (for example a prime number of tasks per face) is replaced by a smaller one with a smaller largest rank, so `total_pes` can be below `n_cpus`. A rank keeps at least 8 cells in each direction; a grid too small for that gets the best layout available and the run continues. In nested cases the tasks are split to minimise the largest `w_g * (cells of the largest rank of grid g)`, with `w_g = k_split,g * n_split,g`, where the global grid takes a multiple of 6 and the grids run concurrently; the search is exact for any number of nests. The layout orientation follows the grid shape, and the physics `blocksize` is the size nearest 32 that divides every rank's domain, or -1 when none does. To override allocation, set `fv_nest_nml.grid_pes` in a case-local namelist, one count per domain, with a global count divisible by 6 and total no greater than `n_cpus`.
 
 ## 8. Diagnostics, regridding, and monthly runs
 
@@ -285,7 +285,7 @@ Ensemble continuation:
 /path/to/pyUFS/case_continue.sh --member 2 5
 ```
 
-With `archive_data: true`, the final segment archives regridded output, `state.yaml`, logs, and `restart.tar.gz` under `<archive_root>/<archive_subdir>/<parent>/<case>`. The archive retains `STATIC/` in the working tree and removes other working data after copying. The restart archive contains `RESTART/`, `state.yaml`, and `run_config.yaml`. To continue from an archived restart, unpack it to `DIR`, configure a new case with matching grid and start-time settings, and run:
+With `archive_data: true`, the final segment (`src/fv3_finalize_run.py`, run by `launchers/finalize` after the regrid) archives regridded output, `state.yaml`, logs, and `restart.tar.gz` under `<archive_root>/<archive_subdir>/<parent>/<case>`. The archive retains `STATIC/` in the working tree and removes other working data after copying. The restart archive contains `RESTART/`, `state.yaml`, and `run_config.yaml`. To continue from an archived restart, unpack it to `DIR`, configure a new case with matching grid and start-time settings, and run:
 
 ```bash
 /path/to/pyUFS/case_continue.sh --restart-dir DIR
@@ -312,7 +312,7 @@ Plugins extend the core workflow without changing `src/`. Set `plugins_config` i
 plugins_config: plugins.yaml
 ```
 
-Each top-level section in `plugins.yaml` enables one plugin and supplies its options. `plugins_config: null` disables plugins. The available sections are `pamip`, `sst_perturbation`, `sm_perturbations`, and `derived`; use [`config/examples/plugins.yaml`](config/examples/plugins.yaml) for the supported keys and the `plugins.<name>.yaml` files for individual examples. Unknown plugin names or keys stop preprocessing before grid generation.
+Each top-level section in `plugins.yaml` enables one plugin and supplies its options. `plugins_config: null` disables plugins. The available sections are `pamip`, `sst_perturbation`, `sm_perturbations`, and `derived`; the supported keys of each plugin are in [`plugins/README.md`](plugins/README.md). Unknown plugin names or keys stop preprocessing before grid generation.
 
 `src/fv3_plugins.py` is the **only core module that imports plugins**. It dispatches registered hooks at the relevant workflow stages. The cold start stores plugin settings in `state.yaml`; later segments reuse the stored settings, so editing `plugins.yaml` does not change a running case. For plugins that modify namelists, case-local `input.yaml` or `input.nml` overrides take precedence where supported.
 
@@ -328,9 +328,9 @@ python tools/build_shield.py --release 202604 --comp prod
 python tools/build_shield.py --release 202604 --no-compile  # fetch/check only
 ```
 
-The builder reads the **repository release defaults**, not case-local YAML. It requires gfortran ≥10 and builds in `/tmp/$USER/FV3-<release>-public`, which is deleted and rebuilt on every run. The executable is installed in `bin/` using the filename specified by `shield_exe` in those defaults; a `<exe>.manifest` file next to it records source commits, SHA-256, and toolchain. To rebuild, rerun the same command. If a build fails, read the log printed at the failure, fix the cause, and rerun; nothing from the failed tree is reused. Set `shield_exe` explicitly in your case YAML and confirm it matches `shield_release`. Build options include `--comp repro|prod|debug`, `--clean cleanall|clean|noclean`, `--bit`, `--pic/--no-pic`, `--avx-level`, and `--fflags`.
+The builder reads the modules from the **repository defaults** (`config/run_config.yaml`), not case-local YAML. It requires gfortran ≥10 and builds in `/tmp/$USER/FV3-<release>-public`, which is deleted and rebuilt on every run. The executable is installed in `bin/` as `<release>.fv3.public_SHiELD_nh.<comp>.<bit>.gnu.x`, for example `202604.fv3.public_SHiELD_nh.repro.64bit.gnu.x`, so builds of different releases, compiler modes and precisions do not overwrite each other. A `<exe>.manifest.yaml` file next to it records source commits, SHA-256, and toolchain, and the script prints the `shield_exe` value to use. To rebuild, rerun the same command. If a build fails, read the log printed at the failure, fix the cause, and rerun; nothing from the failed tree is reused. Set `shield_exe` in your case YAML to the printed path and confirm that it was built for the same `shield_release`. Build options include `--comp repro|prod|debug`, `--clean cleanall|clean|noclean`, `--bit`, `--pic/--no-pic`, `--avx-level`, and `--fflags`.
 
-`tools/build_ufs.py` installs native UFS_UTILS release 1.12.0 to `bin/preprocessing`. It is the newest release whose `chgres_cube` writes the surface file format SHiELD reads; 1.13.0 and later write a different format and cannot be used. Setting `ufs_bin_dir` selects the matching workflow. The build writes `bin/preprocessing/manifest` with modules, sources and checksums. `setup_all.sh` supports `--skip-env`, `--skip-shield`, `--skip-ufs`, `--skip-fix`, `--release`, and `-j`.
+`tools/build_ufs.py` installs native UFS_UTILS release 1.12.0 to `bin/preprocessing`. It is the newest release whose `chgres_cube` writes the surface file format SHiELD reads; 1.13.0 and later write a different format and cannot be used. Setting `ufs_bin_dir` selects the matching workflow. The build writes `bin/preprocessing/manifest.yaml` with the UFS_UTILS release, module and library versions, and source tags and commits; each run logs the release. `setup_all.sh` supports `--skip-env`, `--skip-shield`, `--skip-ufs`, `--skip-fix`, `--release`, and `-j`.
 
 ## 13. Examples and troubleshooting
 
@@ -340,8 +340,6 @@ The builder reads the **repository release defaults**, not case-local YAML. It r
 | `run_config.stretch.yaml`, `run_config.nest.yaml` | Stretched or telescoping nested grids. |
 | `run_config.regional.yaml` | Regional ESG grid. |
 | `run_config.external_ic.yaml` | Pre-staged initial conditions. |
-| `run_config.sm_perturbations.yaml`, `run_config.pamip.yaml` | Surface perturbations and PAMIP experiments. |
-| `run_config.derived.yaml` | Custom derived diagnostics. |
 | `run_config.monthly.yaml` | Monthly, multi-year integration. |
 
 If submission fails, check the validation message, executable and fix paths, and whether the submission directory lies inside `case_root`. If preprocessing fails, inspect `LOGS/preprocess/`, dataset availability, and `chgres_cube` overrides. If a model segment fails, inspect the driver and model logs, correct the cause, and use `case_continue.sh` rather than starting over. `tests/submit.sh` submits the packaged HPC test cases.
