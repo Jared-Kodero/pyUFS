@@ -27,7 +27,7 @@ RELAXATION = {"FSLPL": 99999.0, "FSOTL": 99999.0, "FVETL": 99999.0}
 FSMCL2 = 60.0
 
 # NAMCYC settings of ush/global_cycle.sh and global_cycle_driver.sh. ialb,
-# isot and ivegsrc match gfs_physics_nml in templates/input_nml.yaml.
+# isot and ivegsrc match gfs_physics_nml in templates/<release>.input_nml.yaml.
 DELTSFC = 6.0
 NAMCYC = {
     "ialb": 1,

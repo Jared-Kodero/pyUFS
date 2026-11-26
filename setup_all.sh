@@ -12,7 +12,7 @@
 #    pyUFS/conda_env. Miniconda is installed under $HOME/miniconda3 when neither mamba
 #    nor conda is found (same installer as tools/install_images.sh, for this user).
 # 2. SHiELD: tools/build_shield.py, installed in <parent>/bin (pyUFS/bin) as
-#    <release>.fv3.public_SHiELD_nh.repro.64bit.gnu.x with a .manifest.yaml beside it.
+#    <release>.fv3.public_SHiELD_nh.repro.32bit.gnu.x with a .manifest.yaml beside it.
 #    --release takes one or more releases (--release 202411 202604); SHiELD is built once
 #    per release, in the order given. Without --release the build script default is used.
 # 3. UFS_UTILS: tools/build_ufs.py, installed in <parent>/bin/preprocessing with manifest.yaml.
@@ -25,6 +25,7 @@
 #
 # The builds are heavy: run this script in an interactive session (interact) on a compute node.
 set -euo pipefail
+
 
 PYUFS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_DIR="$(dirname "$PYUFS_DIR")/conda_env"
@@ -71,6 +72,7 @@ fail() { log "ERROR - $*" >&2; exit 1; }
 
 # Step 1: the conda environment that runs preprocessing, regridding and the build scripts.
 if (( DO_ENV )); then
+    module purge
     log "INFO - conda env $ENV_PREFIX"
     # Use mamba or conda if installed, else the Miniconda of this user, else install it.
     CONDA_BIN=""
@@ -117,6 +119,7 @@ if (( DO_SHIELD )); then
     (( ${#RELEASES[@]} )) || RELEASES=("")   # no --release: one build with the script default
     for release in "${RELEASES[@]}"; do
         log "INFO - building SHiELD ${release:-(default release)}"
+        module purge
         python "$PYUFS_DIR/tools/build_shield.py" ${release:+--release "$release"}
     done
 fi
@@ -127,6 +130,7 @@ if (( DO_UFS )); then
 fi
 # Step 4: static fix data (orography, climatologies) used by the preprocessing.
 if (( DO_FIX )); then
+    module purge
     log "INFO - updating the fix data"
     python "$PYUFS_DIR/tools/update_fix.py"
 fi

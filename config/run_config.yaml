@@ -16,7 +16,7 @@ containers_root: /oscar/data/deeps/shared/gfdl_shield/pyUFS/containers # Contain
 container_bindpath: ["/oscar", "/sss", "/users", "/jobtmp"] # Existing paths mounted in containers; include all workflow directories.
 modules: ["hpcx-mpi", "netcdf-mpi", "libyaml"] # Host modules for the native shield_exe and, when ufs_bin_dir is set, for preprocessing and regridding.
 shield_release: "202411" # or "202604"; null selects 202411. Must match the release of shield_exe.
-shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bin/202411.fv3.public_SHiELD_nh.repro.64bit.gnu.x # Native executable of shield_release; used and required (must exist) when shield_use_container is false.
+shield_exe: /oscar/data/deeps/shared/gfdl_shield/pyUFS/bin/202411.fv3.public_SHiELD_nh.repro.32bit.gnu.x # Native executable of shield_release; used and required (must exist) when shield_use_container is false.
 
 # 1. SLURM submission
 # n_cpus is rounded down to a multiple of n_nodes
@@ -73,8 +73,9 @@ skip_ensembles: null # Member indices to skip, e.g. [1, 3, 5].
 # 5. Initial conditions and preprocessing
 # Generate grid/ICs from GFS/HRRR via chgres_cube; override source selection
 # with case-local chgres_cube.yaml.
-external_ic_dir: null # Pre-staged IC bundle when generate_ic_data is false.
+model_input_dir: null # Pre-staged IC bundle when generate_ic_data is false.
 generate_ic_data: true # Generate grid and initial conditions.
+ic_grib_files: null # {GFS: path(s), HRRR: path(s)}, globs allowed; a listed model is read from these files (matched by cycle and lead) instead of downloaded.
 preprocess_only: false # Stage grid and ICs, then exit.
 preprocess_grid_only: false # Generate grid only; implies preprocess_only.
 preprocess_orog_only: false # Generate orography only; implies preprocess_only.

@@ -14,7 +14,7 @@ from fv3_driver_grid import run_driver
 from fv3_ensemble_driver import ensemble_config
 from fv3_external_ic import init_external_ic
 from fv3_fixed_files import update_fixed_files
-from fv3_ic_data import preprocess_only
+from fv3_ic_data import preprocess_only, validate_ic_grib_files
 from fv3_namelists import update_nml_configs
 from fv3_nesting import get_centers, nest_info, validate_nests
 from fv3_paths import CONTAINER_UFS_BIN_DIR, configure_directories, paths
@@ -39,7 +39,7 @@ from global_cycle_driver import GLOBAL_GTYPES, run_surface_cycle
 
 # Files the user may supply; logged with their full path when set.
 USER_FILES = {
-    "external_ic_dir": "External IC directory",
+    "model_input_dir": "Model input directory",
     "ims_snow_file": "IMS snow file",
     "ims_ice_file": "IMS ice file",
     "five_min_ice_file": "Five-minute ice file",
@@ -77,7 +77,7 @@ def _log_initial_state() -> None:
         log.info("Full Grid/IC regeneration will be performed.")
     else:
         log.info(
-            "Grid and initial conditions are taken from external_ic_dir or the case directory."
+            "Grid and initial conditions are taken from model_input_dir or the case directory."
         )
 
     if state.preprocess_only:
@@ -133,7 +133,8 @@ def _log_initial_state() -> None:
 
 
 def validate_pyufs_options() -> None:
-    """Check the global_cycle, emcsfc and cpld_gridgen settings (section 5a)."""
+    """Check ic_grib_files and the global_cycle, emcsfc and cpld_gridgen settings."""
+    validate_ic_grib_files()
     for flag, needs in (
         ("run_emcsfc_snow", ("ims_snow_file",)),
         ("run_emcsfc_ice_blend", ("ims_ice_file", "five_min_ice_file")),
@@ -171,11 +172,13 @@ def _load_initial_state() -> None:
 
     runtime_env = runtime_env_vars()
     runtime_config_path = Path(paths["submit_dir"]) / "run_config.yaml"
-    merged_config = load_run_config()
+    run_config_includes: list[str] = []
+    merged_config = load_run_config(run_config_includes)
 
     plugins_file = merged_config.pop("plugins_config", None)
     state.clear()
     state.update(merged_config)
+    state.run_config_includes = run_config_includes
     # Checked by every restart segment, so edits to the grid or start-time
     # keys of run_config.yaml after the cold start are caught.
     state.config_checksum = compute_checksum(merged_config)
@@ -210,7 +213,9 @@ def _load_initial_state() -> None:
     state.c_res = parse_resolution(state.c_res)
     if plugins_file:
         plugins_path = (Path(os.path.expandvars(plugins_file)).expanduser()).resolve()
-        state.plugins = fv3_plugins.load_plugins(plugins_path)
+        plugins_config_includes: list[str] = []
+        state.plugins = fv3_plugins.load_plugins(plugins_path, plugins_config_includes)
+        state.plugins_config_includes = plugins_config_includes
         log.info("Plugins file: %s", plugins_path)
     # Fail before grid and IC generation; files are written after preprocessing.
     fv3_plugins.validate()

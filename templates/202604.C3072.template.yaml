@@ -109,15 +109,15 @@ gfs_physics_nml:
   c0s_shal: 0.01
   c1_shal: 0.005
   cal_pre: false
-  cdmbgwd: [ 0.0, 0.0 ]
+  cdmbgwd: [0.0, 0.0]
   cloud_gfdl: true
   cnvcld: false
   cnvgwd: false
   debug: false
   dspheat: true
   fhcyc: 24.0
-  fhlwr: 1800.0
-  fhswr: 1800.0
+  fhlwr: 3600.0
+  fhswr: 3600.0
   fhzero: 1.0 # bucket reset [h]; keep equal to atmos_model_nml fdiag
   hybedmf: true
   ialb: 1

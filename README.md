@@ -45,7 +45,7 @@ One checkout supports both releases; **`202411` is the default**.
 | FMS / FMSCoupler | `2024.03` / `2024.03.01` | `2026.01` / `2026.01` |
 | Coupler driver | `FMSCoupler/SHiELD` | `FMSCoupler/full` |
 | Coupler namelist key | `dt_ocean` | `dt_cpld` |
-| Namelist templates | `templates/202411/` | `templates/202604/` |
+| Namelist templates | `templates/202411.*.yaml` | `templates/202604.*.yaml` |
 
 Select the newer release with `shield_release: "202604"`; the defaults in `config/run_config.yaml` are the same for both releases. Set `shield_exe` to an executable built for the selected release (the default path is the `202411` build). **Use `dt_cpld` in `run_config.yaml` for either release**: pyUFS writes `dt_ocean` for `202411`. Rename `dt_ocean` to `dt_cpld` in older case configurations. The release must match the executable. Case-local `input.nml`/`input.yaml` overrides are passed through unchanged, including any coupler keys; use the key expected by that release in these files. The `202604` full-coupler templates disable coupled land, ocean, and flux components while SHiELD surface physics remains active.
 
@@ -64,7 +64,7 @@ Host `modules` (default: `hpcx-mpi`, `netcdf-mpi`, `libyaml`) are loaded for nat
 
 ## 3. Configuration
 
-Copy an example from [`config/examples/`](config/examples/) and override only the required settings. The full list of accepted keys and defaults is in [`config/run_config.yaml`](config/run_config.yaml). Unknown keys cause submission to fail. Relative paths resolve from the submission directory; `~` and environment variables are expanded in paths.
+Copy an example from [`config/examples/`](config/examples/) and override only the required settings. The full list of accepted keys and defaults is in [`config/run_config.yaml`](config/run_config.yaml). Unknown keys cause submission to fail. Relative paths resolve from the submission directory; `~` and environment variables are expanded in paths. A `run_config.yaml` or plugins file can pull in shared settings with `include: path` or a list of paths, relative to its own directory; its own keys take precedence, and two included files that set the same key to different values are an error. The cold start records the resolved absolute path of every included file in `state.yaml`, under `run_config_includes` and `plugins_config_includes`; an include that does not exist is skipped with a warning and not recorded.
 
 ### Paths and SLURM resources
 
@@ -91,7 +91,8 @@ Jobs are named `<parent>.<case>` (`.MEMnn` appended for ensembles). Working case
 | `forecast_hour` | Lead time of the selected GFS/HRRR cycle; model starts at cycle plus lead. |
 | `run_length`, `run_length_units` | Segment duration in `hours` (default), `days`, `months`, or `years`. |
 | `resubmit` | Additional segments: total segments = `resubmit + 1`. |
-| `generate_ic_data`, `external_ic_dir` | Generate ICs or reuse a staged case (Section 5). |
+| `generate_ic_data`, `model_input_dir` | Generate ICs or reuse a staged case (Section 5). |
+| `ic_grib_files` | Use downloaded GFS or HRRR GRIB2 files instead of downloading them (Section 5.2). |
 | `preprocess_only`, `preprocess_grid_only`, `preprocess_orog_only` | Stop after preparing the specified inputs. |
 | `c_res`, `gtype`, `levels` | Horizontal resolution, grid type, hybrid vertical level count. |
 | `dt_atmos`, `dt_cpld`, `k_split`, `n_split` | Time steps and dynamical subcycling (Section 7). |
@@ -156,6 +157,18 @@ With `generate_ic_data: true` (default), pyUFS creates the grid and orography, r
 
 GFS always provides surface fields because HRRR lacks the required soil levels. Downloads retry using NOAA AWS S3 or NCAR GDEX for GFS, and NOAA AWS S3 or Google Cloud Storage for HRRR.
 
+To use GRIB2 files you have already downloaded, list them by model in `ic_grib_files`; paths and globs are allowed, and any file names:
+
+```yaml
+ic_grib_files:
+  GFS: /data/gfs/gfs.t00z.pgrb2.0p25.f0*
+  HRRR: [/data/hrrr/hrrr.t00z.wrfnatf00.grib2]
+```
+
+A listed model is never downloaded. pyUFS picks, for each conversion and regional boundary lead, the file whose first message has the required cycle and lead, and stops with the list of files found if there is none or more than one. Models that are not listed are downloaded as usual.
+
+`tools/ecmwf_ic.py` writes ERA5 initial conditions into a GFS file of the same cycle (`python tools/ecmwf_ic.py --cycle 2000060100 --fh 0 --out DIR`, CDS key in `~/.cdsapirc`). List its output under `GFS`; `chgres_cube` reads it as GFS. The ERA5 model levels come from the MARS tape archive and can queue for hours, so run the tool before submitting the case. Regional lateral boundaries after hour 0 and HRRR nest atmospheres still come from their own files.
+
 `init_datetime` selects the source forecast cycle; `forecast_hour: 0` uses its analysis. A nonzero `forecast_hour` starts the model at `init_datetime + forecast_hour`. Regional lateral boundaries use that **same cycle** at leads `forecast_hour`, `+3`, `+6`, and so forth, so `forecast_hour` must be divisible by 3 and data must exist through the final boundary lead (GFS: hourly through f120, three-hourly through f384).
 
 ### 5.3 `chgres_cube` overrides
@@ -196,7 +209,7 @@ To reuse an already staged case:
 
 ```yaml
 generate_ic_data: false
-external_ic_dir: /path/to/prestaged_case
+model_input_dir: /path/to/prestaged_case
 ```
 
 The bundle must contain nonempty `FIXED/`, `GRID/`, and `INPUT/` directories plus `state.yaml`. Only grid/IC state is taken from the bundle; run settings and plugins come from the new case. Its grid type, vertical levels, and model start (`init_datetime + forecast_hour`) must match the new case.
@@ -301,7 +314,7 @@ n_ensembles: 10
 skip_ensembles: []
 ```
 
-Each member is an independent SLURM job with its own `memNN/` case directory and log. Member 1 is unperturbed; subsequent members receive deterministic temperature noise seeded by the case checksum, which incorporates relevant plugin settings. To use identical starting perturbations across cases, stage the same IC bundle through `external_ic_dir`. See Section 9 for member-specific continuation.
+Each member is an independent SLURM job with its own `memNN/` case directory and log. Member 1 is unperturbed; subsequent members receive deterministic temperature noise seeded by the case checksum, which incorporates relevant plugin settings. To use identical starting perturbations across cases, stage the same IC bundle through `model_input_dir`. See Section 9 for member-specific continuation.
 
 ## 11. Plugins
 
@@ -328,7 +341,7 @@ python tools/build_shield.py --release 202604 --comp prod
 python tools/build_shield.py --release 202604 --no-compile  # fetch/check only
 ```
 
-The builder reads the modules from the **repository defaults** (`config/run_config.yaml`), not case-local YAML. It requires gfortran ≥10 and builds in `/tmp/$USER/FV3-<release>-public`, which is deleted and rebuilt on every run. The executable is installed in `bin/` as `<release>.fv3.public_SHiELD_nh.<comp>.<bit>.gnu.x`, for example `202604.fv3.public_SHiELD_nh.repro.64bit.gnu.x`, so builds of different releases, compiler modes and precisions do not overwrite each other. A `<exe>.manifest.yaml` file next to it records source commits, SHA-256, and toolchain, and the script prints the `shield_exe` value to use. To rebuild, rerun the same command. If a build fails, read the log printed at the failure, fix the cause, and rerun; nothing from the failed tree is reused. Set `shield_exe` in your case YAML to the printed path and confirm that it was built for the same `shield_release`. Build options include `--comp repro|prod|debug`, `--clean cleanall|clean|noclean`, `--bit`, `--pic/--no-pic`, `--avx-level`, and `--fflags`.
+The builder reads the modules from the **repository defaults** (`config/run_config.yaml`), not case-local YAML. It requires gfortran ≥10 and builds in `/tmp/$USER/FV3-<release>-public`, which is deleted and rebuilt on every run. The executable is installed in `bin/` as `<release>.fv3.public_SHiELD_nh.<comp>.<bit>.gnu.x`, for example `202604.fv3.public_SHiELD_nh.repro.32bit.gnu.x`, so builds of different releases, compiler modes and precisions do not overwrite each other. A `<exe>.manifest.yaml` file next to it records source commits, SHA-256, and toolchain, and the script prints the `shield_exe` value to use. To rebuild, rerun the same command. If a build fails, read the log printed at the failure, fix the cause, and rerun; nothing from the failed tree is reused. Set `shield_exe` in your case YAML to the printed path and confirm that it was built for the same `shield_release`. Build options include `--comp repro|prod|debug`, `--clean cleanall|clean|noclean`, `--bit 32bit|64bit` (default `32bit`: 32-bit dynamical core, 64-bit physics), `--pic/--no-pic`, `--avx-level`, and `--fflags`.
 
 `tools/build_ufs.py` installs native UFS_UTILS release 1.12.0 to `bin/preprocessing`. It is the newest release whose `chgres_cube` writes the surface file format SHiELD reads; 1.13.0 and later write a different format and cannot be used. Setting `ufs_bin_dir` selects the matching workflow. The build writes `bin/preprocessing/manifest.yaml` with the UFS_UTILS release, module and library versions, and source tags and commits; each run logs the release. `setup_all.sh` supports `--skip-env`, `--skip-shield`, `--skip-ufs`, `--skip-fix`, `--release`, and `-j`.
 

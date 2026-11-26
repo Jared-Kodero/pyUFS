@@ -10,7 +10,7 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: true
-shield_exe: /path/to/202411.fv3.public_SHiELD_nh.repro.64bit.gnu.x
+shield_exe: /path/to/202411.fv3.public_SHiELD_nh.repro.32bit.gnu.x
 walltime: 12
 n_nodes: 2
 n_cpus: 96

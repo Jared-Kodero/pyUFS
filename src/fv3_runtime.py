@@ -93,13 +93,18 @@ def get_newres(gridfile: Path) -> int:
     return int(res_equiv)
 
 
-def load_run_config() -> dict:
+def load_run_config(includes: list[str] | None = None) -> dict:
+    """The case run_config.yaml merged with its includes and the release defaults.
+
+    The resolved paths of the files it includes are appended to ``includes``
+    when it is given.
+    """
     conf_path = Path(paths["submit_dir"]) / "run_config.yaml"
     conf = read_namelist(conf_path) or {}
     release = resolve_release(conf.get("shield_release"))
     release_defaults = load_config(Path(paths["configs"]) / "run_config.yaml")
 
-    conf = resolve_includes(conf, conf_path)
+    conf = resolve_includes(conf, conf_path, loaded=includes)
 
     for key, value in release_defaults.items():
         if conf.get(key) is None and value is not None:

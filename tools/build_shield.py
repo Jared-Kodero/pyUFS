@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build SHiELD for the current pyUFS release using the Oscar toolchain.
 
-    python tools/build_shield.py                    # default release, repro, 64bit, pic, cleanall
+    python tools/build_shield.py                    # default release, repro, 32bit, pic, cleanall
     python tools/build_shield.py --release 202411 --comp prod
     python tools/build_shield.py --release 202604 --comp debug --fflags "-fcheck=all"
     python tools/build_shield.py --release 202604 --no-compile
@@ -20,7 +20,7 @@ What the script does, in order:
  7. Copy the executable to bin/ and write its manifest next to it.
 
 The executable is named <release>.fv3.public_SHiELD_nh.<comp>.<bit>.gnu.x, for example
-202604.fv3.public_SHiELD_nh.repro.64bit.gnu.x, so builds of different releases and
+202604.fv3.public_SHiELD_nh.repro.32bit.gnu.x, so builds of different releases and
 compiler modes and precisions never overwrite each other. The manifest has the same name plus
 .manifest.yaml and records the source tags and commits, the module and compiler versions and the
 patches applied. The script
@@ -112,8 +112,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bit",
         choices=("64bit", "32bit"),
-        default="64bit",
-        help="Precision (default: 64bit)",
+        default="32bit",
+        help="Precision of the FV3 dynamical core; physics stays 64-bit (default: 32bit)",
     )
     parser.add_argument(
         "--pic",

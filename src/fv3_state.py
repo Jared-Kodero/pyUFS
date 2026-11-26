@@ -60,7 +60,7 @@ PATH_FIELDS = frozenset(
         "ic_data",
         "bc_data",
         "run_config",
-        "external_ic_dir",
+        "model_input_dir",
     }
 )
 
@@ -134,8 +134,11 @@ class FV3State:
     n_ensembles: int | None = None
     skip_ensembles: list[int] | int | None = None
     # 5. Initial conditions and preprocessing
-    external_ic_dir: Path | None = None
+    model_input_dir: Path | None = None
     generate_ic_data: bool | None = None
+    # GRIB2 source files for chgres_cube by model, {"GFS": path(s), "HRRR": path(s)};
+    # globs allowed. A listed model is read from these files, not downloaded.
+    ic_grib_files: dict[str, list[str] | str] | None = None
     preprocess_only: bool | None = None
     preprocess_grid_only: bool | None = None
     preprocess_orog_only: bool | None = None
@@ -189,6 +192,10 @@ class FV3State:
     make_gsl_orog: bool | None = None
     # 10. Plugins: {plugin name: settings} from the plugins file, set at the cold start
     plugins: dict[str, dict] = field(default_factory=dict)
+    # Resolved paths of the files included by run_config.yaml and by the plugins
+    # file, in the order they were read; set at the cold start
+    run_config_includes: list[str] = field(default_factory=list)
+    plugins_config_includes: list[str] = field(default_factory=list)
     # Unused; kept so state.yaml files of earlier cases still load
     fntsfc: str | None = None
     fnaisc: str | None = None

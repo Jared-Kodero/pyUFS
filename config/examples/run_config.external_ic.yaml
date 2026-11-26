@@ -10,4 +10,4 @@ c_res: C96
 gtype: uniform
 levels: 64
 generate_ic_data: false
-external_ic_dir: /path/to/prestaged_case
+model_input_dir: /path/to/prestaged_case

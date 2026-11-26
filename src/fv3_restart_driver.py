@@ -133,7 +133,13 @@ def stage_restart(restart_dir: Path, state_file: Path) -> None:
         raise FileNotFoundError(f"{restart_files / 'coupler.res'} not found")
 
     data = open_yaml(state_file)
-    for key in ("resubmit", "total_run_hours", "forecast_length"):
+    for key in (
+        "resubmit",
+        "total_run_hours",
+        "forecast_length",
+        "run_config_includes",
+        "plugins_config_includes",
+    ):
         data[key] = state[key]
     dump_yaml(data, Path(state.case_dir) / "state.yaml", default_flow_style=None)
 

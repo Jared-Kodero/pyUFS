@@ -12,19 +12,6 @@ atmos_model_nml:
   dycore_only: false
   fdiag: 1.0
 
-coupler_nml:
-  atmos_nthreads: 1
-  calendar: julian
-  current_date: null
-  days: null
-  dt_atmos: null
-  dt_ocean: null
-  hours: null
-  minutes: 0
-  months: 0
-  seconds: 0
-  use_hyper_thread: false
-
 diag_manager_nml:
   prepend_date: false
   # use_modern_diag: true
@@ -40,11 +27,6 @@ external_ic_nml:
 field_manager_nml:
   use_field_table_yaml: true
 
-fms_affinity_nml:
-  affinity: false
-  debug_affinity: false
-  debug_cpuset: false
-
 fms_io_nml:
   checksum_required: false
   max_files_r: 100
@@ -52,7 +34,7 @@ fms_io_nml:
 
 fms_nml:
   clock_grain: ROUTINE
-  domains_stack_size: 3000000
+  domains_stack_size: null
   print_memory_usage: false
 
 fv_core_nml:
@@ -70,7 +52,6 @@ fv_core_nml:
   dddmp: 0.5
   delt_max: 0.002
   dnats: 1
-  do_schmidt: true
   do_vort_damp: true
   dwind_2d: false
   external_ic: true
@@ -79,10 +60,10 @@ fv_core_nml:
   fill_gfs: false
   fv_debug: false
   fv_sg_adj: 600
-  hord_dp: -5 #5
+  hord_dp: -5 # 5
   hord_mt: 5
   hord_tm: 5
-  hord_tr: -5 #5
+  hord_tr: -5 # 5
   hord_vt: 5
   hydrostatic: false
   io_layout: [1, 1]
@@ -92,18 +73,19 @@ fv_core_nml:
   kord_tr: 9
   kord_wz: 9
   layout: null
-  make_nh: true #false
+  make_nh: true # false
   mountain: false
   n_split: null
   na_init: 1
   ncep_ic: false
+  nestupdate: 7
   nggps_ic: true
   no_dycore: false
   nord: 3
   npx: null
   npy: null
   npz: 63
-  ntiles: 6
+  ntiles: 1
   nudge_qv: true
   nwat: 6
   p_fac: 0.1
@@ -111,25 +93,11 @@ fv_core_nml:
   print_freq: 1 # hours (>0); every 6 steps was 15 min at dt_atmos 150 s
   range_warn: true
   reset_eta: false
-  rf_cutoff: 5000.0
   rf_fast: false
-  stretch_fac: 1.0
-  target_lat: 30.0
-  target_lon: -85
-  tau: 5.0
+  twowaynest: true
   use_hydro_pressure: false
   vtdm4: 0.06
   warm_start: false
-  write_3d_diags: true
-
-fv_nest_nml:
-  grid_pes: null
-  nest_ioffsets: null
-  nest_joffsets: null
-  nest_refine: null
-  num_tile_top: 7
-  p_split: 1
-  tile_coarse: null
 
 gfdl_mp_nml: {}
 
@@ -145,8 +113,8 @@ gfs_physics_nml:
   do_z0_hwrf17_hwonly: true
   dspheat: true
   fhcyc: 24.0
-  fhlwr: 1800.0 #3600.0
-  fhswr: 1800.0 #3600.0
+  fhlwr: 3600.0
+  fhswr: 3600.0
   fhzero: 1.0 # bucket reset [h]; keep equal to atmos_model_nml fdiag
   hybedmf: true # false
   iaer: 111
@@ -178,7 +146,7 @@ gfs_physics_nml:
   xkzminv: 1.0
   ysupbl: true
   zhao_mic: false
-  lsm: 1
+  lsm: 1 #2
   sfc_coupled: false
 
 integ_phys_nml:

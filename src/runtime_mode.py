@@ -13,15 +13,15 @@ tests can use it without a case directory.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 
 def _switch(cfg: Mapping, key: str) -> bool:
     """Return a boolean switch, rejecting strings such as "false" that are truthy."""
     value = cfg.get(key, False)
     if not isinstance(value, bool):
-        raise ValueError(f"{key} must be true or false, got {value!r}")
+        raise TypeError(f"{key} must be true or false, got {value!r}")
     return value
 
 

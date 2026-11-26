@@ -87,7 +87,7 @@ def configure_directories(state: FV3State) -> dict:
         # A cold start writes INPUT afresh: from the generated ICs, or from an
         # external bundle copied in by fv3_external_ic. Without either, the
         # case's own INPUT holds the ICs and is kept.
-        external = state.get("external_ic_dir")
+        external = state.get("model_input_dir")
         in_place = not state.generate_ic_data and (
             not external
             or Path(external).resolve() == Path(paths["case_dir"]).resolve()
@@ -103,7 +103,7 @@ def configure_directories(state: FV3State) -> dict:
             raise RuntimeError(
                 f"{paths['input']} holds a model restart (coupler.res) from earlier "
                 + "segments; the cold-start inputs are archived in IC/INPUT. Restore "
-                + "them to INPUT, set external_ic_dir, or set generate_ic_data: true."
+                + "them to INPUT, set model_input_dir, or set generate_ic_data: true."
             )
 
     for d in case_paths.values():

@@ -150,8 +150,8 @@ gfs_physics_nml:
   do_z0_hwrf17_hwonly: true
   dspheat: true
   fhcyc: 24.0
-  fhlwr: 1800.0 #3600.0
-  fhswr: 1800.0 #3600.0
+  fhlwr: 3600.0
+  fhswr: 3600.0
   fhzero: 1.0 # bucket reset [h]; keep equal to atmos_model_nml fdiag
   hybedmf: true # false
   iaer: 111

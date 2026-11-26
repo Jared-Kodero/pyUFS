@@ -96,6 +96,7 @@ def resolve_includes(
     conf_path: Path | str,
     *,
     stack: frozenset[Path] = frozenset(),
+    loaded: list[str] | None = None,
 ) -> dict:
     """Merge the files named by the ``include`` key of ``conf`` into it.
 
@@ -104,7 +105,8 @@ def resolve_includes(
     Keys of ``conf`` win over included keys. Two includes that set the same
     key to different values raise ValueError, as does a circular include. An
     include that does not exist is skipped with a warning. ``conf`` itself is
-    not modified.
+    not modified. The resolved path of every included file is appended to
+    ``loaded`` when it is given.
     """
     conf = dict(conf)
     conf_path = Path(os.path.expandvars(str(conf_path))).expanduser().resolve()
@@ -125,8 +127,10 @@ def resolve_includes(
                 "Include %s of %s does not exist; skipped", include_path, conf_path
             )
             continue
+        if loaded is not None:
+            loaded.append(str(include_path))
         included = resolve_includes(
-            open_yaml(include_path) or {}, include_path, stack=stack
+            open_yaml(include_path) or {}, include_path, stack=stack, loaded=loaded
         )
         conflicts = [k for k in base.keys() & included.keys() if base[k] != included[k]]
         if conflicts:
@@ -139,16 +143,18 @@ def resolve_includes(
 
 def load_config(
     path: Path | str,
+    loaded: list[str] | None = None,
 ) -> dict:
     """Read a configuration file and resolve its includes.
 
-    Raises YamlError when the file is not a mapping at the top level.
+    The resolved paths of the included files are appended to ``loaded`` when it
+    is given. Raises YamlError when the file is not a mapping at the top level.
     """
     path = Path(path)
     conf = open_yaml(path) or {}
     if not isinstance(conf, dict):
         raise YamlError(path, "the top level must be a mapping of keys to values")
-    return resolve_includes(conf, path)
+    return resolve_includes(conf, path, loaded=loaded)
 
 
 def dump_yaml(

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import glob
 import os
 import time
 from pathlib import Path
 from typing import Literal
 
+import eccodes
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -13,6 +15,47 @@ from pyproj import Proj
 from fv3_runtime import log
 from fv3_state import save_fv3_state, state
 from fv3_utils import find_tool, remove_path, run_cmd
+
+# Models get_ic_data can supply, by download or from state.ic_grib_files.
+IC_MODELS = ("GFS", "HRRR")
+
+
+def staged_ic_file(
+    external_model: str, datetime: pd.Timestamp, forecast_hour: int
+) -> tuple[str, str]:
+    """(directory, name) of the ic_grib_files entry for this model, cycle and lead."""
+    unknown = set(state.ic_grib_files) - {"GFS", "HRRR"}
+    if unknown:
+        raise ValueError(
+            f"ic_grib_files: unsupported models {sorted(unknown)}; use GFS, HRRR"
+        )
+
+    patterns = state.ic_grib_files[external_model]
+    found = {}
+    for pattern in [patterns] if isinstance(patterns, str) else patterns:
+        for name in glob.glob(os.path.expandvars(os.path.expanduser(pattern))):
+            with open(name, "rb") as file:
+                gid = eccodes.codes_grib_new_from_file(file)
+                eccodes.codes_set(gid, "stepUnits", "h")
+                cycle = pd.to_datetime(
+                    f"{eccodes.codes_get(gid, 'dataDate')}{eccodes.codes_get(gid, 'dataTime'):04d}",
+                    format="%Y%m%d%H%M",
+                )
+                found[Path(name).resolve()] = (cycle, eccodes.codes_get(gid, "endStep"))
+                eccodes.codes_release(gid)
+
+    wanted = (pd.Timestamp(datetime), forecast_hour)
+    matches = [path for path, key in found.items() if key == wanted]
+    if len(matches) != 1:
+        listed = "\n".join(
+            f"  {p}: {c:%Y%m%d%H} f{h:03d}" for p, (c, h) in found.items()
+        )
+        raise FileNotFoundError(
+            f"{len(matches)} files in ic_grib_files {external_model} for the "
+            + f"{wanted[0]:%Y%m%d%H} cycle, f{forecast_hour:03d}. Files given:\n{listed}"
+        )
+    log.info(f"{external_model} IC data from ic_grib_files: {matches[0]}")
+    return str(matches[0].parent), matches[0].name
 
 
 def wget(url: str, output_path: Path, attempts: int = 5) -> bool:
@@ -94,6 +137,9 @@ def get_ic_data(
     https://storage.googleapis.com/high-resolution-rapid-refresh/hrrr.YYYYMMDD/conus/hrrr.tHHz.wrfsfcf00.grib2 => Google Cloud Storage HRRR
 
     """
+
+    if external_model in (state.ic_grib_files or {}):
+        return staged_ic_file(external_model, datetime, forecast_hour)
 
     date = datetime.strftime("%Y%m%d")
     year = datetime.strftime("%Y")

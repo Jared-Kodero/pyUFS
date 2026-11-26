@@ -223,8 +223,8 @@ def init_external_ic() -> bool:
     staging directories are non-empty.
     """
     case_home = Path(state.case_dir)
-    external = bool(state.external_ic_dir)
-    ic_dir = Path(state.external_ic_dir) if external else case_home
+    external = bool(state.model_input_dir)
+    ic_dir = Path(state.model_input_dir) if external else case_home
 
     # 1. Top-level staging directories must be present and non-empty.
     required_dirs = ("FIXED", "GRID", "INPUT")

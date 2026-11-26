@@ -1,7 +1,7 @@
 """SHiELD release selection and the release-dependent settings.
 
 ``shield_release`` in a case ``run_config.yaml`` (one of VALID_RELEASES) picks the namelist templates
-(``templates/<release>/``) and the ``coupler_nml`` time-step key. The defaults
+(``templates/<release>.<name>``) and the ``coupler_nml`` time-step key. The defaults
 for all other keys are in ``config/run_config.yaml``, which is the same for every
 release. This module is the only place that reads and validates the value.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE_DIR = ROOT_DIR / "templates"
-# Add a release here together with its templates/<release>/ directory.
+# Add a release here together with its templates/<release>.*.yaml files.
 VALID_RELEASES = ("202411", "202604")
 DEFAULT_RELEASE = "202411"
 
@@ -36,7 +36,7 @@ def resolve_release(value: object) -> str:
 
 
 def template(release: str, name: str) -> Path:
-    return TEMPLATE_DIR / resolve_release(release) / name
+    return TEMPLATE_DIR / f"{resolve_release(release)}.{name}"
 
 
 def coupling_step_key(release: str) -> str:

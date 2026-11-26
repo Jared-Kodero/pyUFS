@@ -44,10 +44,12 @@ def resolve(name: str, user: dict, defaults: dict) -> dict:
     return {**copy.deepcopy(defaults), **user}
 
 
-def load_plugins(path: Path) -> dict[str, dict]:
+def load_plugins(path: Path, includes: list[str] | None = None) -> dict[str, dict]:
     """Read the plugins file into ``{plugin: settings}``. Sections that are null or
-    empty are dropped, so a plugin is active exactly when its name is a key."""
-    data = load_config(path)
+    empty are dropped, so a plugin is active exactly when its name is a key. The
+    resolved paths of the files it includes are appended to ``includes`` when it
+    is given."""
+    data = load_config(path, loaded=includes)
 
     plugins = {}
     for name, user in data.items():
