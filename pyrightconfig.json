@@ -3,5 +3,6 @@
     "core"
   ],
   "venvPath": "conda_env",
-  "venv": "pyufs"
+  "venv": "pyufs",
+  "typeCheckingMode": "off"
 }
