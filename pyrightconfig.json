@@ -1,0 +1,7 @@
+{
+  "extraPaths": [
+    "core"
+  ],
+  "venvPath": "conda_env",
+  "venv": "pyufs"
+}

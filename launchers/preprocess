@@ -1,7 +1,7 @@
 #!/bin/sh
 
 set +e
-${PYUFS_PYTHON:-/preprocess} "$PYUFS_DIR/src/driver.py"
+${PYUFS_PYTHON:-/preprocess} "$PYUFS_DIR/core/driver.py"
 exit_code=$?
 set -e
 

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import xarray as xr
+
+from grib_io import open_grib, save_grib
+from latlon_to_fv3 import ll_regrid
 
 log = logging.getLogger("PLUGINS")
 
@@ -44,7 +46,7 @@ def perturb_sst(
     return xr.where(weight > 0, new, sst).transpose(*sst.dims)
 
 
-def _monthly(open_grib, path: Path):
+def _monthly(path: Path):
     tree = open_grib(path)
     node = tree.leaves[0]
     variable = next(iter(node.data_vars))
@@ -59,7 +61,7 @@ def _monthly(open_grib, path: Path):
     return tree, node, variable, native, field
 
 
-def _on_grid(field: xr.DataArray, grid: xr.DataArray, ll_regrid) -> xr.DataArray:
+def _on_grid(field: xr.DataArray, grid: xr.DataArray) -> xr.DataArray:
     """field on the lat/lon grid of `grid` (which has longitudes in 0 to 360)."""
     lon = field.lon % 360.0
     same = all(
@@ -76,20 +78,17 @@ def write_perturbed_sst(
     *,
     state: Any,
     namsfc: dict,
-    open_grib: Callable,
-    save_grib: Callable,
-    ll_regrid: Callable,
 ) -> str:
     """Write the perturbed SST climatology to FIXED/sst_perturbation and return the
     namsfc path of the new file. The source is never modified."""
     case = Path(state.case_dir)
     source = case / namsfc["fntsfc"]
-    tree, node, variable, native, sst = _monthly(open_grib, source)
+    tree, node, variable, native, sst = _monthly(source)
     sst = sst.assign_coords(lon=sst.lon % 360.0)
-    sic = _on_grid(_monthly(open_grib, case / namsfc["fnaisc"])[-1], sst, ll_regrid)
+    sic = _on_grid(_monthly(case / namsfc["fnaisc"])[-1], sst)
     mask = open_grib(case / namsfc["fnmskh"]).leaves[0]
     land = next(iter(mask.data_vars.values())).squeeze(drop=True)
-    land = _on_grid(land.rename(latitude="lat", longitude="lon").load(), sst, ll_regrid)
+    land = _on_grid(land.rename(latitude="lat", longitude="lon").load(), sst)
 
     settings = {k: config[k] for k in ("delta", "months", "lat", "lon", "taper")}
     new = perturb_sst(sst, sic, land, **settings)

@@ -54,7 +54,7 @@ import xarray as xr
 from get_era5 import get_era5
 from scipy import ndimage
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 import grib_io
 from latlon_to_fv3 import fill_nearest, ll_regrid
 

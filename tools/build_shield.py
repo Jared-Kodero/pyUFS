@@ -41,7 +41,7 @@ import sys
 import time
 from pathlib import Path
 
-# utils must be imported first: it puts src/ on sys.path for fv3_yaml and release.
+# utils must be imported first: it puts core/ on sys.path for fv3_utils and release.
 from pyufs_links import link_parent_dir
 from utils import (
     BUILD_ROOT,
@@ -51,7 +51,7 @@ from utils import (
     version_record,
 )
 
-from fv3_yaml import dump_yaml
+from fv3_utils import dump_yaml
 from release import DEFAULT_RELEASE, VALID_RELEASES
 
 COMP_MODES = ("repro", "prod", "debug")

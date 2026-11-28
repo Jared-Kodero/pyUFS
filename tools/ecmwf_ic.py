@@ -96,13 +96,13 @@ import pandas as pd
 import xarray as xr
 from scipy.ndimage import distance_transform_edt
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "core"))
 from grib_io import open_grib, save_grib
 
 log = logging.getLogger("ecmwf_ic")
 
 # GFS 0.25 degree files: NOAA AWS S3, then NCAR GDEX (the sources of
-# src/fv3_ic_data.get_ic_data).
+# core/fv3_ic_data.get_ic_data).
 GFS_URLS = (
     "https://noaa-gfs-bdp-pds.s3.amazonaws.com/gfs.{date}/{hour}/atmos/"
     "gfs.t{hour}z.pgrb2.0p25.f{fh:03d}",

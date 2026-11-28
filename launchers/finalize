@@ -3,7 +3,7 @@
 cd "$CASE_DIR" || exit 1
 
 set +e
-${PYUFS_PYTHON:-/preprocess} "$PYUFS_DIR/src/fv3_finalize_run.py"
+${PYUFS_PYTHON:-/preprocess} "$PYUFS_DIR/core/fv3_finalize_run.py"
 exit_code=$?
 set -e
 

@@ -11,9 +11,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 BUILD_ROOT = Path("/tmp") / (os.environ.get("USER") or Path.home().name)
 
-# The build scripts read the default configuration (config/run_config.yaml) through src/.
-sys.path.insert(0, str(REPO / "src"))
-from fv3_yaml import load_config
+# The build scripts read the default configuration (config/run_config.yaml) through core/.
+sys.path.insert(0, str(REPO / "core"))
+from fv3_utils import load_config
 
 
 class BuildError(RuntimeError):
@@ -62,7 +62,9 @@ def version_record(
     printed = dict(line.split(": ", 1) for line in lines if ": " in line)
     loaded = module_versions(printed.get("loaded modules", ""))
     if not loaded or "gfortran" not in printed:
-        raise BuildError("the toolchain check printed no module list or gfortran version")
+        raise BuildError(
+            "the toolchain check printed no module list or gfortran version"
+        )
 
     def pick(names) -> dict[str, str]:
         return {name: loaded.get(name.split("/")[0], "unknown") for name in names}
@@ -82,7 +84,7 @@ def version_record(
 def module_script(modules: list[str]) -> str:
     """Shell lines that load `modules` in a fresh bash."""
     init = (
-        'if [[ -z ${MODULESHOME:-} || ! -f $MODULESHOME/init/sh ]]; then\n'
+        "if [[ -z ${MODULESHOME:-} || ! -f $MODULESHOME/init/sh ]]; then\n"
         "  echo 'Missing $MODULESHOME/init/sh' >&2; exit 1\n"
         "fi\n"
         'source "$MODULESHOME/init/sh"\n'

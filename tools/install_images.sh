@@ -14,7 +14,7 @@
 # installed.
 # A manifest of source, checksum and conda packages of each built image is written to
 # $CONTAINERS_DIR/manifest/ (<name>.txt and <name>.conda.txt). The preprocess image provides the UFS_UTILS
-# executables at /UFS_UTILS/exec and also runs src/fv3_regrid.py.
+# executables at /UFS_UTILS/exec and also runs core/fv3_regrid.py.
 set -euo pipefail
 
 : "${CONTAINERS_DIR:?CONTAINERS_DIR must be set}"

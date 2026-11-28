@@ -89,12 +89,11 @@ logger = logging.getLogger("Case.Submit")
 # SCRIPT_DIR is the resolved path of this file (not its directory); the
 # repository root is therefore SCRIPT_DIR.parent.parent.
 SCRIPT_DIR = Path(__file__).resolve()
-sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "src"))
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "core"))
 
 try:
-    from fv3_yaml import load_config
-    from release import resolve_release
-    from runtime_mode import resolve_runtime
+    from fv3_utils import load_config
+    from release import resolve_release, resolve_runtime
 except ModuleNotFoundError as error:
     if error.name != "yaml":
         raise
@@ -117,7 +116,7 @@ def load_or_exit(path: Path) -> dict:
     """Read a configuration file with its includes; a bad file ends the submission."""
     try:
         return load_config(path)
-    except ValueError as error:  # YamlError, circular or conflicting includes
+    except (TypeError, ValueError) as error:  # bad YAML, not a mapping, include errors
         print(f"ERROR: {error}")
         sys.exit(1)
 
@@ -278,7 +277,7 @@ def get_config():
     * ``shield_use_container`` and ``preprocess_use_container`` select the
       execution mode explicitly. ``shield_exe`` and ``ufs_bin_dir`` are
       required and must exist only when the matching switch is false, and the
-      SHiELD container is single-node only (see ``runtime_mode``);
+      SHiELD container is single-node only (see ``release.resolve_runtime``);
     * ``ensemble_run`` and ``n_ensembles`` must agree.
 
     Derived values:

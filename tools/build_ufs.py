@@ -33,7 +33,7 @@ import sys
 import time
 from pathlib import Path
 
-# utils must be imported first: it puts src/ on sys.path for fv3_yaml.
+# utils must be imported first: it puts core/ on sys.path for fv3_utils.
 from pyufs_links import link_parent_dir
 from utils import (
     BUILD_ROOT,
@@ -42,7 +42,8 @@ from utils import (
     module_script,
     version_record,
 )
-from fv3_yaml import dump_yaml
+
+from fv3_utils import dump_yaml
 
 UFS_UTILS_URL = "https://github.com/ufs-community/UFS_UTILS.git"
 # Newest release whose chgres_cube writes the sfc_data variables SHiELD reads (sheleg,
@@ -69,7 +70,7 @@ LIBS = {
     "g2": {"tag": "v3.4.6"},
 }
 
-# Executables that src/ calls; the build fails if any is missing.
+# Executables that core/ calls; the build fails if any is missing.
 EXECUTABLES = (
     "chgres_cube",
     "cpld_gridgen",

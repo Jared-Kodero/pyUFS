@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-import yaml
+from fv3_utils import copy_path, ic_filename, open_yaml
+from grib_io import open_grib, save_grib
+from latlon_to_fv3 import fill_nearest, ll_regrid, load_grid, to_fv3_grid
 from scipy import ndimage
 
-from plugins.pamip.config import CONTROL, REGISTRY_FILE
+from . import CONTROL, REGISTRY_FILE
 
 log = logging.getLogger("PLUGINS")
 
@@ -52,10 +53,6 @@ def write_boundary_files(
     *,
     config: dict,
     state: Any,
-    open_grib: Callable,
-    save_grib: Callable,
-    ll_regrid: Callable,
-    fill_nearest: Callable,
 ) -> tuple[xr.Dataset, dict[str, str]]:
     """Write SST and sea-ice climatologies of the PAMIP experiment to FIXED/PAMIP.
 
@@ -63,7 +60,7 @@ def write_boundary_files(
     experiment = config["experiment"]
     baseline = config["baseline"] or "pamip"
     fields = config["fields"] or "both"
-    registry = yaml.safe_load(REGISTRY_FILE.read_text())["experiments"]
+    registry = open_yaml(REGISTRY_FILE)["experiments"]
     entry, control = registry[experiment], registry[CONTROL]
     family = entry["family"]
 
@@ -284,11 +281,6 @@ def set_cold_start_surface(
     fields: xr.Dataset,
     *,
     state: Any,
-    fill_nearest: Callable,
-    sfc_filename: Callable,
-    to_fv3_grid: Callable,
-    load_grid: Callable,
-    copy_path: Callable,
 ) -> None:
     """Set SST and sea ice of surface files to start date fields."""
     date = pd.Timestamp(state.init_datetime)
@@ -304,9 +296,10 @@ def set_cold_start_surface(
         else list(range(1, 7 + state.n_nests))
     )
     for tile in tiles:
-        filename = sfc_filename(tile)
+        filename = ic_filename("sfc", tile, state.gtype)
         path = Path(state.input) / filename
-        out = to_fv3_grid(now, load_grid(filename, tile), periodic=True)
+        grid_file = Path(state.ic_data) / "perts" / f"tile.{tile}.grid.nc"
+        out = to_fv3_grid(now, load_grid(path, grid_file), periodic=True)
         with xr.open_dataset(path, decode_cf=False, engine="netcdf4") as handle:
             ds = handle.load()
         slmsk = ds["slmsk"]

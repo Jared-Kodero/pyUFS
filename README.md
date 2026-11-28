@@ -298,7 +298,7 @@ Ensemble continuation:
 /path/to/pyUFS/case_continue.sh --member 2 5
 ```
 
-With `archive_data: true`, the final segment (`src/fv3_finalize_run.py`, run by `launchers/finalize` after the regrid) archives regridded output, `state.yaml`, logs, and `restart.tar.gz` under `<archive_root>/<archive_subdir>/<parent>/<case>`. The archive retains `STATIC/` in the working tree and removes other working data after copying. The restart archive contains `RESTART/`, `state.yaml`, and `run_config.yaml`. To continue from an archived restart, unpack it to `DIR`, configure a new case with matching grid and start-time settings, and run:
+With `archive_data: true`, the final segment (`core/fv3_finalize_run.py`, run by `launchers/finalize` after the regrid) archives regridded output, `state.yaml`, logs, and `restart.tar.gz` under `<archive_root>/<archive_subdir>/<parent>/<case>`. The archive retains `STATIC/` in the working tree and removes other working data after copying. The restart archive contains `RESTART/`, `state.yaml`, and `run_config.yaml`. To continue from an archived restart, unpack it to `DIR`, configure a new case with matching grid and start-time settings, and run:
 
 ```bash
 /path/to/pyUFS/case_continue.sh --restart-dir DIR
@@ -318,18 +318,27 @@ Each member is an independent SLURM job with its own `memNN/` case directory and
 
 ## 11. Plugins
 
-Plugins extend the core workflow without changing `src/`. Set `plugins_config` in the case `run_config.yaml` to a separate YAML file. The path can be absolute or relative to the submission directory; `~` and environment variables are expanded:
+Plugins extend the core workflow without changing `core/`. Set `plugins_config` in the case `run_config.yaml` to a separate YAML file. The path can be absolute or relative to the submission directory; `~` and environment variables are expanded:
 
 ```yaml
 # run_config.yaml
 plugins_config: plugins.yaml
 ```
 
-Each top-level section in `plugins.yaml` enables one plugin and supplies its options. `plugins_config: null` disables plugins. The available sections are `pamip`, `sst_perturbation`, `sm_perturbations`, and `derived`; the supported keys of each plugin are in [`plugins/README.md`](plugins/README.md). Unknown plugin names or keys stop preprocessing before grid generation.
+Each top-level section in `plugins.yaml` enables one plugin and supplies its options; the plugins run in the order of their sections. `plugin_dirs` lists folders with your own plugins, searched before `plugins/`; relative paths are read from the folder of `plugins.yaml`:
 
-`src/fv3_plugins.py` is the **only core module that imports plugins**. It dispatches registered hooks at the relevant workflow stages. The cold start stores plugin settings in `state.yaml`; later segments reuse the stored settings, so editing `plugins.yaml` does not change a running case. For plugins that modify namelists, case-local `input.yaml` or `input.nml` overrides take precedence where supported.
+```yaml
+# plugins.yaml
+plugin_dirs: [~/pyufs_plugins]   # optional
+pamip: {experiment: "1.6"}
+t2m_celsius: true                # a plugin without settings
+```
 
-To add a plugin, create a package under `plugins/` and register its configuration and hooks following [`plugins/README.md`](plugins/README.md). Keep plugin-specific algorithms, dataset preparation, and experiment instructions in that package's documentation, not in this run guide.
+`plugins_config: null` disables plugins. The plugins in `plugins/` are `pamip`, `sst_perturbation` and `sm_perturbations`; their keys are in [`plugins/README.md`](plugins/README.md). A section `name: true` enables a plugin with its defaults. Your own derived variables are a plugin with a `regrid` hook in a `plugin_dirs` folder; see [`config/examples/plugins/t2m_celsius`](config/examples/plugins/t2m_celsius/__init__.py). Unknown plugin names or keys stop preprocessing before grid generation.
+
+`core/fv3_plugins.py` is the **only core module that loads plugins**. It finds each plugin by name, in the `plugin_dirs` listed in the plugins file and then in `plugins/`, and calls its hooks at the relevant workflow stages in the order the plugins file lists them. The cold start stores plugin settings in `state.yaml`; later segments reuse the stored settings, so editing `plugins.yaml` does not change a running case. For plugins that modify namelists, case-local `input.yaml` or `input.nml` overrides take precedence where supported.
+
+To add a plugin, create a folder with an `__init__.py` under `plugins/` or a `plugin_dirs` folder, following [`plugins/README.md`](plugins/README.md); nothing is registered in `core/`. Keep plugin-specific algorithms, dataset preparation, and experiment instructions in that package's documentation, not in this run guide.
 
 ## 12. Building native executables
 

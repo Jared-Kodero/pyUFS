@@ -60,7 +60,7 @@ from pathlib import Path
 
 from case_submit import SCRIPT_DIR, get_config, log_file_path, logger, run
 
-from fv3_yaml import open_yaml  # src/ is on sys.path once case_submit is imported
+from fv3_utils import open_yaml  # core/ is on sys.path once case_submit is imported
 
 
 class ContinueError(Exception):
@@ -133,7 +133,7 @@ def find_segment(state_file: Path, coupler: Path, resubmit: int = None):
     """
     try:
         state = open_yaml(state_file)
-    except ValueError as error:  # YamlError
+    except ValueError as error:  # bad YAML
         raise ContinueError(str(error)) from error
     resubmit = int(state["resubmit"]) if resubmit is None else resubmit
 
